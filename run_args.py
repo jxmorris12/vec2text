@@ -1,6 +1,7 @@
 from typing import Optional
 
 from dataclasses import dataclass, field
+import os
 
 import transformers
 from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
@@ -27,6 +28,17 @@ class ModelArguments:
             )
         },
     )
+    embedding_model_name_or_path: Optional[str] = field(
+        ###
+        ## huggingface.co/facebook/dpr-ctx_encoder-single-nq-base
+        ###
+        default="dpr",
+        metadata={
+            "help": "Model to get embeddings from",
+            "choices": ["contriever", "dpr"],
+        },
+    )
+
     model_type: Optional[str] = field(
         default=None,
         metadata={"help": "If training from scratch, pass a model type from the list: " + ", ".join(MODEL_TYPES)},
@@ -150,7 +162,7 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     num_train_epochs: float = field(
-        default=100.0, 
+        default=10.0, 
         metadata={
             "required": False,
             "help": "Number of epochs for training"
@@ -168,6 +180,9 @@ class TrainingArguments(transformers.TrainingArguments):
         default=None, metadata={"help": "Whether or not to log to Weights & Biases."}
     )
     report_to: str = "wandb"
+    per_device_train_batch_size: int = field(
+        default=128, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
+    )
 
     ##################### Experimental Settings ####################
     # exp_name: str = field(
@@ -206,17 +221,16 @@ class TrainingArguments(transformers.TrainingArguments):
     # eval_steps: int = 2_500
     # save_steps: int = 2_500
     # warmup_steps: int = 10_000
-    warmup_steps: int = 20_000
-    logging_steps: int = 8 # 800
-    eval_steps: int = 40_000 # 10_000
+    warmup_steps: int = 10_000
+    logging_steps: int = 100
+    eval_steps: int = 10_000_000 # TODO make eval work...
     save_steps: int = 5_000
-    # save_strategy: str = "epoch"
 
     def __post_init__(self):
         self.report_to = ["wandb"] if (self.use_wandb) else []
-        self.dataloader_num_workers = 0
+        # self.dataloader_num_workers = 0
         self.dataloader_pin_memory = True
-        # self.dataloader_num_workers = len(os.sched_getaffinity(0))
+        self.dataloader_num_workers = len(os.sched_getaffinity(0))
         print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")
 
         self.dataloader_drop_last = True

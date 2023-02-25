@@ -1,10 +1,8 @@
+from typing import Optional
+
 import logging
-import math
 import os
 import sys
-from dataclasses import dataclass, field
-from itertools import chain
-from typing import Optional
 
 import datasets
 import evaluate
@@ -13,18 +11,17 @@ from datasets import load_dataset
 
 import transformers
 from transformers import (
-    CONFIG_MAPPING,
     AutoConfig,
     AutoModelForSeq2SeqLM,
     AutoTokenizer,
     HfArgumentParser,
-    TrainingArguments,
     set_seed,
 )
 from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
 
 from collator import CustomCollator
+from helpers import md5_hash_kwargs
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from trainer import InversionTrainer
 
@@ -32,10 +29,14 @@ from trainer import InversionTrainer
 logger = logging.getLogger(__name__)
 
 
-def load_embedder_and_tokenizer():
+def load_embedder_and_tokenizer(name: str):
     # TODO make abstract/argparse for it etc.
-    model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
-    tokenizer = AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+    if name == "dpr":
+        model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+        tokenizer = AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+    elif name == "contriever":
+        model = transformers.Contriever.from_pretrained("facebook/contriever")
+        tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
     return model, tokenizer
 
 
@@ -44,17 +45,32 @@ def load_model(model_name: str) -> AutoModelForSeq2SeqLM:
 
 
 def main():
-    # See all possible arguments in src/transformers/training_args.py
-    # or by passing the --help flag to this script.
-    # We now keep distinct sets of args, for a cleaner separation of concerns.
-
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
-    if len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # If we pass only one argument to the script and it's the path to a json file,
-        # let's parse it to get our arguments.
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+    model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+
+    exp_name = '__'.join(
+        (model_args.model_name_or_path, model_args.embedding_model_name_or_path)
+    )
+
+    # Set up output_dir and wandb.
+    kwargs_hash = md5_hash_kwargs(**vars(model_args), **vars(data_args), **vars(training_args))
+    training_args.output_dir = os.path.join(
+        training_args.output_dir, kwargs_hash        
+    )
+
+    if training_args.use_wandb:
+        import wandb
+
+        wandb.init(
+            project="emb-inv-1",
+            name=exp_name,
+            id=kwargs_hash,
+            resume=True,
+        )
     else:
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+        # Disable W&B
+        os.environ["WANDB_MODE"] = "disabled"
+        os.environ["WANDB_DISABLED"] = "true"
 
     # Setup logging
     logging.basicConfig(
@@ -104,9 +120,10 @@ def main():
         truncation='max_length',
         max_length=model_args.max_seq_length,
     )
-    tokenizer.pad_token = tokenizer.eos_token
     model = load_model(model_name=model_args.model_name_or_path)
-    embedder, embedder_tokenizer = load_embedder_and_tokenizer()
+    embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+        name=model_args.embedding_model_name_or_path
+    )
 
     text_column_name = "text"        
     def tokenize_function(examples):
@@ -227,6 +244,7 @@ def main():
         max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
         metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
         try:
+            import math
             perplexity = math.exp(metrics["eval_loss"])
         except OverflowError:
             perplexity = float("inf")

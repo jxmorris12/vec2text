@@ -5,14 +5,30 @@ from slurmpy import Slurm
 
 
 BASE_PYTHON_CMD = """
-python run.py --dataset={dataset} --num_distractor_words={num_distractor_words} --model_name {model_name}
+python run.py --per_device_train_batch_size {batch_size} \
+--max_seq_length {max_seq_length} \
+--model_name_or_path {model_name} \
+--embedding_model_name_or_path {emb_model_name} \
+--use_wandb=1
 """
 
-num_distractor_words = [
-    0, 4, 16, 64, 256
+
+models = [
+    't5-small',
+    't5-base',
+    't5-large',
+    't5-3b',
+    # 't5-11b',
 ]
 
-models = ['dpr', 'laprador']
+emb_models = [
+    'dpr',
+]
+
+
+batch_size = 64
+max_seq_length = 128
+
 
 ACTUALLY_RUN_COMMAND = True
 
@@ -50,14 +66,15 @@ def run_cmd(cmd: str, job_desc: str):
 
 
 total = 0
-for d, n, m in itertools.product(
-        datasets, num_distractor_words, models
-    ):
+for m, e in itertools.product(models, emb_models):
     total += 1
     cmd = BASE_PYTHON_CMD.format(
-        dataset=d, num_distractor_words=n, model_name=m
+        batch_size=batch_size,
+        max_seq_length=max_seq_length,
+        model_name=m, 
+        emb_model_name=e,
     )
-    job_desc = ".".join((d, str(n), m))
+    job_desc = ".".join((e, m))
     run_cmd(cmd, job_desc=job_desc)
 
 

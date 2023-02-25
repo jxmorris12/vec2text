@@ -6,6 +6,15 @@ import transformers
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
+"""
+Note to self (2/25 4pm):
+    Trying to kick off starter runs on SLURM.
+    Need to make the following changes:
+        - Make sure eval actually works and eval on test set
+        - Make Contriever work and SimCSE and bert-base 
+            so we can use those embedders as well if we want
+        - Support different 'architectures' for upscaling the embeddings
+"""
 
 class InversionTrainer(transformers.Trainer):
     embedder: torch.nn.Module # model to get embeddings from.
@@ -13,15 +22,15 @@ class InversionTrainer(transformers.Trainer):
     def __init__(
             self, *args, embedder: torch.nn.Module, **kwargs):
         super().__init__(*args, **kwargs)
-        # 
+        ######################################################
         self.embedder = embedder.to(device)
-        # 
+        ######################################################
         embedder_dim = self.embedder.config.hidden_size
         encoder_hidden_dim = self.model.config.hidden_size
         self.embedding_transform = torch.nn.Linear(
             embedder_dim, encoder_hidden_dim
         ).to(device)
-        # 
+        ###################################################### 
     
     def call_both_models(
             self,
@@ -34,6 +43,9 @@ class InversionTrainer(transformers.Trainer):
                 attention_mask=inputs["embedder_attention_mask"],
             ).pooler_output
         
+        # TODO: implement mean-pooling so we can test BERT sentence
+        # embeddings vs SimCSE vs Contriever etc fairly.
+
         embeddings = self.embedding_transform(embeddings)
         inputs_embeds = embeddings.unsqueeze(dim=1).repeat((1, 32, 1)) # TODO make this fancier/abstracted.
         return model(
