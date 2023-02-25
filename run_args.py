@@ -215,7 +215,7 @@ class TrainingArguments(transformers.TrainingArguments):
 
     def __post_init__(self):
         self.report_to = ["wandb"] if (self.use_wandb) else []
-        self.dataloader_num_workers = 1
+        self.dataloader_num_workers = 0
         self.dataloader_pin_memory = True
         # self.dataloader_num_workers = len(os.sched_getaffinity(0))
         print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")

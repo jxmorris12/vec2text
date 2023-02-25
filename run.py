@@ -27,6 +27,7 @@ from transformers import (
 from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
 
+from collator import CustomCollator
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 
 
@@ -90,16 +91,27 @@ def main():
                 "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
             )
 
+    # Load pretrained model and tokenizer
     config = AutoConfig.from_pretrained(model_args.model_name_or_path)
-    tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
+    tokenizer = AutoTokenizer.from_pretrained(
+        model_args.model_name_or_path,
+        padding=True,
+        truncation='max_length',
+        max_length=model_args.max_seq_length,
+    )
     tokenizer.pad_token = tokenizer.eos_token
     model = load_model(model_name=model_args.model_name_or_path)
 
     text_column_name = "text"        
     def tokenize_function(examples):
         output = tokenizer(
-            examples[text_column_name], max_length=model_args.max_seq_length,
+            examples[text_column_name],
+            padding=True,
+            truncation=True,
+            max_length=model_args.max_seq_length,
+            return_tensors='pt',
         )
+        output['labels'] = output['input_ids'] # copy to 'labels' for language modeling loss
         return output
 
 
@@ -125,7 +137,6 @@ def main():
     )
     train_dataset = tokenized_datasets[train_dataset_key]
 
-    # Load pretrained model and tokenizer
     #
     # Distributed training:
     # The .from_pretrained methods guarantee that only one local process can concurrently
@@ -165,7 +176,7 @@ def main():
         train_dataset=train_dataset,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
-        # data_collator=default_data_collator,
+        data_collator=CustomCollator(tokenizer=tokenizer),
         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
         if training_args.do_eval and not is_torch_tpu_available()
