@@ -33,10 +33,9 @@ from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 logger = logging.getLogger(__name__)
 
 
+def load_model(model_name: str):
+    return AutoModelForCausalLM.from_pretrained(model_name) # for testing
 
-
-def load_model():
-    return AutoModelForCausalLM.from_pretrained('gpt2') # for testing
 
 def main():
     # See all possible arguments in src/transformers/training_args.py
@@ -93,26 +92,29 @@ def main():
 
     config = AutoConfig.from_pretrained(model_args.model_name_or_path)
     tokenizer = AutoTokenizer.from_pretrained(model_args.model_name_or_path)
-    model = load_model()
+    tokenizer.pad_token = tokenizer.eos_token
+    model = load_model(model_name=model_args.model_name_or_path)
 
     text_column_name = "text"        
     def tokenize_function(examples):
-        output = tokenizer(examples[text_column_name])
+        output = tokenizer(
+            examples[text_column_name], max_length=model_args.max_seq_length,
+        )
         return output
 
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
-    
+
     # Get and process datasets.
+    train_dataset_key = "corpus"
     raw_datasets = load_dataset(
         data_args.dataset_name,
         data_args.dataset_config_name,
         cache_dir=model_args.cache_dir,
-        use_auth_token=True if model_args.use_auth_token else None,
         streaming=data_args.streaming,
     )
-    column_names = list(raw_datasets["corpus"].features)
+    column_names = list(raw_datasets[train_dataset_key].features)
     tokenized_datasets = raw_datasets.map(
         tokenize_function,
         batched=True,
@@ -121,7 +123,7 @@ def main():
         load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",
     )
-    train_dataset = tokenized_datasets["train"]
+    train_dataset = tokenized_datasets[train_dataset_key]
 
     # Load pretrained model and tokenizer
     #
@@ -163,7 +165,7 @@ def main():
         train_dataset=train_dataset,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
-        data_collator=default_data_collator,
+        # data_collator=default_data_collator,
         compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
         preprocess_logits_for_metrics=preprocess_logits_for_metrics
         if training_args.do_eval and not is_torch_tpu_available()
