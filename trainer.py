@@ -13,7 +13,15 @@ class InversionTrainer(transformers.Trainer):
     def __init__(
             self, *args, embedder: torch.nn.Module, **kwargs):
         super().__init__(*args, **kwargs)
+        # 
         self.embedder = embedder.to(device)
+        # 
+        embedder_dim = self.embedder.config.hidden_size
+        encoder_hidden_dim = self.model.config.hidden_size
+        self.embedding_transform = torch.nn.Linear(
+            embedder_dim, encoder_hidden_dim
+        ).to(device)
+        # 
     
     def call_both_models(
             self,
@@ -25,11 +33,15 @@ class InversionTrainer(transformers.Trainer):
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
             ).pooler_output
+        
+        embeddings = self.embedding_transform(embeddings)
         inputs_embeds = embeddings.unsqueeze(dim=1).repeat((1, 32, 1)) # TODO make this fancier/abstracted.
-        breakpoint()
         return model(
             inputs_embeds=inputs_embeds,
             attention_mask=torch.ones((inputs_embeds.shape[0], 32), device=inputs_embeds.device),
+            # 
+            decoder_input_ids=inputs["input_ids"],
+            decoder_attention_mask=inputs["attention_mask"],
             labels=inputs["labels"],
         )
 
