@@ -15,13 +15,10 @@ import transformers
 from transformers import (
     CONFIG_MAPPING,
     AutoConfig,
-    AutoModelForCausalLM,
+    AutoModelForSeq2SeqLM,
     AutoTokenizer,
     HfArgumentParser,
-    Trainer,
     TrainingArguments,
-    default_data_collator,
-    is_torch_tpu_available,
     set_seed,
 )
 from transformers.testing_utils import CaptureLogger
@@ -29,13 +26,21 @@ from transformers.trainer_utils import get_last_checkpoint
 
 from collator import CustomCollator
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
+from trainer import InversionTrainer
 
 
 logger = logging.getLogger(__name__)
 
 
-def load_model(model_name: str):
-    return AutoModelForCausalLM.from_pretrained(model_name) # for testing
+def load_embedder_and_tokenizer():
+    # TODO make abstract/argparse for it etc.
+    model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+    tokenizer = AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+    return model, tokenizer
+
+
+def load_model(model_name: str) -> AutoModelForSeq2SeqLM:
+    return AutoModelForSeq2SeqLM.from_pretrained(model_name) # for testing
 
 
 def main():
@@ -101,6 +106,7 @@ def main():
     )
     tokenizer.pad_token = tokenizer.eos_token
     model = load_model(model_name=model_args.model_name_or_path)
+    embedder, embedder_tokenizer = load_embedder_and_tokenizer()
 
     text_column_name = "text"        
     def tokenize_function(examples):
@@ -112,7 +118,17 @@ def main():
             return_tensors='pt',
         )
         output['labels'] = output['input_ids'] # copy to 'labels' for language modeling loss
-        return output
+
+        embedder_output = embedder_tokenizer(
+            examples[text_column_name],
+            padding=True,
+            truncation=True,
+            max_length=model_args.max_seq_length,
+            return_tensors='pt'
+        )
+        embedder_output = { f'embedder_{k}': v for k,v in embedder_output.items() }
+
+        return {**output, **embedder_output}
 
 
     # Set seed before initializing model.
@@ -170,17 +186,16 @@ def main():
             return metric.compute(predictions=preds, references=labels)
 
     # Initialize our Trainer
-    trainer = Trainer(
+    trainer = InversionTrainer(
+        embedder=embedder,
         model=model,
         args=training_args,
         train_dataset=train_dataset,
         eval_dataset=eval_dataset if training_args.do_eval else None,
         tokenizer=tokenizer,
         data_collator=CustomCollator(tokenizer=tokenizer),
-        compute_metrics=compute_metrics if training_args.do_eval and not is_torch_tpu_available() else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics
-        if training_args.do_eval and not is_torch_tpu_available()
-        else None,
+        compute_metrics=compute_metrics if training_args.do_eval else None,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
     )
 
     # Training

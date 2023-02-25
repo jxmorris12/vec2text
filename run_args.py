@@ -20,8 +20,7 @@ class ModelArguments:
         ###
         ## huggingface.co/facebook/dpr-ctx_encoder-single-nq-base
         ###
-        # default="facebook/dpr-ctx_encoder-single-nq-base",
-        default="gpt2",
+        default="t5-small",
         metadata={
             "help": (
                 "The model checkpoint for weights initialization .Don't set if you want to train a model from scratch."
@@ -208,7 +207,7 @@ class TrainingArguments(transformers.TrainingArguments):
     # save_steps: int = 2_500
     # warmup_steps: int = 10_000
     warmup_steps: int = 20_000
-    logging_steps: int = 800
+    logging_steps: int = 8 # 800
     eval_steps: int = 40_000 # 10_000
     save_steps: int = 5_000
     # save_strategy: str = "epoch"
