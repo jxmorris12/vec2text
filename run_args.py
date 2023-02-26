@@ -110,7 +110,7 @@ class DataTrainingArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=None,
+        default=1000,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -158,7 +158,7 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     num_train_epochs: float = field(
-        default=10.0, 
+        default=5.0, 
         metadata={
             "required": False,
             "help": "Number of epochs for training"
@@ -211,7 +211,7 @@ class TrainingArguments(transformers.TrainingArguments):
 
     warmup_steps: int = 10_000
     logging_steps: int = 100
-    eval_steps: int = 400
+    eval_steps: int = 32#00
     save_steps: int = 5_000
 
     def __post_init__(self):
@@ -228,8 +228,6 @@ class TrainingArguments(transformers.TrainingArguments):
         self.logging_steps = round(self.logging_steps * (32 / self.train_batch_size))
         self.eval_steps = round(self.eval_steps * (32 / self.train_batch_size))
         self.save_steps = round(self.save_steps * (32 / self.train_batch_size))
-
-        assert not self.bf16, "bf16 training doesn't work with GradCache"
 
         # defaults from SentenceTransformers
         # lr 2e-5

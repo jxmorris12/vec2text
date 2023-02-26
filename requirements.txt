@@ -1,0 +1,6 @@
+datasets
+evaluate
+sacrebleu
+tokenizers
+tqdm
+transformers

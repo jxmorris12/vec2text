@@ -5,7 +5,6 @@ import os
 import sys
 
 import datasets
-import evaluate
 import torch
 from datasets import load_dataset
 
@@ -176,27 +175,11 @@ def main():
     logger.info(f"Training model from checkpoint `{model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
     eval_dataset = tokenized_datasets["validation"]
     
-    data_args.max_eval_samples = 2000
     if data_args.max_eval_samples is not None:
         max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
         eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    def preprocess_logits_for_metrics(logits, labels):
-        if isinstance(logits, tuple):
-            # Depending on the model and config, logits may contain extra tensors,
-            # like past_key_values, but logits always come first
-            logits = logits[0]
-        return logits.argmax(dim=-1)
-
-    metric = evaluate.load("accuracy")
-
-    def compute_metrics(eval_preds):
-        preds, labels = eval_preds
-        # preds have the same shape as the labels, after the argmax(-1) has been calculated
-        # by preprocess_logits_for_metrics but we need to shift the labels
-        labels = labels[:, 1:].reshape(-1)
-        preds = preds[:, :-1].reshape(-1)
-        return metric.compute(predictions=preds, references=labels)
+    #############################################################################
 
     # Initialize our Trainer
     trainer = InversionTrainer(
@@ -207,8 +190,6 @@ def main():
         eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         data_collator=CustomCollator(tokenizer=tokenizer),
-        compute_metrics=compute_metrics,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
 
     # Training

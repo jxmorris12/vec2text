@@ -1,20 +1,23 @@
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
+import math
+import random
+
+import evaluate
 import torch
 import transformers
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
-"""
-Note to self (2/25 4pm):
-    Trying to kick off starter runs on SLURM.
-    Need to make the following changes:
-        - Make sure eval actually works and eval on test set
-        - Make Contriever work and SimCSE and bert-base 
-            so we can use those embedders as well if we want
-        - Support different 'architectures' for upscaling the embeddings
-"""
+
+def preprocess_logits_for_metrics(logits, labels):
+    if isinstance(logits, tuple):
+        # Depending on the model and config, logits may contain extra tensors,
+        # like past_key_values, but logits always come first
+        logits = logits[0]
+    return logits.argmax(dim=-1)
+
 
 class InversionTrainer(transformers.Trainer):
     embedder: torch.nn.Module # model to get embeddings from.
@@ -31,6 +34,46 @@ class InversionTrainer(transformers.Trainer):
             embedder_dim, encoder_hidden_dim
         ).to(device)
         ###################################################### 
+        self.metric_accuracy = evaluate.load("accuracy")
+        self.metric_bleu = evaluate.load("sacrebleu")
+        self.compute_metrics = self.compute_metrics_func
+        self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
+    
+    def _log_preds_table(self, decoded_preds: List[str], decoded_labels: List[str]):
+        if not self.args.use_wandb:
+            return
+
+        num_rows = 50
+        idxs = random.choices(range(len(decoded_preds)), k=min(len(decoded_preds), num_rows))
+
+        data = []
+        for idx in idxs:
+            data.append([decoded_labels[idx], decoded_preds[idx]])
+        
+        import wandb
+        table = wandb.Table(
+            columns=["Original", "Decoded"],
+            data=data
+        )
+        wandb.log({"val_text_preds": table})
+    
+    def compute_metrics_func(self, eval_preds):
+        preds, labels = eval_preds
+        
+        # Get decoded preds and BLEU, log table of text.
+        decoded_preds = self.tokenizer.batch_decode(preds, skip_special_tokens=True)
+        decoded_labels = self.tokenizer.batch_decode(labels, skip_special_tokens=True)
+        raw_bleu_result = self.metric_bleu.compute(predictions=decoded_preds, references=decoded_labels)
+        bleu_result = { "bleu_score": raw_bleu_result["score" ]}
+        self._log_preds_table(decoded_preds=decoded_preds, decoded_labels=decoded_labels)
+
+        # preds have the same shape as the labels, after the argmax(-1) has been calculated
+        # by preprocess_logits_for_metrics but we need to shift the labels
+        labels = labels[:, 1:].reshape(-1)
+        preds = preds[:, :-1].reshape(-1)
+        accuracy_result = self.metric_accuracy.compute(predictions=preds, references=labels)
+
+        return { **bleu_result, **accuracy_result }
     
     def call_both_models(
             self,
@@ -58,6 +101,21 @@ class InversionTrainer(transformers.Trainer):
             labels=inputs["labels"],
         )
 
+    def evaluation_loop(self, *args, **kwargs) -> transformers.trainer_utils.EvalLoopOutput:
+        """
+        Run evaluation and returns metrics.
+        
+        Override to compute ppl from eval loss.
+        """
+        output = super().evaluation_loop(*args, **kwargs)
+
+        try:
+            perplexity = math.exp(output.metrics["eval_loss"])
+        except OverflowError:
+            perplexity = float("inf")
+        output.metrics["eval_perplexity"] = perplexity
+    
+        return output
 
     def compute_loss(self, model, inputs, return_outputs=False):
         """
