@@ -9,15 +9,16 @@ python run.py --per_device_train_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
 --model_name_or_path {model_name} \
 --embedding_model_name_or_path {emb_model_name} \
+--exp_name {exp_name} \
 --use_wandb=1
 """
 
 
 models = [
-    # 't5-small',
-    # 't5-base',
-    't5-large',
-    't5-3b',
+    't5-small',
+    't5-base',
+    # 't5-large',
+    # 't5-3b',
     # 't5-11b',
 ]
 
@@ -25,12 +26,13 @@ emb_models = [
     'dpr',
 ]
 
+exp_name = 'feb26'
 
-batch_size = 8
+batch_size = 128
 max_seq_length = 128
 
 
-ACTUALLY_RUN_COMMAND = True
+ACTUALLY_RUN_COMMAND = False
 
 def run_cmd(cmd: str, job_desc: str):
     now = datetime.now()

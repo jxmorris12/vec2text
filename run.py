@@ -35,7 +35,7 @@ def load_embedder_and_tokenizer(name: str):
         model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
         tokenizer = AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
     elif name == "contriever":
-        model = transformers.Contriever.from_pretrained("facebook/contriever")
+        model = transformers.AutoModel.from_pretrained("facebook/contriever")
         tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
     return model, tokenizer
 
@@ -49,7 +49,7 @@ def main():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     exp_name = '__'.join(
-        (model_args.model_name_or_path, model_args.embedding_model_name_or_path)
+        (model_args.model_name_or_path, model_args.embedding_model_name)
     )
 
     # Set up output_dir and wandb.
@@ -122,7 +122,7 @@ def main():
     )
     model = load_model(model_name=model_args.model_name_or_path)
     embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-        name=model_args.embedding_model_name_or_path
+        name=model_args.embedding_model_name
     )
 
     text_column_name = "text"        

@@ -28,7 +28,7 @@ class ModelArguments:
             )
         },
     )
-    embedding_model_name_or_path: Optional[str] = field(
+    embedding_model_name: Optional[str] = field(
         ###
         ## huggingface.co/facebook/dpr-ctx_encoder-single-nq-base
         ###
@@ -181,14 +181,14 @@ class TrainingArguments(transformers.TrainingArguments):
     )
 
     ##################### Experimental Settings ####################
-    # exp_name: str = field(
-    #     default=None,
-    #     metadata={
-    #         "required": True,
-    #         "help": "Which experiment to run",
-    #         "choices": ["prompt_tune", "fine_tune", "weighted_embeddings"],
-    #     }
-    # )
+    exp_name: str = field(
+        default=None,
+        metadata={
+            "required": True,
+            "help": "Which experiment to run",
+            "choices": ["prompt_tune", "fine_tune", "weighted_embeddings"],
+        }
+    )
     exp_series_name: str = field(
         default="",
         metadata={
