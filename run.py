@@ -153,53 +153,50 @@ def main():
     set_seed(training_args.seed)
 
     # Get and process datasets.
-    train_dataset_key = "corpus"
-    raw_datasets = {
+    train_dataset_key = "train"
+
+    logger.info("Loading datasets...")
+    raw_datasets = datasets.DatasetDict({
         "train": load_dpr_corpus(NQ_TRAIN),
-        "dev": load_dpr_corpus(NQ_DEV),
-    }
+        "validation": load_dpr_corpus(NQ_DEV),
+    })
     column_names = list(raw_datasets[train_dataset_key].features)
+
     tokenized_datasets = raw_datasets.map(
         tokenize_function,
         batched=True,
-        num_proc=data_args.preprocessing_num_workers,
+        num_proc=training_args.dataloader_num_workers,
         remove_columns=column_names,
         load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",
     )
     train_dataset = tokenized_datasets[train_dataset_key]
 
-    #
-    # Distributed training:
-    # The .from_pretrained methods guarantee that only one local process can concurrently
-    # download model & vocab.
     n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
     logger.info(f"Training model from checkpoint `{model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
+    eval_dataset = tokenized_datasets["validation"]
+    
+    data_args.max_eval_samples = 2000
+    if data_args.max_eval_samples is not None:
+        max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+        eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    if training_args.do_eval:
-        if "validation" not in tokenized_datasets:
-            raise ValueError("--do_eval requires a validation dataset")
-        eval_dataset = lm_datasets["validation"]
-        if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
+    def preprocess_logits_for_metrics(logits, labels):
+        if isinstance(logits, tuple):
+            # Depending on the model and config, logits may contain extra tensors,
+            # like past_key_values, but logits always come first
+            logits = logits[0]
+        return logits.argmax(dim=-1)
 
-        def preprocess_logits_for_metrics(logits, labels):
-            if isinstance(logits, tuple):
-                # Depending on the model and config, logits may contain extra tensors,
-                # like past_key_values, but logits always come first
-                logits = logits[0]
-            return logits.argmax(dim=-1)
+    metric = evaluate.load("accuracy")
 
-        metric = evaluate.load("accuracy")
-
-        def compute_metrics(eval_preds):
-            preds, labels = eval_preds
-            # preds have the same shape as the labels, after the argmax(-1) has been calculated
-            # by preprocess_logits_for_metrics but we need to shift the labels
-            labels = labels[:, 1:].reshape(-1)
-            preds = preds[:, :-1].reshape(-1)
-            return metric.compute(predictions=preds, references=labels)
+    def compute_metrics(eval_preds):
+        preds, labels = eval_preds
+        # preds have the same shape as the labels, after the argmax(-1) has been calculated
+        # by preprocess_logits_for_metrics but we need to shift the labels
+        labels = labels[:, 1:].reshape(-1)
+        preds = preds[:, :-1].reshape(-1)
+        return metric.compute(predictions=preds, references=labels)
 
     # Initialize our Trainer
     trainer = InversionTrainer(
@@ -207,11 +204,11 @@ def main():
         model=model,
         args=training_args,
         train_dataset=train_dataset,
-        eval_dataset=eval_dataset if training_args.do_eval else None,
+        eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         data_collator=CustomCollator(tokenizer=tokenizer),
-        compute_metrics=compute_metrics if training_args.do_eval else None,
-        preprocess_logits_for_metrics=preprocess_logits_for_metrics if training_args.do_eval else None,
+        compute_metrics=compute_metrics,
+        preprocess_logits_for_metrics=preprocess_logits_for_metrics,
     )
 
     # Training
@@ -235,23 +232,6 @@ def main():
     trainer.save_state()
 
     # Evaluation
-    if training_args.do_eval:
-        logger.info("*** Evaluate ***")
-
-        metrics = trainer.evaluate()
-
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
-        try:
-            import math
-            perplexity = math.exp(metrics["eval_loss"])
-        except OverflowError:
-            perplexity = float("inf")
-        metrics["perplexity"] = perplexity
-
-        trainer.log_metrics("eval", metrics)
-        trainer.save_metrics("eval", metrics)
-
     kwargs = {"finetuned_from": model_args.model_name_or_path, "tasks": "text-generation"}
     if data_args.dataset_name is not None:
         kwargs["dataset_tags"] = data_args.dataset_name

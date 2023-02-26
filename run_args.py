@@ -128,10 +128,6 @@ class DataTrainingArguments:
             "help": "The percentage of the train set used as validation set in case there's no validation split"
         },
     )
-    preprocessing_num_workers: Optional[int] = field(
-        default=None,
-        metadata={"help": "The number of processes to use for the preprocessing."},
-    )
     keep_linebreaks: bool = field(
         default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
     )
@@ -213,17 +209,9 @@ class TrainingArguments(transformers.TrainingArguments):
     logging_strategy: str = "steps"
     save_strategy: str = "steps"
 
-    # logging_steps: int = 20
-    # eval_steps: int = 20
-    # save_steps: int = 20000
-
-    # logging_steps: int = 200
-    # eval_steps: int = 2_500
-    # save_steps: int = 2_500
-    # warmup_steps: int = 10_000
     warmup_steps: int = 10_000
     logging_steps: int = 100
-    eval_steps: int = 10_000_000 # TODO make eval work...
+    eval_steps: int = 400
     save_steps: int = 5_000
 
     def __post_init__(self):
@@ -249,4 +237,4 @@ class TrainingArguments(transformers.TrainingArguments):
         # TODO: consider this weight decay strategy, maybe just for
         # full model fine-tuning...
         # https://github.com/UKPLab/sentence-transformers/blob/0422a5e07a5a998948721dea435235b342a9f610/sentence_transformers/SentenceTransformer.py#L661-L674
-        # self.weight_decay = 0.1 # TODO: hope this doesn't break everything but it might.
+        # self.weight_decay = 0.1 # TODO: hope this doesn't break everything but it migh

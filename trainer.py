@@ -38,6 +38,7 @@ class InversionTrainer(transformers.Trainer):
             inputs: Dict[str, torch.Tensor]
         ) -> Dict[str, torch.Tensor]:
         with torch.no_grad():
+            assert not self.embedder.training
             embeddings = self.embedder(
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
