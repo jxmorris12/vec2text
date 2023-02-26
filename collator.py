@@ -41,11 +41,14 @@ class CustomCollator(transformers.DataCollatorWithPadding):
 
     def __call__(self, features: List[Dict[str, Any]]) -> Dict[str, Any]:
         stacked_features = collections.defaultdict(list)
+        #
+        #
+        #
         for ex in features:
             for k,v in ex.items():
                 stacked_features[k].append(v) # tokenize documents.
-        
-
+        #
+        #
         # stack other features
         ex = {}
         for k,v in stacked_features.items():

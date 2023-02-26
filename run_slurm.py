@@ -14,8 +14,8 @@ python run.py --per_device_train_batch_size {batch_size} \
 
 
 models = [
-    't5-small',
-    't5-base',
+    # 't5-small',
+    # 't5-base',
     't5-large',
     't5-3b',
     # 't5-11b',
@@ -26,7 +26,7 @@ emb_models = [
 ]
 
 
-batch_size = 64
+batch_size = 8
 max_seq_length = 128
 
 

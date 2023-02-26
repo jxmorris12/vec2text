@@ -21,6 +21,7 @@ from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
 
 from collator import CustomCollator
+from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
 from helpers import md5_hash_kwargs
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from trainer import InversionTrainer
@@ -153,12 +154,10 @@ def main():
 
     # Get and process datasets.
     train_dataset_key = "corpus"
-    raw_datasets = load_dataset(
-        data_args.dataset_name,
-        data_args.dataset_config_name,
-        cache_dir=model_args.cache_dir,
-        streaming=data_args.streaming,
-    )
+    raw_datasets = {
+        "train": load_dpr_corpus(NQ_TRAIN),
+        "dev": load_dpr_corpus(NQ_DEV),
+    }
     column_names = list(raw_datasets[train_dataset_key].features)
     tokenized_datasets = raw_datasets.map(
         tokenize_function,
