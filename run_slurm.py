@@ -9,7 +9,9 @@ python run.py --per_device_train_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
 --model_name_or_path {model_name} \
 --embedding_model_name_or_path {emb_model_name} \
+--num_repeat_tokens = {num_repeat_tokens} \
 --exp_name {exp_name} \
+--max_eval_samples 100 \
 --use_wandb=1
 """
 
@@ -30,6 +32,8 @@ exp_name = 'feb26-size'
 
 batch_size = 128
 max_seq_length = 128
+
+num_repeat_tokens = [32]
 
 
 ACTUALLY_RUN_COMMAND = Fals
@@ -68,7 +72,7 @@ def run_cmd(cmd: str, job_desc: str):
 
 
 total = 0
-for m, e in itertools.product(models, emb_models):
+for m, e, n in itertools.product(models, emb_models, num_repeat_tokens):
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
@@ -76,6 +80,7 @@ for m, e in itertools.product(models, emb_models):
         # 
         model_name=m, 
         emb_model_name=e,
+        num_repeat_tokens=n,
         # 
         exp_name=exp_name,
     )

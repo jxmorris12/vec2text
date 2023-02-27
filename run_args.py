@@ -110,7 +110,7 @@ class DataTrainingArguments:
         },
     )
     max_eval_samples: Optional[int] = field(
-        default=1000,
+        default=100,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
@@ -178,6 +178,15 @@ class TrainingArguments(transformers.TrainingArguments):
     report_to: str = "wandb"
     per_device_train_batch_size: int = field(
         default=128, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
+    )
+
+
+    ################################################################
+    # TODO: Move this to model args + do all model-forward in a
+    # model class.
+    num_repeat_tokens: int = field(
+        default=32,
+        metadata={"help": "Number of times to repeat embedding along T5 input sequence length."}
     )
 
     ##################### Experimental Settings ####################

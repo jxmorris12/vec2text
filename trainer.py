@@ -5,6 +5,7 @@ import random
 
 import evaluate
 import torch
+import tqdm
 import transformers
 
 
@@ -70,7 +71,7 @@ class InversionTrainer(transformers.Trainer):
         eval_dataloader = self.get_eval_dataloader()
 
         all_preds = []
-        for step, inputs in enumerate(eval_dataloader):
+        for step, inputs in enumerate(tqdm.tqdm(eval_dataloader, desc='generating', leave=False)):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k,v in inputs.items()}
             gen_kwargs = {
@@ -78,10 +79,11 @@ class InversionTrainer(transformers.Trainer):
                 'num_beams': 1,
                 'do_sample': False,
             }
-            generated_text = self.generate_both_models(
-                inputs=inputs_cuda,
-                generation_kwargs=gen_kwargs
-            )
+            with torch.no_grad():
+                generated_text = self.generate_both_models(
+                    inputs=inputs_cuda,
+                    generation_kwargs=gen_kwargs
+                )
             all_preds.extend(generated_text.cpu().tolist())
         
         return all_preds
@@ -89,16 +91,13 @@ class InversionTrainer(transformers.Trainer):
     def compute_metrics_func(self, eval_preds):
         preds  = eval_preds.predictions
         labels = eval_preds.label_ids
-
-        # preds have the same shape as the labels, after the argmax(-1) has been calculated
-        # by preprocess_logits_for_metrics but we need to shift the labels
-        labels = labels.reshape(-1)
-        preds = preds.reshape(-1)
-        accuracy_result = self.metric_accuracy.compute(predictions=preds, references=labels)
+        
+        assert torch.tensor(preds).shape == torch.tensor(labels).shape
         
         # Get decoded text (note that this is *different*) than 'preds', which
         # is used to compute the loss.
         preds_sample = self._get_eval_preds()
+        assert torch.tensor(preds_sample).shape == torch.tensor(labels).shape
 
         # Log BLEU, log table of text.
         decoded_preds = self.tokenizer.batch_decode(preds_sample, skip_special_tokens=True)
@@ -106,6 +105,11 @@ class InversionTrainer(transformers.Trainer):
         raw_bleu_result = self.metric_bleu.compute(predictions=decoded_preds, references=decoded_labels)
         bleu_result = { "bleu_score": raw_bleu_result["score"]}
         self._log_preds_table(decoded_preds=decoded_preds, decoded_labels=decoded_labels)
+
+        # preds have the same shape as the labels.
+        labels = labels.reshape(-1)
+        preds = preds.reshape(-1)
+        accuracy_result = self.metric_accuracy.compute(predictions=preds, references=labels)
 
         return { **bleu_result, **accuracy_result }
     
@@ -122,8 +126,8 @@ class InversionTrainer(transformers.Trainer):
         # embeddings vs SimCSE vs Contriever etc fairly.
 
         embeddings = self.embedding_transform(embeddings)
-        inputs_embeds = embeddings.unsqueeze(dim=1).repeat((1, 32, 1)) # TODO make this fancier/abstracted.
-        attention_mask = torch.ones((inputs_embeds.shape[0], 32), device=inputs_embeds.device)
+        inputs_embeds = embeddings.unsqueeze(dim=1).repeat((1, self.args.num_repeat_tokens, 1)) # TODO make this fancier/abstracted.
+        attention_mask = torch.ones((inputs_embeds.shape[0], self.args.num_repeat_tokens), device=inputs_embeds.device)
         return self.model.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
