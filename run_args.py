@@ -158,7 +158,7 @@ class TrainingArguments(transformers.TrainingArguments):
         },
     )
     num_train_epochs: float = field(
-        default=5.0, 
+        default=3.0, 
         metadata={
             "required": False,
             "help": "Number of epochs for training"
