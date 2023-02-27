@@ -11,15 +11,16 @@ python run.py --per_device_train_batch_size {batch_size} \
 --embedding_model_name {emb_model_name} \
 --num_repeat_tokens {num_repeat_tokens} \
 --exp_name {exp_name} \
---max_eval_samples 100 \
+--max_eval_samples 200 \
+--eval_steps 6000 \
 --use_wandb=1
 """
 
 
 models = [
     # 't5-small',
-    # 't5-base',
-    't5-large',
+    't5-base',
+    # 't5-large',
     # 't5-3b',
     # 't5-11b',
 ]
@@ -28,14 +29,15 @@ emb_models = [
     'dpr',
 ]
 
-exp_name = 'feb26-t5-size'
-# exp_name = 'feb26-token-num'
+# exp_name = 'feb27-t5-size'
+exp_name = 'feb27-token-num-2'
 
-batch_size = 16
+batch_size = 32
+# batch_size = 16
 max_seq_length = 128
 
-num_repeat_tokens = [32]
-# num_repeat_tokens = [1, 2, 4, 8, 16, 32]
+# num_repeat_tokens = [32]
+num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
 ACTUALLY_RUN_COMMAND = True

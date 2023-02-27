@@ -210,7 +210,7 @@ class TrainingArguments(transformers.TrainingArguments):
     logging_strategy: str = "steps"
     save_strategy: str = "steps"
 
-    warmup_steps: int = 10_000
+    warmup_steps: int = 4_000
     logging_steps: int = 100
     eval_steps: int = field(
         default=4000,
