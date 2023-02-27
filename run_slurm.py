@@ -26,13 +26,13 @@ emb_models = [
     'dpr',
 ]
 
-exp_name = 'feb26'
+exp_name = 'feb26-size'
 
 batch_size = 128
 max_seq_length = 128
 
 
-ACTUALLY_RUN_COMMAND = False
+ACTUALLY_RUN_COMMAND = Fals
 
 def run_cmd(cmd: str, job_desc: str):
     now = datetime.now()
@@ -73,8 +73,11 @@ for m, e in itertools.product(models, emb_models):
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
         max_seq_length=max_seq_length,
+        # 
         model_name=m, 
         emb_model_name=e,
+        # 
+        exp_name=exp_name,
     )
     job_desc = ".".join((e, m))
     run_cmd(cmd, job_desc=job_desc)

@@ -182,14 +182,6 @@ class TrainingArguments(transformers.TrainingArguments):
 
     ##################### Experimental Settings ####################
     exp_name: str = field(
-        default=None,
-        metadata={
-            "required": True,
-            "help": "Which experiment to run",
-            "choices": ["prompt_tune", "fine_tune", "weighted_embeddings"],
-        }
-    )
-    exp_series_name: str = field(
         default="",
         metadata={
             "required": False,
@@ -211,8 +203,13 @@ class TrainingArguments(transformers.TrainingArguments):
 
     warmup_steps: int = 10_000
     logging_steps: int = 100
-    eval_steps: int = 32#00
+    eval_steps: int = field(
+        default=4000,
+        metadata={"help": "Number of steps between eval (will be scaled as if batch size is 32)"}
+    )
     save_steps: int = 5_000
+
+    include_inputs_for_metrics: bool = True
 
     def __post_init__(self):
         self.report_to = ["wandb"] if (self.use_wandb) else []

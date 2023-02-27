@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Dict, Optional
 
 import logging
 import os
@@ -28,6 +28,28 @@ from trainer import InversionTrainer
 
 logger = logging.getLogger(__name__)
 
+def tokenize_function(tokenizer, embedder_tokenizer, text_column_name, max_seq_length):
+    def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
+        output = tokenizer(
+            examples[text_column_name],
+            padding=True,
+            truncation=True,
+            max_length=max_seq_length,
+            return_tensors='pt',
+        )
+        output['labels'] = output['input_ids'] # copy to 'labels' for language modeling loss
+
+        embedder_output = embedder_tokenizer(
+            examples[text_column_name],
+            padding=True,
+            truncation=True,
+            max_length=max_seq_length,
+            return_tensors='pt'
+        )
+        embedder_output = { f'embedder_{k}': v for k,v in embedder_output.items() }
+
+        return {**output, **embedder_output}
+    return tokenize_function_inner
 
 def load_embedder_and_tokenizer(name: str):
     # TODO make abstract/argparse for it etc.
@@ -49,7 +71,7 @@ def main():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     exp_name = '__'.join(
-        (model_args.model_name_or_path, model_args.embedding_model_name)
+        (training_args.exp_name, model_args.model_name_or_path, model_args.embedding_model_name)
     )
 
     # Set up output_dir and wandb.
@@ -125,28 +147,7 @@ def main():
         name=model_args.embedding_model_name
     )
 
-    text_column_name = "text"        
-    def tokenize_function(examples):
-        output = tokenizer(
-            examples[text_column_name],
-            padding=True,
-            truncation=True,
-            max_length=model_args.max_seq_length,
-            return_tensors='pt',
-        )
-        output['labels'] = output['input_ids'] # copy to 'labels' for language modeling loss
-
-        embedder_output = embedder_tokenizer(
-            examples[text_column_name],
-            padding=True,
-            truncation=True,
-            max_length=model_args.max_seq_length,
-            return_tensors='pt'
-        )
-        embedder_output = { f'embedder_{k}': v for k,v in embedder_output.items() }
-
-        return {**output, **embedder_output}
-
+    text_column_name = "text"
 
     # Set seed before initializing model.
     set_seed(training_args.seed)
@@ -162,7 +163,7 @@ def main():
     column_names = list(raw_datasets[train_dataset_key].features)
 
     tokenized_datasets = raw_datasets.map(
-        tokenize_function,
+        tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
         batched=True,
         num_proc=training_args.dataloader_num_workers,
         remove_columns=column_names,
