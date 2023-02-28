@@ -11,7 +11,6 @@ from datasets import load_dataset
 import transformers
 from transformers import (
     AutoConfig,
-    AutoModelForSeq2SeqLM,
     AutoTokenizer,
     HfArgumentParser,
     set_seed,
@@ -21,12 +20,14 @@ from transformers.trainer_utils import get_last_checkpoint
 
 from collator import CustomCollator
 from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
+from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from helpers import md5_hash_kwargs
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from trainer import InversionTrainer
 
 
 logger = logging.getLogger(__name__)
+
 
 def tokenize_function(tokenizer, embedder_tokenizer, text_column_name, max_seq_length):
     def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
@@ -50,20 +51,6 @@ def tokenize_function(tokenizer, embedder_tokenizer, text_column_name, max_seq_l
 
         return {**output, **embedder_output}
     return tokenize_function_inner
-
-def load_embedder_and_tokenizer(name: str):
-    # TODO make abstract/argparse for it etc.
-    if name == "dpr":
-        model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
-        tokenizer = AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
-    elif name == "contriever":
-        model = transformers.AutoModel.from_pretrained("facebook/contriever")
-        tokenizer = AutoTokenizer.from_pretrained("facebook/contriever")
-    return model, tokenizer
-
-
-def load_model(model_name: str) -> AutoModelForSeq2SeqLM:
-    return AutoModelForSeq2SeqLM.from_pretrained(model_name) # for testing
 
 
 def main():
@@ -142,9 +129,14 @@ def main():
         truncation='max_length',
         max_length=model_args.max_seq_length,
     )
-    model = load_model(model_name=model_args.model_name_or_path)
     embedder, embedder_tokenizer = load_embedder_and_tokenizer(
         name=model_args.embedding_model_name
+    )
+    model = InversionModel(
+        embedder=embedder,
+        encoder_decoder=load_encoder_decoder(
+            model_name=model_args.model_name_or_path
+        ),
     )
 
     text_column_name = "text"
@@ -160,6 +152,10 @@ def main():
         "train": load_dpr_corpus(NQ_TRAIN),
         "validation": load_dpr_corpus(NQ_DEV),
     })
+    ############### TEST CODE #####################
+    raw_datasets["validation"] = raw_datasets["train"]
+    ############### TEST CODE END #################
+    
     column_names = list(raw_datasets[train_dataset_key].features)
 
     tokenized_datasets = raw_datasets.map(

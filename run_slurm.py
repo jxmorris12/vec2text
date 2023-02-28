@@ -30,7 +30,7 @@ emb_models = [
 ]
 
 # exp_name = 'feb27-t5-size'
-exp_name = 'feb27-token-num-2'
+exp_name = 'feb27-token-num-3'
 
 batch_size = 32
 # batch_size = 16

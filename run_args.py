@@ -211,7 +211,7 @@ class TrainingArguments(transformers.TrainingArguments):
     save_strategy: str = "steps"
 
     warmup_steps: int = 4_000
-    logging_steps: int = 100
+    logging_steps: int = 800
     eval_steps: int = field(
         default=4000,
         metadata={"help": "Number of steps between eval (will be scaled as if batch size is 32)"}
