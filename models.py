@@ -1,4 +1,4 @@
-from typing import Dict, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -38,22 +38,20 @@ class InversionModel(nn.Module):
 
     def embed(
             self, 
-            inputs: Dict[str, torch.Tensor]
+            embedder_input_ids: torch.Tensor,
+            embedder_attention_mask: torch.Tensor,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
         # TODO: implement mean-pooling so we can test BERT sentence
         # embeddings vs SimCSE vs Contriever etc fairly.
-        assert "embedder_input_ids" in inputs
-        assert "embedder_attention_mask" in inputs
-
-        # TODO should we allow dropout from the embedding model?
+        # TODO: should we allow dropout from the embedding model?
         # assert not self.embedder.training
         with torch.no_grad():
             embeddings = self.embedder(
-                input_ids=inputs["embedder_input_ids"],
-                attention_mask=inputs["embedder_attention_mask"],
+                input_ids=embedder_input_ids,
+                attention_mask=embedder_attention_mask,
             ).pooler_output
         embeddings = self.embedding_transform(embeddings)
-        batch_size = inputs["embedder_input_ids"].shape[0]
+        batch_size = embedder_input_ids.shape[0]
         # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
         embeddings = embeddings.reshape((batch_size, self.num_repeat_tokens, -1))
         attention_mask = torch.ones((embeddings.shape[0], self.num_repeat_tokens), device=embeddings.device)
@@ -64,7 +62,10 @@ class InversionModel(nn.Module):
             inputs: Dict[str, torch.Tensor],
             generation_kwargs: Dict[str, torch.Tensor]
         ) -> torch.Tensor:
-        inputs_embeds, attention_mask = self.embed(inputs)
+        inputs_embeds, attention_mask = self.embed(
+            embedder_input_ids=inputs["embedder_input_ids"],
+            embedder_attention_mask=inputs["embedder_attention_mask"],
+        )
         return self.encoder_decoder.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -72,13 +73,23 @@ class InversionModel(nn.Module):
         )
     
     def forward(
-            self, inputs: Dict[str, torch.Tensor],
+            self, 
+            input_ids: torch.Tensor,
+            attention_mask: torch.Tensor,
+            embedder_input_ids: torch.Tensor,
+            embedder_attention_mask: torch.Tensor,
+            embedder_token_type_ids: Optional[torch.Tensor] = None,
+            labels: Optional[torch.Tensor] = None,
         ) -> Dict[str, torch.Tensor]:
-        inputs_embeds, attention_mask = self.embed(inputs)
+        # Unused: input_ids, attention_mask, embedder_token_type_ids
+        inputs_embeds, attention_mask = self.embed(
+            embedder_input_ids=embedder_input_ids,
+            embedder_attention_mask=embedder_attention_mask,
+        )
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            labels=inputs.get("labels", None),
+            labels=labels,
         )
 
 
