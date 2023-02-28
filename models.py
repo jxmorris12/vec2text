@@ -74,12 +74,11 @@ class InversionModel(nn.Module):
     
     def forward(
             self, 
-            input_ids: torch.Tensor,
-            attention_mask: torch.Tensor,
             embedder_input_ids: torch.Tensor,
             embedder_attention_mask: torch.Tensor,
-            embedder_token_type_ids: Optional[torch.Tensor] = None,
+            # embedder_token_type_ids: Optional[torch.Tensor] = None,
             labels: Optional[torch.Tensor] = None,
+            **kwargs
         ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask, embedder_token_type_ids
         inputs_embeds, attention_mask = self.embed(

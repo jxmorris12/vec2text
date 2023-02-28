@@ -31,7 +31,7 @@ def test_inversion_model_dpr(fake_data):
     )
 
     # test model forward.
-    model(inputs=fake_data)
+    model(**fake_data)
 
     # test generate.
     generation_kwargs = {
