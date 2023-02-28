@@ -34,4 +34,11 @@ def test_inversion_model_dpr(fake_data):
     model(inputs=fake_data)
 
     # test generate.
-    #  (todo)
+    generation_kwargs = {
+        'max_length': 4,
+        'num_beams': 1,
+        'do_sample': False,
+    }
+    model.generate(
+        inputs=fake_data, generation_kwargs=generation_kwargs
+    )

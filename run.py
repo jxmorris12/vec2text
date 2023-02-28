@@ -23,39 +23,17 @@ from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from helpers import md5_hash_kwargs
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
+from tokenize_data import tokenize_function
 from trainer import InversionTrainer
 
 
 logger = logging.getLogger(__name__)
 
 
-def tokenize_function(tokenizer, embedder_tokenizer, text_column_name, max_seq_length):
-    def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
-        output = tokenizer(
-            examples[text_column_name],
-            padding=True,
-            truncation=True,
-            max_length=max_seq_length,
-            return_tensors='pt',
-        )
-        output['labels'] = output['input_ids'] # copy to 'labels' for language modeling loss
-
-        embedder_output = embedder_tokenizer(
-            examples[text_column_name],
-            padding=True,
-            truncation=True,
-            max_length=max_seq_length,
-            return_tensors='pt'
-        )
-        embedder_output = { f'embedder_{k}': v for k,v in embedder_output.items() }
-
-        return {**output, **embedder_output}
-    return tokenize_function_inner
-
-
 def main():
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    set_seed(training_args.seed)
 
     exp_name = '__'.join(
         (training_args.exp_name, model_args.model_name_or_path, model_args.embedding_model_name)
@@ -137,12 +115,10 @@ def main():
         encoder_decoder=load_encoder_decoder(
             model_name=model_args.model_name_or_path
         ),
+        num_repeat_tokens=model_args.num_repeat_tokens
     )
 
     text_column_name = "text"
-
-    # Set seed before initializing model.
-    set_seed(training_args.seed)
 
     # Get and process datasets.
     train_dataset_key = "train"
@@ -152,9 +128,6 @@ def main():
         "train": load_dpr_corpus(NQ_TRAIN),
         "validation": load_dpr_corpus(NQ_DEV),
     })
-    ############### TEST CODE #####################
-    raw_datasets["validation"] = raw_datasets["train"]
-    ############### TEST CODE END #################
     
     column_names = list(raw_datasets[train_dataset_key].features)
 
@@ -180,7 +153,6 @@ def main():
 
     # Initialize our Trainer
     trainer = InversionTrainer(
-        embedder=embedder,
         model=model,
         args=training_args,
         train_dataset=train_dataset,

@@ -19,7 +19,7 @@ def preprocess_logits_for_metrics(logits, labels):
 
 class InversionTrainer(transformers.Trainer):
     def __init__(
-            self, *args, , **kwargs):
+            self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         ###################################################### 
         self.metric_accuracy = evaluate.load("accuracy")
@@ -68,7 +68,7 @@ class InversionTrainer(transformers.Trainer):
                 'do_sample': False,
             }
             with torch.no_grad():
-                generated_text = self.generate_both_models(
+                generated_text = self.model.generate(
                     inputs=inputs_cuda,
                     generation_kwargs=gen_kwargs
                 )
@@ -102,7 +102,7 @@ class InversionTrainer(transformers.Trainer):
                 'do_sample': False,
             }
             with torch.no_grad():
-                generated_text = self.generate_both_models(
+                generated_text = self.model.generate(
                     inputs=inputs_cuda,
                     generation_kwargs=gen_kwargs
                 )
@@ -118,6 +118,8 @@ class InversionTrainer(transformers.Trainer):
     def compute_metrics_func(self, eval_preds):
         preds  = eval_preds.predictions
         labels = eval_preds.label_ids
+
+        assert len(labels), "got empty labels for eval"
         
         assert torch.tensor(preds).shape == torch.tensor(labels).shape
         
@@ -169,7 +171,7 @@ class InversionTrainer(transformers.Trainer):
         
         We override this to change call to `model()`  to `self.call_both_models()`.
         """
-        outputs = self.call_both_models(model, inputs)
+        outputs = model(inputs=inputs)
         # Save past state if it exists
         # TODO: this needs to be fixed and made cleaner later.
         if self.args.past_index >= 0:

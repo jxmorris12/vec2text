@@ -1,20 +1,21 @@
 from typing import Dict, Tuple
 
 import torch
+import torch.nn as nn
 import transformers
 
 
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
-class InversionModel(torch.nn.Module):
-    embedder: torch.nn.Module
+class InversionModel(nn.Module):
+    embedder: nn.Module
     encoder_decoder: transformers.AutoModelForSeq2SeqLM
-    embedding_transform: torch.nn.Module
+    embedding_transform: nn.Module
     num_repeat_tokens: int
 
     def __init__(
             self,
-            embedder: torch.nn.Module,
+            embedder: nn.Module,
             encoder_decoder: transformers.AutoModelForSeq2SeqLM,
             num_repeat_tokens: int,
         ):
@@ -25,8 +26,13 @@ class InversionModel(torch.nn.Module):
         self.num_repeat_tokens = num_repeat_tokens
         embedder_dim = self.embedder.config.hidden_size
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
-        self.embedding_transform = torch.nn.Linear(
-            embedder_dim, encoder_hidden_dim
+
+        bottleneck_dim = 128
+        self.embedding_transform = nn.Sequential(
+            nn.Linear(embedder_dim, bottleneck_dim),
+            nn.GELU(),
+            # TODO dropout here?
+            nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
         ######################################################
 
@@ -34,18 +40,24 @@ class InversionModel(torch.nn.Module):
             self, 
             inputs: Dict[str, torch.Tensor]
         ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # TODO: implement mean-pooling so we can test BERT sentence
+        # embeddings vs SimCSE vs Contriever etc fairly.
         assert "embedder_input_ids" in inputs
         assert "embedder_attention_mask" in inputs
-        assert not self.embedder.training
+
+        # TODO should we allow dropout from the embedding model?
+        # assert not self.embedder.training
         with torch.no_grad():
             embeddings = self.embedder(
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
             ).pooler_output
         embeddings = self.embedding_transform(embeddings)
-        inputs_embeds = embeddings.unsqueeze(dim=1).repeat((1, self.num_repeat_tokens, 1)) # TODO make this fancier/abstracted.
-        attention_mask = torch.ones((inputs_embeds.shape[0], self.num_repeat_tokens), device=inputs_embeds.device)
-        return inputs_embeds, attention_mask
+        batch_size = inputs["embedder_input_ids"].shape[0]
+        # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
+        embeddings = embeddings.reshape((batch_size, self.num_repeat_tokens, -1))
+        attention_mask = torch.ones((embeddings.shape[0], self.num_repeat_tokens), device=embeddings.device)
+        return embeddings, attention_mask
     
     def generate(
             self,
@@ -53,8 +65,6 @@ class InversionModel(torch.nn.Module):
             generation_kwargs: Dict[str, torch.Tensor]
         ) -> torch.Tensor:
         inputs_embeds, attention_mask = self.embed(inputs)
-        # TODO: implement mean-pooling so we can test BERT sentence
-        # embeddings vs SimCSE vs Contriever etc fairly.
         return self.encoder_decoder.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
@@ -68,9 +78,6 @@ class InversionModel(torch.nn.Module):
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            # 
-            # decoder_input_ids=inputs["input_ids"],
-            # decoder_attention_mask=inputs["attention_mask"],
             labels=inputs.get("labels", None),
         )
 

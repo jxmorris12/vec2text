@@ -80,6 +80,10 @@ class ModelArguments:
             "choices": ["auto", "bfloat16", "float16", "float32"],
         },
     )
+    num_repeat_tokens: int = field(
+        default=32,
+        metadata={"help": "Number of times to repeat embedding along T5 input sequence length."}
+    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (self.config_name is not None or self.model_name_or_path is not None):
@@ -180,15 +184,6 @@ class TrainingArguments(transformers.TrainingArguments):
         default=128, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
     )
 
-
-    ################################################################
-    # TODO: Move this to model args + do all model-forward in a
-    # model class.
-    num_repeat_tokens: int = field(
-        default=32,
-        metadata={"help": "Number of times to repeat embedding along T5 input sequence length."}
-    )
-
     ##################### Experimental Settings ####################
     exp_name: str = field(
         default="",
@@ -201,9 +196,6 @@ class TrainingArguments(transformers.TrainingArguments):
     # Need to *not* remove unused columns so we keep query_attention_mask, etc.
     # which huggingface doesn't think we need. 
     remove_unused_columns: bool = False
-
-    # Won't work since we don't have 'input_ids' key in data.
-    include_inputs_for_metrics: bool = False
 
     # Do evaluation and logging on certain num steps.
     evaluation_strategy: str = "steps"
