@@ -11,8 +11,11 @@ python run.py --per_device_train_batch_size {batch_size} \
 --embedding_model_name {emb_model_name} \
 --num_repeat_tokens {num_repeat_tokens} \
 --exp_name {exp_name} \
---max_eval_samples 200 \
---eval_steps 6000 \
+--max_eval_samples 400 \
+--eval_steps 8000 \
+--warmup_steps 4000 \
+--bf16=1 \
+--learning_rate {learning_rate} \
 --use_wandb=1
 """
 
@@ -25,19 +28,22 @@ models = [
     # 't5-11b',
 ]
 
-emb_models = [
-    'dpr', 'ance_tele',
-]
+# emb_models = ['dpr', 'ance_tele']
+emb_models = ['dpr']
 
 # exp_name = 'feb27-t5-size'
 # exp_name = 'feb27-token-num-3'
-exp_name = 'feb28-emb'
+# exp_name = 'feb28-emb'
+exp_name = 'mar1-lr'
 
-batch_size = 32
+batch_size = 128
 # batch_size = 16
 max_seq_length = 128
 
-num_repeat_tokens = [16]
+learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
+# learning_rates = [2e-5]
+
+num_repeat_tokens = [32]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
@@ -77,7 +83,7 @@ def run_cmd(cmd: str, job_desc: str):
 
 
 total = 0
-for m, e, n in itertools.product(models, emb_models, num_repeat_tokens):
+for m, e, lr, n in itertools.product(models, emb_models, learning_rates, num_repeat_tokens):
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
@@ -86,10 +92,11 @@ for m, e, n in itertools.product(models, emb_models, num_repeat_tokens):
         model_name=m, 
         emb_model_name=e,
         num_repeat_tokens=n,
+        learning_rate=lr,
         # 
         exp_name=exp_name,
     )
-    job_desc = ".".join((e, m))
+    job_desc = ".".join((e, m, total))
     run_cmd(cmd, job_desc=job_desc)
 
 

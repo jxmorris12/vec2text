@@ -172,10 +172,6 @@ class TrainingArguments(transformers.TrainingArguments):
         default=2e-5,
         metadata={"help": "The initial learning rate for AdamW on the backbone model."}
     )
-    prefix_learning_rate: float = field(
-        default=1e-3,
-        metadata={"help": "The initial learning rate for AdamW on the prefix part of model."}
-    )
     use_wandb: Optional[bool] = field(
         default=None, metadata={"help": "Whether or not to log to Weights & Biases."}
     )
