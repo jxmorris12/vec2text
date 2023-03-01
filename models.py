@@ -5,6 +5,16 @@ import torch.nn as nn
 import transformers
 
 
+def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
+    if outputs.pooler_output is not None:
+        return outputs.pooler_output
+    B, S, D = outputs.last_hidden_state.shape
+    unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None])
+    pooled_outputs = unmasked_outputs.sum(dim=1) / attention_mask.sum(dim=1)[:, None]
+    assert pooled_outputs.shape == (B, D)
+    return pooled_outputs
+
+
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
 class InversionModel(nn.Module):
@@ -46,10 +56,11 @@ class InversionModel(nn.Module):
         # TODO: should we allow dropout from the embedding model?
         # assert not self.embedder.training
         with torch.no_grad():
-            embeddings = self.embedder(
+            model_output = self.embedder(
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
-            ).pooler_output
+            )
+        embeddings = mean_pool(model_output, embedder_attention_mask)
         embeddings = self.embedding_transform(embeddings)
         batch_size = embedder_input_ids.shape[0]
         # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
@@ -100,6 +111,11 @@ def load_embedder_and_tokenizer(name: str):
     elif name == "contriever":
         model = transformers.AutoModel.from_pretrained("facebook/contriever")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
+    elif name == "ance_tele":
+        model = transformers.AutoModel.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
+        tokenizer = transformers.AutoTokenizer.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
+    else:
+        raise ValueError(f'unknown embedder {name}')
     return model, tokenizer
 
 

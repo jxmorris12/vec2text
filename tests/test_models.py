@@ -18,9 +18,9 @@ def fake_data() -> Dict[str, torch.Tensor]:
         'labels': input_ids,
     }
 
-def test_inversion_model_dpr(fake_data):
+def __test_embedding_model(fake_data, embedding_model_name):
     embedder, embedder_tokenizer = (
-        load_embedder_and_tokenizer(name="dpr")
+        load_embedder_and_tokenizer(name=embedding_model_name)
     )
     model = InversionModel(
         embedder=embedder,
@@ -42,3 +42,9 @@ def test_inversion_model_dpr(fake_data):
     model.generate(
         inputs=fake_data, generation_kwargs=generation_kwargs
     )
+
+def test_inversion_model_dpr(fake_data):
+    __test_embedding_model(fake_data, "dpr")
+
+def test_inversion_model_ance_tele(fake_data):
+    __test_embedding_model(fake_data, "ance_tele")

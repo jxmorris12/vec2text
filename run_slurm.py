@@ -26,18 +26,19 @@ models = [
 ]
 
 emb_models = [
-    'dpr',
+    'dpr', 'ance_tele',
 ]
 
 # exp_name = 'feb27-t5-size'
-exp_name = 'feb27-token-num-3'
+# exp_name = 'feb27-token-num-3'
+exp_name = 'feb28-emb'
 
 batch_size = 32
 # batch_size = 16
 max_seq_length = 128
 
-# num_repeat_tokens = [32]
-num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
+num_repeat_tokens = [16]
+# num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
 ACTUALLY_RUN_COMMAND = True
