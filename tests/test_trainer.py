@@ -38,7 +38,8 @@ def trainer() -> InversionTrainer:
         encoder_decoder=load_encoder_decoder(
             model_name=model_args.model_name_or_path
         ),
-        num_repeat_tokens=model_args.num_repeat_tokens
+        num_repeat_tokens=model_args.num_repeat_tokens,
+        embedder_no_grad=model_args.embedder_no_grad,
     )
     ###########################################################################
     text_column_name = "text"

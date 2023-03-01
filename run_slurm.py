@@ -10,6 +10,7 @@ python run.py --per_device_train_batch_size {batch_size} \
 --model_name_or_path {model_name} \
 --embedding_model_name {emb_model_name} \
 --num_repeat_tokens {num_repeat_tokens} \
+--embedder_no_grad {embedder_no_grad} \
 --exp_name {exp_name} \
 --max_eval_samples 400 \
 --eval_steps 8000 \
@@ -34,14 +35,16 @@ emb_models = ['dpr']
 # exp_name = 'feb27-t5-size'
 # exp_name = 'feb27-token-num-3'
 # exp_name = 'feb28-emb'
-exp_name = 'mar1-lr'
+exp_name = 'mar1-msl-eng'
 
-batch_size = 128
+batch_size = 32
 # batch_size = 16
-max_seq_length = 128
+max_seq_length = [4, 8, 32, 128]
 
-learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
-# learning_rates = [2e-5]
+embedder_no_grad = [True, False]
+
+# learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
+learning_rates = [5e-4]
 
 num_repeat_tokens = [32]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
@@ -83,11 +86,15 @@ def run_cmd(cmd: str, job_desc: str):
 
 
 total = 0
-for m, e, lr, n in itertools.product(models, emb_models, learning_rates, num_repeat_tokens):
+for args in itertools.product(
+        models, emb_models, learning_rates,
+        num_repeat_tokens, max_seq_length, embedder_no_grad
+    ):
+    m, e, lr, n, msl, eng = args
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
-        max_seq_length=max_seq_length,
+        max_seq_length=msl,
         # 
         model_name=m, 
         emb_model_name=e,
@@ -95,8 +102,9 @@ for m, e, lr, n in itertools.product(models, emb_models, learning_rates, num_rep
         learning_rate=lr,
         # 
         exp_name=exp_name,
+        embedder_no_grad=eng
     )
-    job_desc = ".".join((e, m, total))
+    job_desc = ".".join(map(str, args))
     run_cmd(cmd, job_desc=job_desc)
 
 

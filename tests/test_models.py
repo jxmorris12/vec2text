@@ -18,7 +18,7 @@ def fake_data() -> Dict[str, torch.Tensor]:
         'labels': input_ids,
     }
 
-def __test_embedding_model(fake_data, embedding_model_name):
+def __test_embedding_model(fake_data, embedding_model_name, no_grad):
     embedder, embedder_tokenizer = (
         load_embedder_and_tokenizer(name=embedding_model_name)
     )
@@ -28,6 +28,7 @@ def __test_embedding_model(fake_data, embedding_model_name):
             model_name="t5-small",
         ),
         num_repeat_tokens=6,
+        embedder_no_grad=no_grad,
     )
 
     # test model forward.
@@ -44,7 +45,8 @@ def __test_embedding_model(fake_data, embedding_model_name):
     )
 
 def test_inversion_model_dpr(fake_data):
-    __test_embedding_model(fake_data, "dpr")
+    __test_embedding_model(fake_data, "dpr", True)
+    __test_embedding_model(fake_data, "dpr", False)
 
 def test_inversion_model_ance_tele(fake_data):
-    __test_embedding_model(fake_data, "ance_tele")
+    __test_embedding_model(fake_data, "ance_tele", True)

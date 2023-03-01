@@ -22,12 +22,16 @@ class InversionModel(nn.Module):
     encoder_decoder: transformers.AutoModelForSeq2SeqLM
     embedding_transform: nn.Module
     num_repeat_tokens: int
+    embedder_no_grad: bool
+    bottleneck_dim: int
 
     def __init__(
             self,
             embedder: nn.Module,
             encoder_decoder: transformers.AutoModelForSeq2SeqLM,
             num_repeat_tokens: int,
+            embedder_no_grad: bool,
+            bottleneck_dim: int = 128,
         ):
         super().__init__()
         self.embedder = embedder
@@ -36,8 +40,8 @@ class InversionModel(nn.Module):
         self.num_repeat_tokens = num_repeat_tokens
         embedder_dim = self.embedder.config.hidden_size
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
-
-        bottleneck_dim = 128
+        self.embedder_no_grad = embedder_no_grad
+        self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(embedder_dim, bottleneck_dim),
             nn.GELU(),
@@ -55,7 +59,13 @@ class InversionModel(nn.Module):
         # embeddings vs SimCSE vs Contriever etc fairly.
         # TODO: should we allow dropout from the embedding model?
         # assert not self.embedder.training
-        with torch.no_grad():
+        if self.embedder_no_grad:
+            with torch.no_grad():
+                model_output = self.embedder(
+                    input_ids=embedder_input_ids,
+                    attention_mask=embedder_attention_mask,
+                )
+        else:
             model_output = self.embedder(
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
