@@ -35,7 +35,7 @@ class ModelArguments:
         default="dpr",
         metadata={
             "help": "Model to get embeddings from",
-            "choices": ["contriever", "dpr", "ance_tele"],
+            "choices": ["contriever", "dpr", "gtr_base", "ance_tele"],
         },
     )
 

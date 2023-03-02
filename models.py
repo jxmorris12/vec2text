@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import transformers
 
+from sentence_transformers import SentenceTransformer
 
 def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
     if outputs.pooler_output is not None:
@@ -121,6 +122,9 @@ def load_embedder_and_tokenizer(name: str):
     elif name == "contriever":
         model = transformers.AutoModel.from_pretrained("facebook/contriever")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
+    elif name == "gtr_base":
+        model = SentenceTransformer("sentence-transformers/gtr-t5-base")
+        tokenizer = model.tokenizer
     elif name == "ance_tele":
         model = transformers.AutoModel.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
         tokenizer = transformers.AutoTokenizer.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")

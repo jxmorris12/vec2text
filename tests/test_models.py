@@ -44,9 +44,8 @@ def __test_embedding_model(fake_data, embedding_model_name, no_grad):
         inputs=fake_data, generation_kwargs=generation_kwargs
     )
 
-def test_inversion_model_dpr(fake_data):
-    __test_embedding_model(fake_data, "dpr", True)
-    __test_embedding_model(fake_data, "dpr", False)
 
-def test_inversion_model_ance_tele(fake_data):
-    __test_embedding_model(fake_data, "ance_tele", True)
+@pytest.mark.parametrize("model_name", ["dpr", "ance_tele", "gtr_base"])
+def test_inversion_model_gtr(fake_data, model_name):
+    __test_embedding_model(fake_data, model_name, True)
+    __test_embedding_model(fake_data, model_name, False)
