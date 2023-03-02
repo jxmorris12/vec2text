@@ -59,6 +59,7 @@ class InversionModel(nn.Module):
             self,
             input_ids: torch.Tensor,
             attention_mask: torch.Tensor,
+            token_type_ids: Optional[torch.Tensor] = None, # not used
         ) -> torch.Tensor:
         if isinstance(self.embedder, SentenceTransformer):
             # really annoying 
@@ -143,6 +144,9 @@ def load_embedder_and_tokenizer(name: str):
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
     elif name == "gtr_base":
         model = SentenceTransformer("sentence-transformers/gtr-t5-base")
+        tokenizer = model.tokenizer
+    elif name == "gtr_large":
+        model = SentenceTransformer("sentence-transformers/gtr-t5-large")
         tokenizer = model.tokenizer
     elif name == "ance_tele":
         model = transformers.AutoModel.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
