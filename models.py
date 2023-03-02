@@ -39,7 +39,11 @@ class InversionModel(nn.Module):
         self.encoder_decoder = encoder_decoder
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
-        embedder_dim = self.embedder.config.hidden_size
+        if isinstance(self.embedder, SentenceTransformer):
+            hidden_size = self.embedder.get_sentence_embedding_dimension()
+        else:
+            hidden_size = self.embedder.config.hidden_size
+        embedder_dim = hidden_size
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
         self.bottleneck_dim = bottleneck_dim
@@ -50,6 +54,17 @@ class InversionModel(nn.Module):
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
         ######################################################
+    
+    def _call_embedding_model(
+            self,
+            input_ids: torch.Tensor,
+            attention_mask: torch.Tensor,
+        ) -> torch.Tensor:
+        if isinstance(self.embedder, SentenceTransformer):
+            # really annoying 
+            return self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})
+        else:
+            return self.embedder(input_ids=input_ids, attention_mask=attention_mask)
 
     def embed(
             self, 
@@ -62,16 +77,20 @@ class InversionModel(nn.Module):
         # assert not self.embedder.training
         if self.embedder_no_grad:
             with torch.no_grad():
-                model_output = self.embedder(
+                model_output = self._call_embedding_model(
                     input_ids=embedder_input_ids,
                     attention_mask=embedder_attention_mask,
                 )
         else:
-            model_output = self.embedder(
+            model_output = self._call_embedding_model(
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        embeddings = mean_pool(model_output, embedder_attention_mask)
+        
+        if isinstance(self.embedder, SentenceTransformer):
+            embeddings = model_output['sentence_embedding']
+        else:
+            embeddings = mean_pool(model_output, embedder_attention_mask)
         embeddings = self.embedding_transform(embeddings)
         batch_size = embedder_input_ids.shape[0]
         # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
