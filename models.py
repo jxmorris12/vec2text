@@ -6,6 +6,18 @@ import transformers
 
 from sentence_transformers import SentenceTransformer
 
+
+FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
+
+def freeze_params(model: nn.Module):
+    total_num_params = 0
+    for name, params in model.named_parameters():
+        params.requires_grad = False
+        total_num_params += params.numel()
+
+    print(f'Froze {total_num_params} params from model type {type(model)}')
+
+
 def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
     if outputs.pooler_output is not None:
         return outputs.pooler_output
@@ -32,6 +44,7 @@ class InversionModel(nn.Module):
             encoder_decoder: transformers.AutoModelForSeq2SeqLM,
             num_repeat_tokens: int,
             embedder_no_grad: bool,
+            freeze_strategy: str = "none",
             bottleneck_dim: int = 128,
         ):
         super().__init__()
@@ -54,6 +67,32 @@ class InversionModel(nn.Module):
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
         ######################################################
+        self.freeze(freeze_strategy=freeze_strategy)
+    
+    def _freeze_encoder(self):
+        freeze_params(self.encoder_decoder.encoder)
+    
+    def _freeze_decoder(self):
+        # github.com/huggingface/transformers/blob/master/src/transformers/models/t5/modeling_t5.py#L1229-L1231
+        freeze_params(self.encoder_decoder.decoder)
+        freeze_params(self.encoder_decoder.lm_head)
+    
+    def freeze(self, freeze_strategy: str):
+        assert freeze_strategy in FREEZE_STRATEGIES
+
+        if freeze_strategy == "decoder":
+            self._freeze_decoder()
+        elif freeze_strategy == "encoder":
+            self._freeze_encoder()
+        elif freeze_strategy == "encoder_and_decoder":
+            self._freeze_encoder()
+            self._freeze_decoder()
+            # in this case, freeze embeddings too
+            freeze_params(self.encoder_decoder.shared)
+        elif freeze_strategy == "none":
+            pass
+        else:
+            raise ValueError(f'invalid freezing strategy {freeze_strategy}')
     
     def _call_embedding_model(
             self,

@@ -12,11 +12,12 @@ python run.py --per_device_train_batch_size {batch_size} \
 --num_repeat_tokens {num_repeat_tokens} \
 --embedder_no_grad {embedder_no_grad} \
 --exp_name {exp_name} \
+--learning_rate {learning_rate} \
+--
 --max_eval_samples 400 \
 --eval_steps 8000 \
 --warmup_steps 4000 \
 --bf16=1 \
---learning_rate {learning_rate} \
 --use_wandb=1
 """
 
@@ -31,26 +32,35 @@ models = [
 
 # emb_models = ['dpr', 'ance_tele']
 emb_models = ['dpr']
+# emb_models = ["gtr_base", "gtr_large"]
 
+
+##########################################
 # exp_name = 'feb27-t5-size'
 # exp_name = 'feb27-token-num-3'
 # exp_name = 'feb28-emb'
-exp_name = 'mar1-msl-eng'
+# exp_name = 'mar1-msl-eng'
+# exp_name = 'mar2-gtr'
+exp_name = 'mar3-freeze'
+##########################################
 
-batch_size = 32
-# batch_size = 16
-max_seq_length = [4, 8, 32, 128]
+batch_size = 128
+# batch_size = 32
 
-embedder_no_grad = [True, False]
+# max_seq_length = [1+1, 4+1, 8+1, 64+1]
+max_seq_length = [64]
+
+# embedder_no_grad = [True, False]
+embedder_no_grad = [True]
 
 # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
 learning_rates = [5e-4]
 
-num_repeat_tokens = [32]
+num_repeat_tokens = [16]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
 
 
-ACTUALLY_RUN_COMMAND = True
+ACTUALLY_RUN_COMMAND = False
 
 def run_cmd(cmd: str, job_desc: str):
     now = datetime.now()

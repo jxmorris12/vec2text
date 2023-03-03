@@ -4,7 +4,9 @@ import torch
 import transformers
 import pytest
 
-from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
+from models import (
+    load_encoder_decoder, load_embedder_and_tokenizer, InversionModel, FREEZE_STRATEGIES
+)
 
 
 @pytest.fixture
@@ -18,7 +20,12 @@ def fake_data() -> Dict[str, torch.Tensor]:
         'labels': input_ids,
     }
 
-def __test_embedding_model(fake_data, embedding_model_name, no_grad):
+def __test_embedding_model(
+        fake_data: Dict[str, torch.Tensor],
+        embedding_model_name: str,
+        no_grad: bool,
+        freeze_strategy: str
+    ):
     embedder, embedder_tokenizer = (
         load_embedder_and_tokenizer(name=embedding_model_name)
     )
@@ -29,6 +36,7 @@ def __test_embedding_model(fake_data, embedding_model_name, no_grad):
         ),
         num_repeat_tokens=6,
         embedder_no_grad=no_grad,
+        freeze_strategy=freeze_strategy
     )
 
     # test model forward.
@@ -46,6 +54,11 @@ def __test_embedding_model(fake_data, embedding_model_name, no_grad):
 
 
 @pytest.mark.parametrize("model_name", ["dpr", "ance_tele", "gtr_base"])
-def test_inversion_model_gtr(fake_data, model_name):
-    __test_embedding_model(fake_data, model_name, True)
-    __test_embedding_model(fake_data, model_name, False)
+def test_inversion_models(fake_data, model_name):
+    __test_embedding_model(fake_data, model_name, True, "none")
+    __test_embedding_model(fake_data, model_name, False, "none")
+
+
+@pytest.mark.parametrize("freeze_strategy", FREEZE_STRATEGIES)
+def test_inversion_model_frozen(fake_data, freeze_strategy):
+    __test_embedding_model(fake_data, "dpr", True, freeze_strategy)

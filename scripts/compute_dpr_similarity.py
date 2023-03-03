@@ -22,6 +22,7 @@ def main():
         ),
         num_repeat_tokens=6,
         embedder_no_grad=True,
+        freeze_strategy="none",
     )
     model.to(device)
     while True:

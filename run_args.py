@@ -6,6 +6,8 @@ import os
 import transformers
 from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
 
+from models import FREEZE_STRATEGIES
+
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -35,7 +37,7 @@ class ModelArguments:
         default="dpr",
         metadata={
             "help": "Model to get embeddings from",
-            "choices": ["contriever", "dpr", "gtr_base", "ance_tele"],
+            "choices": ["contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"],
         },
     )
 
@@ -87,6 +89,13 @@ class ModelArguments:
     embedder_no_grad: bool = field(
         default=True,
         metadata={"help": "Whether to disable grads for DPR"}
+    )
+    freeze_strategy: str = field(
+        default="none",
+        metadata={
+            "help": "which part of the model to freeze",
+            "choices": FREEZE_STRATEGIES,
+        },
     )
 
     def __post_init__(self):
@@ -208,7 +217,7 @@ class TrainingArguments(transformers.TrainingArguments):
         default=4000,
         metadata={"help": "Number of steps between eval (will be scaled as if batch size is 32)"}
     )
-    save_steps: int = 5_000
+    save_steps: int = 10**10 # 5_000
 
     include_inputs_for_metrics: bool = True
 

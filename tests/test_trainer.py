@@ -40,6 +40,7 @@ def trainer() -> InversionTrainer:
         ),
         num_repeat_tokens=model_args.num_repeat_tokens,
         embedder_no_grad=model_args.embedder_no_grad,
+        freeze_strategy=model_args.freeze_strategy,
     )
     ###########################################################################
     text_column_name = "text"
