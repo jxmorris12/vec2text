@@ -94,17 +94,20 @@ class InversionModel(nn.Module):
         else:
             raise ValueError(f'invalid freezing strategy {freeze_strategy}')
     
-    def _call_embedding_model(
+    def call_embedding_model(
             self,
             input_ids: torch.Tensor,
             attention_mask: torch.Tensor,
             token_type_ids: Optional[torch.Tensor] = None, # not used
         ) -> torch.Tensor:
         if isinstance(self.embedder, SentenceTransformer):
-            # really annoying 
-            return self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})
+            # sentence-transformers is kind of really annoying 
+            model_output = self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})
+            embeddings = model_output['sentence_embedding']
         else:
-            return self.embedder(input_ids=input_ids, attention_mask=attention_mask)
+            model_output = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
+            embeddings = mean_pool(model_output, attention_mask)
+        return embeddings
 
     def embed(
             self, 
@@ -117,20 +120,15 @@ class InversionModel(nn.Module):
         # assert not self.embedder.training
         if self.embedder_no_grad:
             with torch.no_grad():
-                model_output = self._call_embedding_model(
+                embeddings = self.call_embedding_model(
                     input_ids=embedder_input_ids,
                     attention_mask=embedder_attention_mask,
                 )
         else:
-            model_output = self._call_embedding_model(
+            embeddings = self.call_embedding_model(
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        
-        if isinstance(self.embedder, SentenceTransformer):
-            embeddings = model_output['sentence_embedding']
-        else:
-            embeddings = mean_pool(model_output, embedder_attention_mask)
         embeddings = self.embedding_transform(embeddings)
         batch_size = embedder_input_ids.shape[0]
         # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
