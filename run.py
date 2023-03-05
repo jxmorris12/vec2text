@@ -6,7 +6,6 @@ import sys
 
 import datasets
 import torch
-from datasets import load_dataset
 
 import transformers
 from transformers import (
@@ -142,10 +141,10 @@ def main():
         desc="Running tokenizer on dataset",
     )
     train_dataset = tokenized_datasets[train_dataset_key]
+    eval_dataset = tokenized_datasets["validation"]
 
     n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
     logger.info(f"Training model from checkpoint `{model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
-    eval_dataset = tokenized_datasets["validation"]
     
     if data_args.max_eval_samples is not None:
         max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)

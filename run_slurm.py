@@ -13,7 +13,7 @@ python run.py --per_device_train_batch_size {batch_size} \
 --embedder_no_grad {embedder_no_grad} \
 --exp_name {exp_name} \
 --learning_rate {learning_rate} \
---
+--freeze_strategy {freeze_strategy} \
 --max_eval_samples 400 \
 --eval_steps 8000 \
 --warmup_steps 4000 \
@@ -59,8 +59,9 @@ learning_rates = [5e-4]
 num_repeat_tokens = [16]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
 
+freeze_strategies = ["decoder", "encoder_and_decoder", "encoder", "none"]
 
-ACTUALLY_RUN_COMMAND = False
+ACTUALLY_RUN_COMMAND = True
 
 def run_cmd(cmd: str, job_desc: str):
     now = datetime.now()
@@ -98,9 +99,10 @@ def run_cmd(cmd: str, job_desc: str):
 total = 0
 for args in itertools.product(
         models, emb_models, learning_rates,
-        num_repeat_tokens, max_seq_length, embedder_no_grad
+        num_repeat_tokens, max_seq_length, embedder_no_grad,
+        freeze_strategies
     ):
-    m, e, lr, n, msl, eng = args
+    m, e, lr, n, msl, eng, frs = args
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
@@ -112,7 +114,8 @@ for args in itertools.product(
         learning_rate=lr,
         # 
         exp_name=exp_name,
-        embedder_no_grad=eng
+        embedder_no_grad=eng,
+        freeze_strategy=frs
     )
     job_desc = ".".join(map(str, args))
     run_cmd(cmd, job_desc=job_desc)
