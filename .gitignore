@@ -1,5 +1,7 @@
 __pycache__/
 
+*.p
+
 logs/
 saves/
 slurm-scripts/

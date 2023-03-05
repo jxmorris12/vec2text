@@ -9,8 +9,10 @@ from typing import Tuple
 import collections
 import os
 import pickle
+import random
 
 import datasets
+import numpy as np
 import torch
 import transformers
 import tqdm
@@ -25,15 +27,26 @@ device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 # TODO impl caching
 
-def reorder_words_except_padding(input_ids: torch.Tensor) -> torch.Tensor:
-    # TODO (not sure how to do this - ask chatGPT lol)
+def emb(
+        model: torch.nn.Module, 
+        input_ids: torch.Tensor, 
+        attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+    with torch.no_grad():
+        emb = model.call_embedding_model(
+            input_ids=input_ids, attention_mask=attention_mask
+        )
+    return emb
+
+def reorder_words_except_padding(input_ids: torch.Tensor, padding_idx: int) -> torch.Tensor:
+    # TODO
     return input_ids
 
 
 def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokenizer):
     """Generates embeddings for all tokens in tokenizer vocab."""
     i = 0
-    batch_size = 16
+    batch_size = 512
     all_token_embeddings = []
     V = tokenizer.vocab_size
     CLS = tokenizer.vocab['[CLS]']
@@ -48,15 +61,14 @@ def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokeniz
         # 
         attention_mask = torch.ones_like(input_ids, device=device)
         # 
-        with torch.no_grad():
-            token_embeddings = model.call_embedding_model(
-                input_ids=input_ids, attention_mask=attention_mask
-            )
+        token_embeddings = emb(model, input_ids, attention_mask)
         all_token_embeddings.extend(token_embeddings)
         i += batch_size
         pbar.update(batch_size)
     # 
-    all_token_embeddings = torch.cat(all_token_embeddings)
+    all_token_embeddings = torch.stack(all_token_embeddings)
+    print('all_token_embeddings.shape:', all_token_embeddings.shape)
+    assert all_token_embeddings.shape == (30522, 768)
     return all_token_embeddings
 
 
@@ -101,11 +113,14 @@ def load_nq_dev(
 def main():
     model_name = 'dpr'
     dataset_name = 'nq_dev'
-    batch_size = 8
+    batch_size = 128
     i = 0
-    n = 100
+    n = 10_000
 
     torch.set_grad_enabled(False)
+
+    csf = torch.nn.CosineSimilarity(dim=1)
+    cs = lambda a,b: csf(a, b).cpu().tolist()
 
     model, embedder_tokenizer, tokenizer = load_model_and_tokenizers(
         model_name=model_name
@@ -116,39 +131,55 @@ def main():
     word_embeddings = embed_all_tokens(model, embedder_tokenizer)
 
     metrics = collections.defaultdict(list)
-    pbar = tqdm.tqdm(desc='generating token embeddings', colour='#A020F0', total=len(dataset))
+    pbar = tqdm.tqdm(desc='getting embeddings for dataset', colour='#A020F0', total=n)
 
-    while i < len(dataset):
-        data_batch = data[i * batch_size : (i+1) * batch_size]
-        embeddings = model.embed(data_batch)
+    while i < n:
+        input_ids = torch.tensor(dataset['embedder_input_ids'][i:i+batch_size], device=device)
+        attention_mask = torch.tensor(dataset['embedder_attention_mask'][i:i+batch_size], device=device)
+        embeddings = emb(model, input_ids, attention_mask)
         # 
-        reordered_words = reorder_words_except_padding(data_batch, tokenizer.padding_idx)
-        reordered_words_embeddings = model.embed(reordered_words)
+        # reordered_input_ids = reorder_words_except_padding(input_ids, embedder_tokenizer.padding_idx)
+        # reordered_words_embeddings = emb(model, reordered_input_ids, attention_mask)
 
         # linear/bag-of-words
-        word_embeddings = torch.gather(word_embeddings, data_batch)
-        word_embeddings = word_embeddings.sum(2)
+        linear_word_embeddings = (word_embeddings[input_ids] * attention_mask[..., None])
+        linear_word_embeddings = linear_word_embeddings.sum(dim=1)
+        metrics['words_sum'].extend(cs(embeddings, linear_word_embeddings))
 
         # first 16 words & 32 words
-        embeddings_8 = model(data_batch[:, :8])
-        embeddings_16 = model(data_batch[:, :16])
-        embeddings_32 = model(data_batch[:, :32])
-        embeddings_64 = model(data_batch[:, :64])
+        embeddings_8 = emb(model, input_ids[:, :8], attention_mask[:, :8])
+        metrics['first_8'].extend(cs(embeddings, embeddings_8))
+        embeddings_16 = emb(model, input_ids[:, :16], attention_mask[:, :16])
+        metrics['first_16'].extend(cs(embeddings, embeddings_16))
+        embeddings_32 = emb(model, input_ids[:, :32], attention_mask[:, :32])
+        metrics['first_32'].extend(cs(embeddings, embeddings_32))
+        embeddings_64 = emb(model, input_ids[:, :64], attention_mask[:, :64])
+        metrics['first_64'].extend(cs(embeddings, embeddings_64))
 
         # random sim
-        random_inbatch_embeddings = model(random.shuffle(data_batch))
+        ridx = list(range(len(input_ids)))
+        random.shuffle(ridx)
+        ridx = torch.tensor(ridx, device=device)
+        random_inbatch_embeddings = emb(model, input_ids[ridx], attention_mask[ridx])
+        metrics['random_inbatch'].extend(cs(embeddings, random_inbatch_embeddings))
 
         # random words
-        random_words = torch.random.randint(0, vocab_size, shape=data_batch_shape)
-        random_words_embeddings = model(random_words)
+        first_word_id = max(embedder_tokenizer.all_special_ids) + 1
+        random_input_ids = torch.randint(low=0, high=embedder_tokenizer.vocab_size, size=input_ids.shape, device=device)
+        random_words_embeddings = emb(model, random_input_ids, torch.ones_like(random_input_ids, device=device))
+        metrics['random_words'].extend(cs(embeddings, random_words_embeddings))
 
         # random vector
-        random_embeddings = torch.randn(shape=embeddings.shape)
-        
+        random_gaussian_embeddings = torch.randn(size=embeddings.shape, device=device)
+        metrics['random_gaussian'].extend(cs(embeddings, random_gaussian_embeddings))
         # 
         pbar.update(batch_size)
         i += batch_size
     #
-    pickle.dump(metrics, f'{model_name}_{dataset_name}_emb_metrics.p')
+    print('[Mean]')
+    print({ k: np.mean(v) for k,v in metrics.items()})
+    print('[Std]')
+    print({ k: np.std(v) for k,v in metrics.items()})
+    pickle.dump(metrics, open(f'{model_name}_{dataset_name}_emb_metrics.p', 'wb'))
 
 if __name__ == '__main__': main()
