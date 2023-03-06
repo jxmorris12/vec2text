@@ -33,8 +33,8 @@ def main():
         
         a = embedder_tokenizer([a], return_tensors='pt').to(device)
         b = embedder_tokenizer([b], return_tensors='pt').to(device)
-        emb_a = model._call_embedding_model(**a).pooler_output
-        emb_b = model._call_embedding_model(**b).pooler_output
+        emb_a = model.call_embedding_model(**a)
+        emb_b = model.call_embedding_model(**b)
 
         similarity  = torch.nn.CosineSimilarity(dim=1)(emb_a, emb_b).item()
 
