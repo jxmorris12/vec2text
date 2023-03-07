@@ -1,3 +1,7 @@
+"""Embeds two sentences and computes their similarity. Outputs to command line.
+
+Written: 2023-03-02
+"""
 import sys
 sys.path.append('/home/jxm3/research/retrieval/inversion')
 

@@ -1,3 +1,7 @@
+"""Embeds a sentence and outputs the closest tokens as measured by emb(token).
+
+Written: 2023-03-05
+"""
 import sys
 sys.path.append('/home/jxm3/research/retrieval/inversion')
 
@@ -20,6 +24,7 @@ def main():
     )
     model = InversionModel(
         embedder=embedder,
+        embedder_tokenizer=embedder_tokenizer,
         encoder_decoder=load_encoder_decoder(
             model_name="t5-small",
         ),
@@ -39,10 +44,10 @@ def main():
         emb_a = model.call_embedding_model(**a)
 
         sims = torch.nn.CosineSimilarity(dim=1)(emb_a, word_embeddings)
-        topk_sims = sims.topk(10, dim=0)
+        topk_sims = sims.topk(20, dim=0)
         for token_id, value in zip(topk_sims.indices, topk_sims.values):
             token = embedder_tokenizer.decode([token_id])
-            print(f'\t{token}\t{value:.3f}')
+            print(f'\t{token}\t{value:.2f}')
 
         print()
 

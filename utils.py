@@ -20,8 +20,9 @@ def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokeniz
     all_token_embeddings = []
     V = tokenizer.vocab_size
     #
-    CLS = tokenizer.bos_token_id
-    SEP = tokenizer.eos_token_id
+    CLS = tokenizer.cls_token_id
+    SEP = tokenizer.sep_token_id
+    assert SEP is not None
     #
     device = next(model.parameters()).device
     pbar = tqdm.tqdm(desc='generating token embeddings', colour='#008080', total=V, leave=False)

@@ -1,3 +1,8 @@
+"""Dumps val set embeddings from a given model to file.
+
+Written: 2023-03-06
+"""
+
 from typing import Tuple
 
 import sys
