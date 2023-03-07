@@ -2,6 +2,7 @@ __pycache__/
 
 *.p
 
+embeddings/
 logs/
 saves/
 slurm-scripts/

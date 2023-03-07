@@ -9,6 +9,7 @@ import pickle
 
 import datasets
 import torch
+import tqdm
 import transformers
 
 from data_helpers import load_dpr_corpus, NQ_DEV
@@ -90,7 +91,7 @@ def parse_args() -> argparse.ArgumentParser:
     parser.add_argument(
         '--batch_size',
         type=int,
-        default=256,
+        default=512,
         help='Inference batch size',
     )
     parser.add_argument(
@@ -122,11 +123,14 @@ def main():
     assert args.dataset_name == "nq_dev"
     dataset = load_nq_dev(tokenizer, embedder_tokenizer, max_seq_length=args.max_seq_length)[:args.n]
 
+    args.n = min(args.n, len(dataset['embedder_input_ids']))
+    print(f'computing {args.n} embeddings...')
+
     # compute embeddings
     batch_size = args.batch_size
     i = 0
     all_embeddings = []
-    pbar = tqdm.tqdm(desc='getting embeddings for dataset', colour='#A020F0', total=n)
+    pbar = tqdm.tqdm(desc='getting embeddings for dataset', colour='#A020F0', total=args.n)
     while i < args.n:
         input_ids = torch.tensor(dataset['embedder_input_ids'][i:i+batch_size], device=device)
         attention_mask = torch.tensor(dataset['embedder_attention_mask'][i:i+batch_size], device=device)
