@@ -112,6 +112,7 @@ def main():
     model = InversionModel(
         embedder=embedder,
         embedder_tokenizer=embedder_tokenizer,
+        tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(
             model_name=model_args.model_name_or_path
         ),

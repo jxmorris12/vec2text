@@ -26,13 +26,22 @@ def __test_embedding_model(
         no_grad: bool,
         freeze_strategy: str
     ):
+    encoder_decoder_model_name = "t5-small"
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        encoder_decoder_model_name,
+        padding=True,
+        truncation='max_length',
+        max_length=16,
+    )
     embedder, embedder_tokenizer = (
         load_embedder_and_tokenizer(name=embedding_model_name)
     )
     model = InversionModel(
         embedder=embedder,
+        embedder_tokenizer=embedder_tokenizer,
+        tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(
-            model_name="t5-small",
+            model_name=encoder_decoder_model_name,
         ),
         num_repeat_tokens=6,
         embedder_no_grad=no_grad,

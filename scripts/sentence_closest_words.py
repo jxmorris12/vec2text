@@ -25,6 +25,7 @@ def main():
     model = InversionModel(
         embedder=embedder,
         embedder_tokenizer=embedder_tokenizer,
+        tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(
             model_name="t5-small",
         ),

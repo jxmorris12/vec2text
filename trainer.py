@@ -1,10 +1,11 @@
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, Union
 
 import math
 import random
 
 import evaluate
 import torch
+import torch.nn as nn
 import tqdm
 import transformers
 
@@ -115,6 +116,38 @@ class InversionTrainer(transformers.Trainer):
         return all_preds, all_labels
     
     
+    def _compute_data_metrics(self, inputs: Dict[str, torch.Tensor]) -> Dict[str, float]:
+        inputs_pad_tokens = (
+            inputs["input_ids"] == self.model.tokenizer.pad_token_id
+        ).sum(dim=1).float().mean().item()
+        embedder_inputs_pad_tokens = (
+            inputs["embedder_input_ids"] == self.model.embedder_tokenizer.pad_token_id
+        ).sum(dim=1).float().mean().item()
+
+        inputs_non_pad_tokens = inputs["input_ids"].shape[1] - inputs_pad_tokens
+        embedder_inputs_non_pad_tokens = inputs["input_ids"].shape[1] - embedder_inputs_pad_tokens
+
+        return {
+            "encoder_decoder_inputs_pad_tokens": inputs_pad_tokens,
+            "encoder_decoder_inputs_non_pad_tokens": inputs_non_pad_tokens,
+            "embedder_inputs_pad_tokens": embedder_inputs_pad_tokens,
+            "embedder_inputs_non_pad_tokens": embedder_inputs_non_pad_tokens,
+        }
+        
+    
+    def training_step(
+            self,
+            model: nn.Module,
+            inputs: Dict[str, torch.Tensor]
+        ) -> torch.Tensor:
+        """
+        Performs a training step. we override to compute data-specific metrics.
+        """
+        metrics = self._compute_data_metrics(inputs=inputs)
+        self.log({ f"train/{k}": v for k,v in metrics.items() })
+        return super().training_step(model, inputs)
+
+
     def compute_metrics_func(self, eval_preds):
         preds  = eval_preds.predictions
         labels = eval_preds.label_ids
@@ -128,16 +161,16 @@ class InversionTrainer(transformers.Trainer):
         preds_sample, preds_sample_labels = self._get_eval_preds(n=1000)
 
         # Log BLEU, log table of text.
-        decoded_preds = self.tokenizer.batch_decode(preds_sample, skip_special_tokens=True)
-        decoded_labels = self.tokenizer.batch_decode(preds_sample_labels, skip_special_tokens=True)
+        decoded_preds = self.model.tokenizer.batch_decode(preds_sample, skip_special_tokens=True)
+        decoded_labels = self.model.tokenizer.batch_decode(preds_sample_labels, skip_special_tokens=True)
         raw_bleu_result = self.metric_bleu.compute(predictions=decoded_preds, references=decoded_labels)
         bleu_result = { "bleu_score": raw_bleu_result["score"]}
         self._log_preds_table(table_key="val_text_preds", decoded_preds=decoded_preds, decoded_labels=decoded_labels)
 
         # Log table for train data.
         train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=50)
-        decoded_train_preds = self.tokenizer.batch_decode(train_preds_sample, skip_special_tokens=True)
-        decoded_train_labels = self.tokenizer.batch_decode(train_preds_sample_labels, skip_special_tokens=True)
+        decoded_train_preds = self.model.tokenizer.batch_decode(train_preds_sample, skip_special_tokens=True)
+        decoded_train_labels = self.model.tokenizer.batch_decode(train_preds_sample_labels, skip_special_tokens=True)
         self._log_preds_table(table_key="train_text_preds", decoded_preds=decoded_train_preds, decoded_labels=decoded_train_labels)
         train_raw_bleu_result = self.metric_bleu.compute(predictions=decoded_train_preds, references=decoded_train_labels)
         # train_bleu_result = { "bleu_score": train_raw_bleu_result["score"]}

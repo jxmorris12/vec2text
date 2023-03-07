@@ -54,7 +54,9 @@ class TokenLogitsProcessor(LogitsProcessor):
 # .push_to_hub(), etc.?
 class InversionModel(nn.Module):
     embedder: nn.Module
+    embedder_tokenizer: transformers.PreTrainedTokenizer # embedder's tokenizer
     encoder_decoder: transformers.AutoModelForSeq2SeqLM
+    tokenizer: transformers.PreTrainedTokenizer # encoder_decoder's tokenizer
     embedding_transform: nn.Module
     num_repeat_tokens: int
     embedder_no_grad: bool
@@ -67,6 +69,7 @@ class InversionModel(nn.Module):
             embedder: nn.Module,
             embedder_tokenizer: transformers.PreTrainedTokenizer,
             encoder_decoder: transformers.AutoModelForSeq2SeqLM,
+            tokenizer: transformers.PreTrainedTokenizer,
             num_repeat_tokens: int,
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
@@ -93,9 +96,15 @@ class InversionModel(nn.Module):
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
         ######################################################
+        self.tokenizer = tokenizer
+        self.embedder_tokenizer = embedder_tokenizer
         self.freeze(freeze_strategy=freeze_strategy)
         self.token_decode_alpha = token_decode_alpha
-        # self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
+        if token_decode_alpha > 0:
+            assert embedder_tokenizer is not None
+            self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
+        else:
+            self.embedded_tokens = None
     
     def _freeze_encoder(self):
         freeze_params(self.encoder_decoder.encoder)
@@ -169,26 +178,27 @@ class InversionModel(nn.Module):
             inputs: Dict[str, torch.Tensor],
             generation_kwargs: Dict[str, torch.Tensor]
         ) -> torch.Tensor:
-        ########################################################################
-        # TODO: make this block of code not awful when i'm less tired
-        initial_embeddings = self.call_embedding_model(
-            input_ids=inputs["embedder_input_ids"],
-            attention_mask=inputs["embedder_attention_mask"],
-        )
-        token_scores = initial_embeddings @ self.embedded_tokens.T
-        embedded_tokens_logits_processor = TokenLogitsProcessor(
-            token_scores=token_scores,
-            alpha=self.token_decode_alpha,
-        )
-        ########################################################################
+
+        if self.token_decode_alpha > 0:
+            ########################################################################
+            # TODO: optimize to avoid re-embedding.
+            initial_embeddings = self.call_embedding_model(
+                input_ids=inputs["embedder_input_ids"],
+                attention_mask=inputs["embedder_attention_mask"],
+            )
+            token_scores = initial_embeddings @ self.embedded_tokens.T
+            embedded_tokens_logits_processor = TokenLogitsProcessor(
+                token_scores=token_scores,
+                alpha=self.token_decode_alpha,
+            )
+            generation_kwargs["logits_processor"] = LogitsProcessorList([
+                embedded_tokens_logits_processor,
+            ])
+            ########################################################################
         inputs_embeds, attention_mask = self.embed(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
         )
-        generation_kwargs["logits_processor"] = LogitsProcessorList([
-            embedded_tokens_logits_processor,
-        ])
-        # TODO edit generation with self.embedded_tokens
         return self.encoder_decoder.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

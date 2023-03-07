@@ -42,6 +42,7 @@ def load_model_and_tokenizers(model_name: str, max_seq_length:int) -> Tuple[Inve
     model = InversionModel(
         embedder=embedder,
         embedder_tokenizer=embedder_tokenizer,
+        tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(model_name="t5-small"),
         num_repeat_tokens=1,
         embedder_no_grad=True,

@@ -35,6 +35,8 @@ def trainer() -> InversionTrainer:
     )
     model = InversionModel(
         embedder=embedder,
+        embedder_tokenizer=embedder_tokenizer,
+        tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(
             model_name=model_args.model_name_or_path
         ),
@@ -67,7 +69,7 @@ def trainer() -> InversionTrainer:
     ###########################################################################
 
     training_args.num_train_epochs = 1.0
-    training_args.eval_steps = 1
+    training_args.eval_steps = 4
 
     return InversionTrainer(
         model=model,
