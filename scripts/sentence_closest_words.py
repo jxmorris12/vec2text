@@ -10,48 +10,9 @@ from models import (
     load_encoder_decoder,
     InversionModel
 )
+from utils import embed_all_tokens
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
-
-def emb(
-        model: torch.nn.Module, 
-        input_ids: torch.Tensor, 
-        attention_mask: torch.Tensor
-    ) -> torch.Tensor:
-    with torch.no_grad():
-        emb = model.call_embedding_model(
-            input_ids=input_ids, attention_mask=attention_mask
-        )
-    return emb
-
-
-def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokenizer):
-    """Generates embeddings for all tokens in tokenizer vocab."""
-    i = 0
-    batch_size = 512
-    all_token_embeddings = []
-    V = tokenizer.vocab_size
-    CLS = tokenizer.vocab['[CLS]']
-    SEP = tokenizer.vocab['[SEP]']
-    pbar = tqdm.tqdm(desc='generating token embeddings', colour='#008080', total=V)
-    while i < V:
-        # 
-        minibatch_size = min(V-i, batch_size)
-        inputs = torch.arange(i, i+minibatch_size)
-        input_ids = torch.stack([torch.tensor([101]).repeat(len(inputs)), inputs, torch.tensor([102]).repeat(len(inputs))]).T
-        input_ids = input_ids.to(device)
-        # 
-        attention_mask = torch.ones_like(input_ids, device=device)
-        # 
-        token_embeddings = emb(model, input_ids, attention_mask)
-        all_token_embeddings.extend(token_embeddings)
-        i += batch_size
-        pbar.update(batch_size)
-    # 
-    all_token_embeddings = torch.stack(all_token_embeddings)
-    print('all_token_embeddings.shape:', all_token_embeddings.shape)
-    assert all_token_embeddings.shape == (30522, 768)
-    return all_token_embeddings
 
 def main():
     embedder, embedder_tokenizer = (

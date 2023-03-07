@@ -1,13 +1,18 @@
 from typing import Dict, Optional, Tuple
 
+from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
 import transformers
+from transformers.generation_logits_process import LogitsProcessor,LogitsProcessorList
 
-from sentence_transformers import SentenceTransformer
+from utils import embed_all_tokens
 
-
+MODEL_NAMES =  ["contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"]
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
+
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
 
 def freeze_params(model: nn.Module):
     total_num_params = 0
@@ -28,6 +33,23 @@ def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_
     return pooled_outputs
 
 
+class TokenLogitsProcessor(LogitsProcessor):
+    embedded_tokens: torch.Tensor
+    alpha: float
+    def __init__(self, token_scores: torch.Tensor, alpha: float):
+        self.token_scores = token_scores
+        self.alpha = alpha
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        #   pad to a length of 2
+        num_zeros =  scores.shape[1] - self.token_scores.shape[1]
+        token_scores = torch.cat((self.token_scores, torch.tensor([[0]], device='cuda').repeat(128, 28)), dim=1)
+        #  scores.shape - torch.Size([128, 32128])
+        #  self.embedded_tokens.shape - torch.Size([30522, 768])
+        print('alpha =', self.alpha)
+        return scores + (token_scores * self.alpha)
+
+
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
 class InversionModel(nn.Module):
@@ -37,15 +59,19 @@ class InversionModel(nn.Module):
     num_repeat_tokens: int
     embedder_no_grad: bool
     bottleneck_dim: int
+    token_decode_alpha: float # Alpha to apply to token embedding sims during decoding.
+    embedded_tokens: torch.Tensor
 
     def __init__(
             self,
             embedder: nn.Module,
+            embedder_tokenizer: transformers.PreTrainedTokenizer,
             encoder_decoder: transformers.AutoModelForSeq2SeqLM,
             num_repeat_tokens: int,
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
             bottleneck_dim: int = 128,
+            token_decode_alpha: float = 0.0,
         ):
         super().__init__()
         self.embedder = embedder
@@ -68,6 +94,8 @@ class InversionModel(nn.Module):
         )
         ######################################################
         self.freeze(freeze_strategy=freeze_strategy)
+        self.token_decode_alpha = token_decode_alpha
+        # self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
     
     def _freeze_encoder(self):
         freeze_params(self.encoder_decoder.encoder)
@@ -141,10 +169,26 @@ class InversionModel(nn.Module):
             inputs: Dict[str, torch.Tensor],
             generation_kwargs: Dict[str, torch.Tensor]
         ) -> torch.Tensor:
+        ########################################################################
+        # TODO: make this block of code not awful when i'm less tired
+        initial_embeddings = self.call_embedding_model(
+            input_ids=inputs["embedder_input_ids"],
+            attention_mask=inputs["embedder_attention_mask"],
+        )
+        token_scores = initial_embeddings @ self.embedded_tokens.T
+        embedded_tokens_logits_processor = TokenLogitsProcessor(
+            token_scores=token_scores,
+            alpha=self.token_decode_alpha,
+        )
+        ########################################################################
         inputs_embeds, attention_mask = self.embed(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
         )
+        generation_kwargs["logits_processor"] = LogitsProcessorList([
+            embedded_tokens_logits_processor,
+        ])
+        # TODO edit generation with self.embedded_tokens
         return self.encoder_decoder.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

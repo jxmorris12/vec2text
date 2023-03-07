@@ -20,26 +20,14 @@ import tqdm
 from data_helpers import load_dpr_corpus, NQ_DEV
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from tokenize_data import tokenize_function
+from utils import emb, embed_all_tokens
 
 num_workers = len(os.sched_getaffinity(0))
 max_seq_length = 128
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
-# TODO impl caching
-
-def emb(
-        model: torch.nn.Module, 
-        input_ids: torch.Tensor, 
-        attention_mask: torch.Tensor
-    ) -> torch.Tensor:
-    with torch.no_grad():
-        emb = model.call_embedding_model(
-            input_ids=input_ids, attention_mask=attention_mask
-        )
-    return emb
 
 def reorder_words_except_padding(input_ids: torch.Tensor, padding_idx: int) -> torch.Tensor:
-    # TODO
     pad_begin_idxs = (input_ids == padding_idx).int().argmax(dim=1)
     pad_begin_idxs = torch.where(pad_begin_idxs == 0, input_ids.shape[1], pad_begin_idxs)
 
@@ -64,42 +52,6 @@ def reorder_words_except_padding(input_ids: torch.Tensor, padding_idx: int) -> t
 
     return torch.stack(a)
 
-
-def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokenizer):
-    """Generates embeddings for all tokens in tokenizer vocab."""
-    i = 0
-    batch_size = 1024
-    all_token_embeddings = []
-    V = tokenizer.vocab_size
-    #
-    CLS = tokenizer.bos_token_id
-    SEP = tokenizer.eos_token_id
-    #
-    pbar = tqdm.tqdm(desc='generating token embeddings', colour='#008080', total=V)
-    while i < V:
-        # 
-        minibatch_size = min(V-i, batch_size)
-        inputs = torch.arange(i, min(i+minibatch_size, V))
-
-        if (CLS is not None):
-            input_ids = torch.stack([torch.tensor([CLS]).repeat(len(inputs)), inputs, torch.tensor([SEP]).repeat(len(inputs))]).T
-        else:
-            input_ids = torch.stack([inputs, torch.tensor([SEP]).repeat(len(inputs))]).T
-        input_ids = input_ids.to(device)
-        # 
-        attention_mask = torch.ones_like(input_ids, device=device)
-        # 
-        token_embeddings = emb(model, input_ids, attention_mask)
-        all_token_embeddings.extend(token_embeddings)
-        i += batch_size
-        pbar.update(batch_size)
-    # 
-    all_token_embeddings = torch.stack(all_token_embeddings)
-    print('all_token_embeddings.shape:', all_token_embeddings.shape)
-    assert all_token_embeddings.shape == (tokenizer.vocab_size, 768)
-    return all_token_embeddings
-
-
 def load_model_and_tokenizers(model_name: str) -> Tuple[InversionModel, transformers.AutoTokenizer]:
     embedder, embedder_tokenizer = load_embedder_and_tokenizer(model_name)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -110,6 +62,7 @@ def load_model_and_tokenizers(model_name: str) -> Tuple[InversionModel, transfor
     )
     model = InversionModel(
         embedder=embedder,
+        embedder_tokenizer=embedder_tokenizer,
         encoder_decoder=load_encoder_decoder(model_name="t5-small"),
         num_repeat_tokens=1,
         embedder_no_grad=True,

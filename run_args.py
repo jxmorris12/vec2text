@@ -6,7 +6,7 @@ import os
 import transformers
 from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
 
-from models import FREEZE_STRATEGIES
+from models import MODEL_NAMES, FREEZE_STRATEGIES
 
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
@@ -37,7 +37,7 @@ class ModelArguments:
         default="dpr",
         metadata={
             "help": "Model to get embeddings from",
-            "choices": ["contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"],
+            "choices": MODEL_NAMES,
         },
     )
 
@@ -96,6 +96,12 @@ class ModelArguments:
             "help": "which part of the model to freeze",
             "choices": FREEZE_STRATEGIES,
         },
+    )
+    token_decode_alpha: float = field(
+        default=0.0,
+        metadata={
+            "help": "",
+        }
     )
 
     def __post_init__(self):
