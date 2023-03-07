@@ -65,7 +65,13 @@ class InversionTrainer(transformers.Trainer):
             inputs_cuda = {k: v.to(self.args.device) for k,v in inputs.items()}
             gen_kwargs = {
                 'max_length': inputs['input_ids'].shape[1],
-                'num_beams': 1,
+                "early_stopping": True,
+                # "no_repeat_ngram_size": 3,
+                # From CtRL paper: We find that using a greedy sampling 
+                # and θ ≈ 1.2 yields a good balance between truthful generation
+                # and lack of repetition (arxiv.org/abs/1909.05858)
+                "repetition_penalty": 1.2,
+                "num_beams": 4,
                 'do_sample': False,
             }
             with torch.no_grad():
@@ -144,7 +150,7 @@ class InversionTrainer(transformers.Trainer):
         Performs a training step. we override to compute data-specific metrics.
         """
         metrics = self._compute_data_metrics(inputs=inputs)
-        self.log({ f"train/{k}": v for k,v in metrics.items() })
+        # self.log({ f"train/{k}": v for k,v in metrics.items() })
         return super().training_step(model, inputs)
 
 
