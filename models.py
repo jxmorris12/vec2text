@@ -137,7 +137,8 @@ class InversionModel(nn.Module):
             attention_mask: torch.Tensor,
             token_type_ids: Optional[torch.Tensor] = None, # not used
         ) -> torch.Tensor:
-        self.embedder.eval()
+        if self.embedder_no_grad:
+            self.embedder.eval()
         if isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying 
             model_output = self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})
@@ -152,10 +153,6 @@ class InversionModel(nn.Module):
             embedder_input_ids: torch.Tensor,
             embedder_attention_mask: torch.Tensor,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
-        # TODO: implement mean-pooling so we can test BERT sentence
-        # embeddings vs SimCSE vs Contriever etc fairly.
-        # TODO: should we allow dropout from the embedding model?
-        # assert not self.embedder.training
         if self.embedder_no_grad:
             with torch.no_grad():
                 embeddings = self.call_embedding_model(
