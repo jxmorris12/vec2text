@@ -11,7 +11,7 @@ python run.py --per_device_train_batch_size {batch_size} \
 --embedding_model_name {emb_model_name} \
 --num_repeat_tokens {num_repeat_tokens} \
 --embedder_no_grad {embedder_no_grad} \
---exp_name {exp_name} \
+--exp_group_name {exp_group_name} \
 --learning_rate {learning_rate} \
 --freeze_strategy {freeze_strategy} \
 --max_eval_samples 400 \
@@ -36,12 +36,12 @@ emb_models = ['dpr']
 
 
 ##########################################
-# exp_name = 'feb27-t5-size'
-# exp_name = 'feb27-token-num-3'
-# exp_name = 'feb28-emb'
-# exp_name = 'mar1-msl-eng'
-# exp_name = 'mar2-gtr'
-exp_name = 'mar3-freeze'
+# exp_group_name = 'feb27-t5-size'
+# exp_group_name = 'feb27-token-num-3'
+# exp_group_name = 'feb28-emb'
+# exp_group_name = 'mar1-msl-eng'
+# exp_group_name = 'mar2-gtr'
+exp_group_name = 'mar3-freeze'
 ##########################################
 
 batch_size = 128
@@ -113,7 +113,7 @@ for args in itertools.product(
         num_repeat_tokens=n,
         learning_rate=lr,
         # 
-        exp_name=exp_name,
+        exp_group_name=exp_group_name,
         embedder_no_grad=eng,
         freeze_strategy=frs
     )

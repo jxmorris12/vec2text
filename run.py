@@ -34,9 +34,9 @@ def main():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     set_seed(training_args.seed)
 
-    exp_name = '__'.join(
-        (training_args.exp_name, model_args.model_name_or_path, model_args.embedding_model_name)
-    )
+    name_args = (training_args.exp_group_name, training_args.exp_name, model_args.model_name_or_path, model_args.embedding_model_name)
+    name_args = [n for n in name_args if len(n)]
+    exp_name = '__'.join(name_args)
 
     # Set up output_dir and wandb.
     kwargs_hash = md5_hash_kwargs(**vars(model_args), **vars(data_args), **vars(training_args))
@@ -52,6 +52,10 @@ def main():
             name=exp_name,
             id=kwargs_hash,
             resume=True,
+        )
+        wandb.config.update(
+            {**vars(model_args), **vars(data_args), **vars(training_args)},
+            allow_val_change=True,
         )
     else:
         # Disable W&B

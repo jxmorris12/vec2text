@@ -73,7 +73,7 @@ class InversionModel(nn.Module):
             num_repeat_tokens: int,
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
-            bottleneck_dim: int = 128,
+            bottleneck_dim: int = 768,
             token_decode_alpha: float = 0.0,
         ):
         super().__init__()
@@ -137,6 +137,7 @@ class InversionModel(nn.Module):
             attention_mask: torch.Tensor,
             token_type_ids: Optional[torch.Tensor] = None, # not used
         ) -> torch.Tensor:
+        self.embedder.eval()
         if isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying 
             model_output = self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})

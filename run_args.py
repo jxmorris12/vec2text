@@ -204,6 +204,13 @@ class TrainingArguments(transformers.TrainingArguments):
         default="",
         metadata={
             "required": False,
+            "help": "Name to identify this specific experiment",
+        }
+    )
+    exp_group_name: str = field(
+        default="",
+        metadata={
+            "required": False,
             "help": "Name to identify this sweep / series of experiments",
         }
     )
