@@ -62,7 +62,7 @@ def __test_embedding_model(
     )
 
 
-@pytest.mark.parametrize("model_name", ["dpr", "ance_tele", "gtr_base"])
+@pytest.mark.parametrize("model_name", ["dpr", "ance_tele", "gtr_base", "bert"])
 def test_inversion_models(fake_data, model_name):
     __test_embedding_model(fake_data, model_name, True, "none")
     __test_embedding_model(fake_data, model_name, False, "none")

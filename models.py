@@ -8,7 +8,7 @@ from transformers.generation_logits_process import LogitsProcessor,LogitsProcess
 
 from utils import embed_all_tokens
 
-MODEL_NAMES =  ["contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"]
+MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"]
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
 EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
 
@@ -250,6 +250,9 @@ def load_embedder_and_tokenizer(name: str):
     elif name == "contriever":
         model = transformers.AutoModel.from_pretrained("facebook/contriever")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
+    elif name == "bert":
+        model = transformers.AutoModel.from_pretrained("bert-base-uncased")
+        tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
     elif name == "gtr_base":
         model = transformers.AutoModel.from_pretrained("sentence-transformers/gtr-t5-base").encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")

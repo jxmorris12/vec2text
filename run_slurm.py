@@ -31,7 +31,8 @@ models = [
 ]
 
 # emb_models = ['dpr', 'ance_tele']
-emb_models = ['dpr']
+# emb_models = ['dpr']
+emb_models = ['bert']
 # emb_models = ["gtr_base", "gtr_large"]
 
 
@@ -41,7 +42,8 @@ emb_models = ['dpr']
 # exp_group_name = 'feb28-emb'
 # exp_group_name = 'mar1-msl-eng'
 # exp_group_name = 'mar2-gtr'
-exp_group_name = 'mar3-freeze'
+# exp_group_name = 'mar3-freeze'
+exp_group_name = 'mar9-bert'
 ##########################################
 
 batch_size = 128
@@ -59,7 +61,8 @@ learning_rates = [5e-4]
 num_repeat_tokens = [16]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]
 
-freeze_strategies = ["decoder", "encoder_and_decoder", "encoder", "none"]
+freeze_strategies = ["none"]
+# freeze_strategies = ["decoder", "encoder_and_decoder", "encoder", "none"]
 
 ACTUALLY_RUN_COMMAND = True
 
