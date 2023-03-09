@@ -10,6 +10,8 @@ from utils import embed_all_tokens
 
 MODEL_NAMES =  ["contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"]
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
+EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
+
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -24,7 +26,7 @@ def freeze_params(model: nn.Module):
 
 
 def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
-    if outputs.pooler_output is not None:
+    if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
         return outputs.pooler_output
     B, S, D = outputs.last_hidden_state.shape
     unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None])
@@ -41,8 +43,10 @@ class TokenLogitsProcessor(LogitsProcessor):
         self.alpha = alpha
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        scores = scores.log_softmax(dim=-1)
         #   pad to a length of 2
         num_zeros =  scores.shape[1] - self.token_scores.shape[1]
+        # TODO normalize token scores
         token_scores = torch.cat((self.token_scores, torch.tensor([[0]], device='cuda').repeat(128, 28)), dim=1)
         #  scores.shape - torch.Size([128, 32128])
         #  self.embedded_tokens.shape - torch.Size([30522, 768])
@@ -60,6 +64,7 @@ class InversionModel(nn.Module):
     embedding_transform: nn.Module
     num_repeat_tokens: int
     embedder_no_grad: bool
+    embedding_transform_strategy: str
     bottleneck_dim: int
     token_decode_alpha: float # Alpha to apply to token embedding sims during decoding.
     embedded_tokens: torch.Tensor
@@ -73,6 +78,7 @@ class InversionModel(nn.Module):
             num_repeat_tokens: int,
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
+            embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768,
             token_decode_alpha: float = 0.0,
         ):
@@ -99,6 +105,8 @@ class InversionModel(nn.Module):
         self.tokenizer = tokenizer
         self.embedder_tokenizer = embedder_tokenizer
         self.freeze(freeze_strategy=freeze_strategy)
+        assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
+        self.embedding_transform_strategy = embedding_transform_strategy
         self.token_decode_alpha = token_decode_alpha
         if token_decode_alpha > 0:
             assert embedder_tokenizer is not None
@@ -140,7 +148,8 @@ class InversionModel(nn.Module):
         if self.embedder_no_grad:
             self.embedder.eval()
         if isinstance(self.embedder, SentenceTransformer):
-            # sentence-transformers is kind of really annoying 
+            # sentence-transformers is kind of really annoying
+
             model_output = self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})
             embeddings = model_output['sentence_embedding']
         else:
@@ -164,10 +173,17 @@ class InversionModel(nn.Module):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        embeddings = self.embedding_transform(embeddings)
-        batch_size = embedder_input_ids.shape[0]
-        # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
-        embeddings = embeddings.reshape((batch_size, self.num_repeat_tokens, -1))
+        
+        if self.embedding_transform_strategy == "repeat":
+            embeddings = self.embedding_transform(embeddings)
+            batch_size = embedder_input_ids.shape[0]
+            # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
+            embeddings = embeddings.reshape((batch_size, self.num_repeat_tokens, -1))
+        elif self.embedding_transform_strategy == "nearest_neighbors":
+            # TODO
+            raise NotImplementedError()
+        else:
+            raise ValueError(f'unknown embedding transformation strategy {self.embedding_transform_strategy}')
         attention_mask = torch.ones((embeddings.shape[0], self.num_repeat_tokens), device=embeddings.device)
         return embeddings, attention_mask
     
@@ -185,6 +201,7 @@ class InversionModel(nn.Module):
                 attention_mask=inputs["embedder_attention_mask"],
             )
             token_scores = initial_embeddings @ self.embedded_tokens.T
+            breakpoint()
             embedded_tokens_logits_processor = TokenLogitsProcessor(
                 token_scores=token_scores,
                 alpha=self.token_decode_alpha,
@@ -192,6 +209,7 @@ class InversionModel(nn.Module):
             generation_kwargs["logits_processor"] = LogitsProcessorList([
                 embedded_tokens_logits_processor,
             ])
+            generation_kwargs["renormalize_logits"] = False
             ########################################################################
         inputs_embeds, attention_mask = self.embed(
             embedder_input_ids=inputs["embedder_input_ids"],
@@ -226,14 +244,18 @@ class InversionModel(nn.Module):
 def load_embedder_and_tokenizer(name: str):
     # TODO make abstract/argparse for it etc.
     if name == "dpr":
+        # model = SentenceTransformer("sentence-transformers/facebook-dpr-question_encoder-multiset-base")
         model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
     elif name == "contriever":
         model = transformers.AutoModel.from_pretrained("facebook/contriever")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
     elif name == "gtr_base":
-        model = SentenceTransformer("sentence-transformers/gtr-t5-base")
-        tokenizer = model.tokenizer
+        model = transformers.AutoModel.from_pretrained("sentence-transformers/gtr-t5-base").encoder
+        tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
+        # TODO figure out why model w/ sentence transformers gives different results.
+        # model = SentenceTransformer("sentence-transformers/gtr-t5-base")
+        # tokenizer = model.tokenizer
     elif name == "gtr_large":
         model = SentenceTransformer("sentence-transformers/gtr-t5-large")
         tokenizer = model.tokenizer

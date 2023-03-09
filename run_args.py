@@ -6,7 +6,7 @@ import os
 import transformers
 from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
 
-from models import MODEL_NAMES, FREEZE_STRATEGIES
+from models import MODEL_NAMES, EMBEDDING_TRANSFORM_STRATEGIES, FREEZE_STRATEGIES
 
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
@@ -39,6 +39,13 @@ class ModelArguments:
             "help": "Model to get embeddings from",
             "choices": MODEL_NAMES,
         },
+    )
+    embedding_transform_strategy: str = field(
+        default="repeat",
+        metadata={
+            "help": "Strategy for transforming from sentence embedding into sequence-level input for encoder-decoder",
+            "choices": EMBEDDING_TRANSFORM_STRATEGIES,
+        }
     )
 
     model_type: Optional[str] = field(
