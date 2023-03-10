@@ -24,7 +24,8 @@ def __test_embedding_model(
         fake_data: Dict[str, torch.Tensor],
         embedding_model_name: str,
         no_grad: bool,
-        freeze_strategy: str
+        freeze_strategy: str,
+        embedder_fake_with_zeros: bool,
     ):
     encoder_decoder_model_name = "t5-small"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -64,10 +65,13 @@ def __test_embedding_model(
 
 @pytest.mark.parametrize("model_name", ["dpr", "ance_tele", "gtr_base", "bert"])
 def test_inversion_models(fake_data, model_name):
-    __test_embedding_model(fake_data, model_name, True, "none")
-    __test_embedding_model(fake_data, model_name, False, "none")
+    __test_embedding_model(fake_data, model_name, True, "none", False)
+    __test_embedding_model(fake_data, model_name, False, "none", False)
 
 
 @pytest.mark.parametrize("freeze_strategy", FREEZE_STRATEGIES)
 def test_inversion_model_frozen(fake_data, freeze_strategy):
-    __test_embedding_model(fake_data, "dpr", True, freeze_strategy)
+    __test_embedding_model(fake_data, "dpr", True, freeze_strategy, False)
+
+def test_inversion_model_zeros(fake_data):
+    __test_embedding_model(fake_data, "dpr", True, "none", True)

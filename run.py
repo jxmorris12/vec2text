@@ -122,6 +122,7 @@ def main():
         ),
         num_repeat_tokens=model_args.num_repeat_tokens,
         embedder_no_grad=model_args.embedder_no_grad,
+        embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
         freeze_strategy=model_args.freeze_strategy,
         token_decode_alpha=model_args.token_decode_alpha,
     )

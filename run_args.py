@@ -97,6 +97,10 @@ class ModelArguments:
         default=True,
         metadata={"help": "Whether to disable grads for DPR"}
     )
+    embedder_fake_with_zeros: bool = field(
+        default=False,
+        metadata={"help": "Whether to pass all zeros as embedding (and not use DPR at all)"}
+    )
     freeze_strategy: str = field(
         default="none",
         metadata={

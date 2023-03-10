@@ -47,7 +47,7 @@ class TokenLogitsProcessor(LogitsProcessor):
         #   pad to a length of 2
         num_zeros =  scores.shape[1] - self.token_scores.shape[1]
         # TODO normalize token scores
-        token_scores = torch.cat((self.token_scores, torch.tensor([[0]], device='cuda').repeat(128, 28)), dim=1)
+        token_scores = torch.cat((self.token_scores, torch.tensor([[0]], device=device).repeat(128, 28)), dim=1)
         #  scores.shape - torch.Size([128, 32128])
         #  self.embedded_tokens.shape - torch.Size([30522, 768])
         print('alpha =', self.alpha)
@@ -63,7 +63,9 @@ class InversionModel(nn.Module):
     tokenizer: transformers.PreTrainedTokenizer # encoder_decoder's tokenizer
     embedding_transform: nn.Module
     num_repeat_tokens: int
+    embedder_dim: int
     embedder_no_grad: bool
+    embedder_fake_with_zeros: bool
     embedding_transform_strategy: str
     bottleneck_dim: int
     token_decode_alpha: float # Alpha to apply to token embedding sims during decoding.
@@ -78,6 +80,7 @@ class InversionModel(nn.Module):
             num_repeat_tokens: int,
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
+            embedder_fake_with_zeros: bool = False,
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768,
             token_decode_alpha: float = 0.0,
@@ -88,15 +91,14 @@ class InversionModel(nn.Module):
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
         if isinstance(self.embedder, SentenceTransformer):
-            hidden_size = self.embedder.get_sentence_embedding_dimension()
+            self.embedder_dim = self.embedder.get_sentence_embedding_dimension()
         else:
-            hidden_size = self.embedder.config.hidden_size
-        embedder_dim = hidden_size
+            self.embedder_dim = self.embedder.config.hidden_size
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
-            nn.Linear(embedder_dim, bottleneck_dim),
+            nn.Linear(self.embedder_dim, bottleneck_dim),
             nn.GELU(),
             # TODO dropout here?
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
@@ -105,6 +107,7 @@ class InversionModel(nn.Module):
         self.tokenizer = tokenizer
         self.embedder_tokenizer = embedder_tokenizer
         self.freeze(freeze_strategy=freeze_strategy)
+        self.embedder_fake_with_zeros = embedder_fake_with_zeros
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
         self.embedding_transform_strategy = embedding_transform_strategy
         self.token_decode_alpha = token_decode_alpha
@@ -145,11 +148,16 @@ class InversionModel(nn.Module):
             attention_mask: torch.Tensor,
             token_type_ids: Optional[torch.Tensor] = None, # not used
         ) -> torch.Tensor:
+
+        if self.embedder_fake_with_zeros:
+            batch_size = input_ids.shape[0]
+            zeros = torch.zeros((batch_size, self.embedder_dim), dtype=torch.float32, device=device)
+            return zeros
+
         if self.embedder_no_grad:
             self.embedder.eval()
         if isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying
-
             model_output = self.embedder({ 'input_ids': input_ids, 'attention_mask': attention_mask})
             embeddings = model_output['sentence_embedding']
         else:
