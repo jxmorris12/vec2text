@@ -142,6 +142,10 @@ class InversionModel(nn.Module):
         else:
             raise ValueError(f'invalid freezing strategy {freeze_strategy}')
     
+    @property
+    def embedder_device(self) -> torch.device:
+        return next(self.embedder.parameters()).device
+    
     def call_embedding_model(
             self,
             input_ids: torch.Tensor,
@@ -151,8 +155,7 @@ class InversionModel(nn.Module):
 
         if self.embedder_fake_with_zeros:
             batch_size = input_ids.shape[0]
-            zeros = torch.zeros((batch_size, self.embedder_dim), dtype=torch.float32, device=device)
-            return zeros
+            return torch.zeros((batch_size, self.embedder_dim), dtype=torch.float32, device=self.embedder_device)
 
         if self.embedder_no_grad:
             self.embedder.eval()
@@ -209,7 +212,6 @@ class InversionModel(nn.Module):
                 attention_mask=inputs["embedder_attention_mask"],
             )
             token_scores = initial_embeddings @ self.embedded_tokens.T
-            breakpoint()
             embedded_tokens_logits_processor = TokenLogitsProcessor(
                 token_scores=token_scores,
                 alpha=self.token_decode_alpha,

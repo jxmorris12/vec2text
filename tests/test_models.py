@@ -46,7 +46,8 @@ def __test_embedding_model(
         ),
         num_repeat_tokens=6,
         embedder_no_grad=no_grad,
-        freeze_strategy=freeze_strategy
+        freeze_strategy=freeze_strategy,
+        embedder_fake_with_zeros=embedder_fake_with_zeros,
     )
 
     # test model forward.
