@@ -130,7 +130,6 @@ def main():
     text_column_name = "text"
 
     # Get and process datasets.
-    train_dataset_key = "train"
 
     logger.info("Loading datasets...")
     raw_datasets = datasets.DatasetDict({
@@ -138,7 +137,7 @@ def main():
         "validation": load_dpr_corpus(NQ_DEV),
     })
     
-    column_names = list(raw_datasets[train_dataset_key].features)
+    column_names = list(raw_datasets["train"].features)
 
     tokenized_datasets = raw_datasets.map(
         tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
@@ -148,7 +147,7 @@ def main():
         load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",
     )
-    train_dataset = tokenized_datasets[train_dataset_key]
+    train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
 
     n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())

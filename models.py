@@ -4,7 +4,7 @@ from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
 import transformers
-from transformers.generation_logits_process import LogitsProcessor,LogitsProcessorList
+from transformers import LogitsProcessor, LogitsProcessorList
 
 from utils import embed_all_tokens
 
@@ -38,20 +38,29 @@ def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_
 class TokenLogitsProcessor(LogitsProcessor):
     embedded_tokens: torch.Tensor
     alpha: float
-    def __init__(self, token_scores: torch.Tensor, alpha: float):
+    temperature: float
+    def __init__(self, token_scores: torch.Tensor, alpha: float, temperature: float):
         self.token_scores = token_scores
         self.alpha = alpha
+        self.temperature = temperature
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        batch_size = scores.shape[0]
         scores = scores.log_softmax(dim=-1)
-        #   pad to a length of 2
-        num_zeros =  scores.shape[1] - self.token_scores.shape[1]
-        # TODO normalize token scores
-        token_scores = torch.cat((self.token_scores, torch.tensor([[0]], device=device).repeat(128, 28)), dim=1)
+        # print('alpha =', self.alpha, '/ temp =', self.temperature)
+
+        # Weird detail: have to add zeros for 'fake' tokens that don't receive scores but are in the vocabulary.
+        token_scores = (self.token_scores / self.temperature).log_softmax(dim=-1)
+        num_zeros = scores.shape[1] - self.token_scores.shape[1]
+        if num_zeros > 0:
+            zeros_to_add = torch.tensor([[0]], device=device).repeat(batch_size, num_zeros)
+            token_scores = torch.cat((token_scores, zeros_to_add), dim=1)
         #  scores.shape - torch.Size([128, 32128])
         #  self.embedded_tokens.shape - torch.Size([30522, 768])
-        print('alpha =', self.alpha)
-        return scores + (token_scores * self.alpha)
+        # print('scores[0]', scores[0])
+        # print('token_scores[0]', token_scores[0])
+
+        return (scores * self.alpha) + (token_scores * (1.0 - self.alpha))
 
 
 # TODO: can we make this class a HF pretrained model so it works nicely with
@@ -82,7 +91,7 @@ class InversionModel(nn.Module):
             freeze_strategy: str = "none",
             embedder_fake_with_zeros: bool = False,
             embedding_transform_strategy: str = "repeat",
-            bottleneck_dim: int = 768,
+            bottleneck_dim: int = 768, # 128,
             token_decode_alpha: float = 0.0,
         ):
         super().__init__()
@@ -111,6 +120,7 @@ class InversionModel(nn.Module):
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
         self.embedding_transform_strategy = embedding_transform_strategy
         self.token_decode_alpha = token_decode_alpha
+        # self.token_decode_temperature = 0.1
         if token_decode_alpha > 0:
             assert embedder_tokenizer is not None
             self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
@@ -215,6 +225,7 @@ class InversionModel(nn.Module):
             embedded_tokens_logits_processor = TokenLogitsProcessor(
                 token_scores=token_scores,
                 alpha=self.token_decode_alpha,
+                temperature=self.token_decode_temperature,
             )
             generation_kwargs["logits_processor"] = LogitsProcessorList([
                 embedded_tokens_logits_processor,

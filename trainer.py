@@ -71,7 +71,7 @@ class InversionTrainer(transformers.Trainer):
                 # and θ ≈ 1.2 yields a good balance between truthful generation
                 # and lack of repetition (arxiv.org/abs/1909.05858)
                 "repetition_penalty": 1.2,
-                "num_beams": 4,
+                "num_beams": 1,
                 'do_sample': False,
             }
             with torch.no_grad():
@@ -172,6 +172,15 @@ class InversionTrainer(transformers.Trainer):
         raw_bleu_result = self.metric_bleu.compute(predictions=decoded_preds, references=decoded_labels)
         bleu_result = { "bleu_score": raw_bleu_result["score"]}
         self._log_preds_table(table_key="val_text_preds", decoded_preds=decoded_preds, decoded_labels=decoded_labels)
+
+        print(decoded_preds[0])
+        print(decoded_labels[0])
+        print('\n\n')
+        print(decoded_preds[1])
+        print(decoded_labels[1])
+        print('\n\n')
+        print(decoded_preds[2])
+        print(decoded_labels[2])
 
         # Log table for train data.
         train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=50)

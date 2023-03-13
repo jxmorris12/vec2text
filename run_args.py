@@ -121,7 +121,6 @@ class ModelArguments:
                 "--config_overrides can't be used in combination with --config_name or --model_name_or_path"
             )
 
-
 @dataclass
 class DataTrainingArguments:
     """
@@ -210,6 +209,7 @@ class TrainingArguments(transformers.TrainingArguments):
         default=128, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
     )
 
+
     ##################### Experimental Settings ####################
     exp_name: str = field(
         default="",
@@ -233,7 +233,9 @@ class TrainingArguments(transformers.TrainingArguments):
     # Do evaluation and logging on certain num steps.
     evaluation_strategy: str = "steps"
     logging_strategy: str = "steps"
-    save_strategy: str = "steps"
+    save_strategy: str = "epoch"
+
+    save_total_limit: int = 1 # Maximum number of checkpoints to save.
 
     warmup_steps: int = field(
         default=4000,
@@ -247,7 +249,6 @@ class TrainingArguments(transformers.TrainingArguments):
         default=4000,
         metadata={"help": "Number of steps between eval (will be scaled as if batch size is 32)"}
     )
-    save_steps: int = 10**10 # 5_000
 
     include_inputs_for_metrics: bool = True
 
