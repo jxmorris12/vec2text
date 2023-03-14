@@ -18,8 +18,8 @@ python run.py --per_device_train_batch_size {batch_size} \
 --embedder_fake_with_zeros {embedder_fake_with_zeros} \
 --num_train_epochs 24 \
 --max_eval_samples 500 \
---eval_steps 2000 \
---warmup_steps 16000 \
+--eval_steps 10000 \
+--warmup_steps 200000 \
 --bf16=1 \
 --use_wandb=1
 """
@@ -57,8 +57,8 @@ batch_size = 128
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
 max_seq_length = [8] # , 32, 128]
 
-# embedder_no_grad = [True, False]
-embedder_no_grad = [True]
+# embedder_no_grad = [True]
+embedder_no_grad = [True, False]
 
 # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
 # learning_rates = [5e-4]
@@ -70,7 +70,7 @@ num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 # freeze_strategies = ["decoder", "encoder_and_decoder", "encoder", "none"]
 
-fake_embedding_with_zeros = [True] # embedder_fake_with_zeros
+fake_embedding_with_zeros = [False] # embedder_fake_with_zeros
 
 ACTUALLY_RUN_COMMAND = True
 
