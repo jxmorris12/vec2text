@@ -17,6 +17,7 @@ import torch
 import tqdm
 import transformers
 
+from collator import CustomCollator
 from data_helpers import load_dpr_corpus, NQ_DEV
 from models import (
     InversionModel, 
@@ -31,7 +32,7 @@ num_workers = len(os.sched_getaffinity(0))
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
-def load_model_and_tokenizers(model_name: str, max_seq_length:int) -> Tuple[InversionModel, transformers.AutoTokenizer]:
+def load_model_and_tokenizers(model_name: str, max_seq_length: int) -> Tuple[InversionModel, transformers.AutoTokenizer]:
     embedder, embedder_tokenizer = load_embedder_and_tokenizer(model_name)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "t5-small",
@@ -97,7 +98,7 @@ def parse_args() -> argparse.ArgumentParser:
     parser.add_argument(
         '--batch_size',
         type=int,
-        default=512,
+        default=128,
         help='Inference batch size',
     )
     parser.add_argument(
@@ -114,7 +115,7 @@ def main():
     torch.set_grad_enabled(False)
     
     dir_path = os.path.dirname(os.path.realpath(__file__))
-    filename = f'{args.dataset_name}__{args.model_name}.p'
+    filename = f'{args.dataset_name}__{args.model_name}__{args.max_seq_length}.p'
     out_path = os.path.join(dir_path, os.pardir, 'embeddings', filename)
     out_path = os.path.normpath(out_path)
     print(f'writing embeddings to {out_path}')
@@ -123,27 +124,29 @@ def main():
     model, embedder_tokenizer, tokenizer = load_model_and_tokenizers(
         model_name=args.model_name, max_seq_length=args.max_seq_length,
     )
-    model.embedder.to(device)
+    nq_dev__gtr_base__128_full.txt.to(device)
 
     # dataset
     assert args.dataset_name == "nq_dev"
-    dataset = load_nq_dev(tokenizer, embedder_tokenizer, max_seq_length=args.max_seq_length)[:args.n]
+    dataset = load_nq_dev(tokenizer, embedder_tokenizer, max_seq_length=args.max_seq_length)
+    dataset = dataset.select(range(min(args.n, len(dataset))))
 
-    args.n = min(args.n, len(dataset['embedder_input_ids']))
     print(f'computing {args.n} embeddings...')
 
     # compute embeddings
-    batch_size = args.batch_size
-    i = 0
+    vd = torch.utils.data.DataLoader(
+        dataset,
+        batch_size=args.batch_size,
+        collate_fn=CustomCollator(tokenizer=tokenizer),
+        num_workers=0,
+        pin_memory=True,
+    )
     all_embeddings = []
-    pbar = tqdm.tqdm(desc='getting embeddings for dataset', colour='#A020F0', total=args.n)
-    while i < args.n:
-        input_ids = torch.tensor(dataset['embedder_input_ids'][i:i+batch_size], device=device)
-        attention_mask = torch.tensor(dataset['embedder_attention_mask'][i:i+batch_size], device=device)
+    for batch in tqdm.tqdm(vd, desc='getting embeddings for dataset', colour='#A020F0'):
+        input_ids = batch['embedder_input_ids'].to(device)
+        attention_mask = batch['embedder_attention_mask'].to(device)
         embeddings = emb(model, input_ids, attention_mask)
         all_embeddings.extend(embeddings.cpu())
-        i += batch_size
-        pbar.update(batch_size)
     
     all_embeddings = torch.stack(all_embeddings)
     pickle.dump(all_embeddings, open(out_path, 'wb'))

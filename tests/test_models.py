@@ -5,7 +5,7 @@ import transformers
 import pytest
 
 from models import (
-    load_encoder_decoder, load_embedder_and_tokenizer, InversionModel, FREEZE_STRATEGIES
+    load_encoder_decoder, load_embedder_and_tokenizer, InversionModel, FREEZE_STRATEGIES, MODEL_NAMES
 )
 
 
@@ -64,7 +64,7 @@ def __test_embedding_model(
     )
 
 
-@pytest.mark.parametrize("model_name", ["dpr", "ance_tele", "gtr_base", "bert"])
+@pytest.mark.parametrize("model_name", MODEL_NAMES)
 def test_inversion_models(fake_data, model_name):
     __test_embedding_model(fake_data, model_name, True, "none", False)
     __test_embedding_model(fake_data, model_name, False, "none", False)

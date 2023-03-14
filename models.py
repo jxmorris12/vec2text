@@ -8,7 +8,7 @@ from transformers import LogitsProcessor, LogitsProcessorList
 
 from utils import embed_all_tokens
 
-MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_large", "ance_tele"]
+MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_large", "ance_tele", "dpr_st", "gtr_base_st"]
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
 EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
 
@@ -268,6 +268,10 @@ def load_embedder_and_tokenizer(name: str):
         # model = SentenceTransformer("sentence-transformers/facebook-dpr-question_encoder-multiset-base")
         model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
+    elif name == "dpr_st":
+        # TODO figure out why model w/ sentence transformers gives different results.
+        model = SentenceTransformer("sentence-transformers/facebook-dpr-question_encoder-multiset-base")
+        tokenizer = model.tokenizer
     elif name == "contriever":
         model = transformers.AutoModel.from_pretrained("facebook/contriever")
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
@@ -277,9 +281,10 @@ def load_embedder_and_tokenizer(name: str):
     elif name == "gtr_base":
         model = transformers.AutoModel.from_pretrained("sentence-transformers/gtr-t5-base").encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
+    elif name == "gtr_base_st":
         # TODO figure out why model w/ sentence transformers gives different results.
-        # model = SentenceTransformer("sentence-transformers/gtr-t5-base")
-        # tokenizer = model.tokenizer
+        model = SentenceTransformer("sentence-transformers/gtr-t5-base")
+        tokenizer = model.tokenizer
     elif name == "gtr_large":
         model = SentenceTransformer("sentence-transformers/gtr-t5-large")
         tokenizer = model.tokenizer
