@@ -2,12 +2,10 @@ import pytest
 import shlex
 
 import datasets
-from transformers import AutoTokenizer, HfArgumentParser, set_seed
+import transformers
 
-from collator import CustomCollator
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from run_helpers import trainer_from_args
-from tokenize_data import tokenize_function
 from trainer import InversionTrainer
 
 DEFAULT_ARGS_STR = '--per_device_train_batch_size 32 --max_seq_length 128 --model_name_or_path t5-small --embedding_model_name dpr --num_repeat_tokens 32 --exp_name test-exp-123'
@@ -18,7 +16,7 @@ DEFAULT_ARGS += ['--fp16', '1']
 
 @pytest.fixture
 def trainer() -> InversionTrainer:
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = transformers.HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=DEFAULT_ARGS)
     ########################################################
     training_args.num_train_epochs = 1.0
@@ -29,8 +27,8 @@ def trainer() -> InversionTrainer:
         training_args=training_args
     )
     # make datasets smaller...
-    trainer.train_dataset = eval_dataset.select(range(256))
-    trainer.eval_dataset = eval_dataset.select(range(64))
+    trainer.train_dataset = trainer.train_dataset.select(range(256))
+    trainer.eval_dataset = trainer.eval_dataset.select(range(64))
     ########################################################
     return trainer
 

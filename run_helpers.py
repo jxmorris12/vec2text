@@ -3,11 +3,15 @@ import json
 import logging
 import os
 
+import datasets
 import torch
+import transformers
 from transformers import AutoTokenizer, set_seed
 
+from collator import CustomCollator
 from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
+from tokenize_data import tokenize_function
 from trainer import InversionTrainer
 
 
@@ -92,6 +96,9 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
     else:
         raise ValueError(f'unsupported dataset {data_args.dataset_name}')
 
+    text_column_name = "text"
+    column_names = list(raw_datasets["train"].features)
+    
     tokenized_datasets = raw_datasets.map(
         tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
         batched=True,

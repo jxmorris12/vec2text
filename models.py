@@ -107,6 +107,7 @@ class InversionModel(nn.Module):
             self.embedder_dim = self.embedder.config.hidden_size
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
+        self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
@@ -309,4 +310,4 @@ def load_embedder_and_tokenizer(name: str):
 
 
 def load_encoder_decoder(model_name: str) -> transformers.AutoModelForSeq2SeqLM:
-    return transformers.AutoModelForSeq2
+    return transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name) # for testing

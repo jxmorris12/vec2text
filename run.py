@@ -8,15 +8,9 @@ import datasets
 import torch
 
 import transformers
-from transformers import HfArgumentParser,
-from transformers.testing_utils import CaptureLogger
 from transformers.trainer_utils import get_last_checkpoint
 
-from collator import CustomCollator
-from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
-from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
-from tokenize_data import tokenize_function
 from trainer import InversionTrainer
 
 
@@ -24,7 +18,9 @@ logger = logging.getLogger(__name__)
 
 
 def main():
-    parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
+    parser = transformers.HfArgumentParser(
+        (ModelArguments, DataTrainingArguments, TrainingArguments)
+    )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
 
     # Setup logging
