@@ -74,7 +74,6 @@ def load_nq_dev(
 
 
 def parse_args() -> argparse.ArgumentParser:
-        # Initialize the ArgumentParser object
     parser = argparse.ArgumentParser(description='Get embeddings from a pre-trained model')
     parser.add_argument('--model_name',
         type=str,
@@ -124,7 +123,7 @@ def main():
     model, embedder_tokenizer, tokenizer = load_model_and_tokenizers(
         model_name=args.model_name, max_seq_length=args.max_seq_length,
     )
-    nq_dev__gtr_base__128_full.txt.to(device)
+    model.to(device)
 
     # dataset
     assert args.dataset_name == "nq_dev"

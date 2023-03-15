@@ -66,3 +66,6 @@ def load_dpr_corpus(name: str) -> datasets.Dataset:
         logging.info("Saved DPR dataset %s to path %s", name, dataset_path)
     
     return dataset
+
+def load_luar_reddit() -> datasets.Dataset:
+    return datasets.load_dataset("friendshipkim/reddit_eval_embeddings_luar")

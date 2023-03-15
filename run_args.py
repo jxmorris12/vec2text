@@ -128,7 +128,11 @@ class DataTrainingArguments:
     """
 
     dataset_name: Optional[str] = field(
-        default="BeIR/nq", metadata={"help": "The name of the dataset to use (via the datasets library)."}
+        default="nq",
+        metadata={
+            "choices": ["nq", "luar_reddit"],
+            "help": "The name of the dataset to use (via the datasets library)."
+        },
     )
     dataset_config_name: Optional[str] = field(
         default="corpus", metadata={"help": "The configuration name of the dataset to use (via the datasets library)."}

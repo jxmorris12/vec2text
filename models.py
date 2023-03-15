@@ -70,13 +70,14 @@ class InversionModel(nn.Module):
     embedder_tokenizer: transformers.PreTrainedTokenizer # embedder's tokenizer
     encoder_decoder: transformers.AutoModelForSeq2SeqLM
     tokenizer: transformers.PreTrainedTokenizer # encoder_decoder's tokenizer
-    embedding_transform: nn.Module
-    num_repeat_tokens: int
-    embedder_dim: int
-    embedder_no_grad: bool
-    embedder_fake_with_zeros: bool
-    embedding_transform_strategy: str
-    bottleneck_dim: int
+    embedding_transform: nn.Module # Module that transformers embedder output into encoder-decoder input
+    bottleneck_dim: int # Bottleneck dimension for embedding_transform
+    num_repeat_tokens: int # Sequence length for repeating embedder embedding for encoder-decoder input
+    embedder_dim: int # Hidden dimension of embedding model
+    embedder_no_grad: bool # Disable gradients for embedding model
+    embedder_fake_with_zeros: bool # Whether to just provide zeros as input for encoder-decoder (unconditional)
+    embedding_transform_strategy: str # Way to transform bottleneck embedding into input for encoder-decoder
+    use_frozen_embeddings_as_input: bool # Whether to train on frozen embeddings (usually False)
     token_decode_alpha: float # Alpha to apply to token embedding sims during decoding.
     embedded_tokens: torch.Tensor
 
@@ -90,6 +91,7 @@ class InversionModel(nn.Module):
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
             embedder_fake_with_zeros: bool = False,
+            use_frozen_embeddings_as_input: bool = False,
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: float = 0.0,
@@ -182,8 +184,14 @@ class InversionModel(nn.Module):
             self, 
             embedder_input_ids: torch.Tensor,
             embedder_attention_mask: torch.Tensor,
+            frozen_embeddings: Optional[torch.Tensor] = None,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if self.embedder_no_grad:
+
+        if self.use_frozen_embeddings_as_input:
+            assert frozen_embeddings is not None, "specified to train on frozen embeddings but none were provided"
+            embeddings = frozen_embeddings
+            assert len(embeddings.shape) == 2 # batch by d
+        elif self.embedder_no_grad:
             with torch.no_grad():
                 embeddings = self.call_embedding_model(
                     input_ids=embedder_input_ids,
@@ -232,9 +240,11 @@ class InversionModel(nn.Module):
             ])
             generation_kwargs["renormalize_logits"] = False
             ########################################################################
+        
         inputs_embeds, attention_mask = self.embed(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
+            frozen_embeddings=inputs.get("frozen_embeddings"),
         )
         return self.encoder_decoder.generate(
             inputs_embeds=inputs_embeds,
@@ -248,12 +258,14 @@ class InversionModel(nn.Module):
             embedder_attention_mask: torch.Tensor,
             # embedder_token_type_ids: Optional[torch.Tensor] = None,
             labels: Optional[torch.Tensor] = None,
+            frozen_embeddings: Optional[torch.Tensor] = None,
             **kwargs
         ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask, embedder_token_type_ids
         inputs_embeds, attention_mask = self.embed(
             embedder_input_ids=embedder_input_ids,
             embedder_attention_mask=embedder_attention_mask,
+            frozen_embeddings=frozen_embeddings,
         )
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
@@ -297,4 +309,4 @@ def load_embedder_and_tokenizer(name: str):
 
 
 def load_encoder_decoder(model_name: str) -> transformers.AutoModelForSeq2SeqLM:
-    return transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name) # for testing
+    return transformers.AutoModelForSeq2
