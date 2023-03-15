@@ -12,6 +12,7 @@ from models import MODEL_NAMES, EMBEDDING_TRANSFORM_STRATEGIES, FREEZE_STRATEGIE
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
+DATASET_NAMES = ["nq", "luar_reddit"]
 
 @dataclass
 class ModelArguments:
@@ -130,7 +131,7 @@ class DataTrainingArguments:
     dataset_name: Optional[str] = field(
         default="nq",
         metadata={
-            "choices": ["nq", "luar_reddit"],
+            "choices": DATASET_NAMES,
             "help": "The name of the dataset to use (via the datasets library)."
         },
     )

@@ -9,7 +9,7 @@ import transformers
 from transformers import AutoTokenizer, set_seed
 
 from collator import CustomCollator
-from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
+from data_helpers import load_dpr_corpus, load_luar_reddit, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from tokenize_data import tokenize_function
 from trainer import InversionTrainer
@@ -89,9 +89,10 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
             "validation": load_dpr_corpus(NQ_DEV),
         })
     elif data_args.dataset_name == "luar_reddit":
+        all_luar_datasets = load_luar_reddit()
         raw_datasets = datasets.DatasetDict({
-            "train": None,
-            "validation": None,
+            "train": all_luar_datasets["candidates"],
+            "validation": all_luar_datasets["queries"],
         })
     else:
         raise ValueError(f'unsupported dataset {data_args.dataset_name}')

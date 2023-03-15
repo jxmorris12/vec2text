@@ -4,7 +4,7 @@ import shlex
 import datasets
 import transformers
 
-from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
+from run_args import ModelArguments, DataTrainingArguments, TrainingArguments, DATASET_NAMES
 from run_helpers import trainer_from_args
 from trainer import InversionTrainer
 
@@ -14,10 +14,10 @@ DEFAULT_ARGS = shlex.split(DEFAULT_ARGS_STR)
 DEFAULT_ARGS += ['--use_wandb', '0']
 DEFAULT_ARGS += ['--fp16', '1']
 
-@pytest.fixture
-def trainer() -> InversionTrainer:
+def load_trainer(dataset_name: str) -> InversionTrainer:
     parser = transformers.HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=DEFAULT_ARGS)
+    data_args.dataset_name = dataset_name
     ########################################################
     training_args.num_train_epochs = 1.0
     training_args.eval_steps = 4
@@ -32,7 +32,10 @@ def trainer() -> InversionTrainer:
     ########################################################
     return trainer
 
-def test_trainer(trainer):
+
+@pytest.mark.parametrize("dataset_name", DATASET_NAMES)
+def test_trainer(dataset_name):
+    trainer = load_trainer(dataset_name=dataset_name)
     train_result = trainer.train(resume_from_checkpoint=None)
     metrics = train_result.metrics
     print("metrics:", metrics)
