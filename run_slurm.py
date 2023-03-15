@@ -9,7 +9,7 @@ python run.py --per_device_train_batch_size {batch_size} \
 --per_device_eval_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
 --model_name_or_path {model_name} \
---embedding_model_name {emb_model_name} \
+--embedder_model_name {emb_model_name} \
 --num_repeat_tokens {num_repeat_tokens} \
 --embedder_no_grad {embedder_no_grad} \
 --exp_group_name {exp_group_name} \

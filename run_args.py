@@ -31,7 +31,7 @@ class ModelArguments:
             )
         },
     )
-    embedding_model_name: Optional[str] = field(
+    embedder_model_name: Optional[str] = field(
         ###
         ## huggingface.co/facebook/dpr-ctx_encoder-single-nq-base
         ###
@@ -101,6 +101,10 @@ class ModelArguments:
     embedder_fake_with_zeros: bool = field(
         default=False,
         metadata={"help": "Whether to pass all zeros as embedding (and not use DPR at all)"}
+    )
+    use_frozen_embeddings_as_input: bool = field(
+        default=False,
+        metadata={"help": "Whether to pass an 'embedding' column and train on that instead of generating embeddings on-the-fly"}
     )
     freeze_strategy: str = field(
         default="none",

@@ -11,6 +11,7 @@ import transformers
 from transformers.trainer_utils import get_last_checkpoint
 
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
+from run_helpers import md5_hash_kwargs, trainer_from_args
 from trainer import InversionTrainer
 
 
@@ -22,6 +23,12 @@ def main():
         (ModelArguments, DataTrainingArguments, TrainingArguments)
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    
+    # Set up output_dir and wandb.
+    kwargs_hash = md5_hash_kwargs(**vars(model_args), **vars(data_args), **vars(training_args))
+    training_args.output_dir = os.path.join(
+        training_args.output_dir, kwargs_hash        
+    )
 
     # Setup logging
     logging.basicConfig(

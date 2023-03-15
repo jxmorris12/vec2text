@@ -28,7 +28,7 @@ def md5_hash_kwargs(**kwargs) -> str:
 def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
     set_seed(training_args.seed)
 
-    name_args = (training_args.exp_group_name, training_args.exp_name, model_args.model_name_or_path, model_args.embedding_model_name)
+    name_args = (training_args.exp_group_name, training_args.exp_name, model_args.model_name_or_path, model_args.embedder_model_name)
     name_args = [n for n in name_args if len(n)]
     exp_name = '__'.join(name_args)
     
@@ -64,7 +64,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         max_length=model_args.max_seq_length,
     )
     embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-        name=model_args.embedding_model_name
+        name=model_args.embedder_model_name
     )
     model = InversionModel(
         embedder=embedder,
@@ -76,6 +76,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         num_repeat_tokens=model_args.num_repeat_tokens,
         embedder_no_grad=model_args.embedder_no_grad,
         embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
+        use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
         freeze_strategy=model_args.freeze_strategy,
         token_decode_alpha=model_args.token_decode_alpha,
     )
@@ -99,6 +100,8 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
 
     text_column_name = "text"
     column_names = list(raw_datasets["train"].features)
+    ALLOWED_COLUMN_NAMES = { "frozen_embeddings" } # "document_id"}
+    column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
     
     tokenized_datasets = raw_datasets.map(
         tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),

@@ -69,4 +69,7 @@ def load_dpr_corpus(name: str) -> datasets.Dataset:
 
 def load_luar_reddit() -> datasets.Dataset:
     d = datasets.load_dataset("friendshipkim/reddit_eval_embeddings_luar")
-    return d.rename_column('full_text', 'text')
+    d = d.rename_column('full_text', 'text')
+    d = d.rename_column('embedding', 'frozen_embeddings')
+    return d
+

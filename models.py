@@ -8,7 +8,7 @@ from transformers import LogitsProcessor, LogitsProcessorList
 
 from utils import embed_all_tokens
 
-MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_large", "ance_tele", "dpr_st", "gtr_base_st"]
+MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_large", "ance_tele", "dpr_st", "gtr_base_st", "paraphrase-distilroberta"]
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
 EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
 
@@ -111,8 +111,7 @@ class InversionModel(nn.Module):
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.GELU(),
-            # TODO dropout here?
+            nn.GELU(),   # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
         ######################################################
@@ -192,6 +191,7 @@ class InversionModel(nn.Module):
             assert frozen_embeddings is not None, "specified to train on frozen embeddings but none were provided"
             embeddings = frozen_embeddings
             assert len(embeddings.shape) == 2 # batch by d
+            print('using frozen..')
         elif self.embedder_no_grad:
             with torch.no_grad():
                 embeddings = self.call_embedding_model(
@@ -304,6 +304,9 @@ def load_embedder_and_tokenizer(name: str):
     elif name == "ance_tele":
         model = transformers.AutoModel.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
         tokenizer = transformers.AutoTokenizer.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
+    elif name == "paraphrase-distilroberta":
+        model = transformers.AutoModel.from_pretrained("sentence-transformers/paraphrase-distilroberta-base-v1")
+        tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-distilroberta-base-v1")
     else:
         raise ValueError(f'unknown embedder {name}')
     return model, tokenizer
