@@ -101,10 +101,16 @@ class InversionModel(nn.Module):
         self.encoder_decoder = encoder_decoder
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
+        # if use_frozen_embeddings_as_input:
+            # pass
+            # self.embedder_dim = 512
+            # temp hack to set fixed sentence embedding size to 512.
+            # TODO do this in a smarter way (figure it out from data? or make it an arg.)
         if isinstance(self.embedder, SentenceTransformer):
             self.embedder_dim = self.embedder.get_sentence_embedding_dimension()
         else:
             self.embedder_dim = self.embedder.config.hidden_size
+            
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
@@ -191,7 +197,6 @@ class InversionModel(nn.Module):
             assert frozen_embeddings is not None, "specified to train on frozen embeddings but none were provided"
             embeddings = frozen_embeddings
             assert len(embeddings.shape) == 2 # batch by d
-            print('using frozen..')
         elif self.embedder_no_grad:
             with torch.no_grad():
                 embeddings = self.call_embedding_model(
@@ -309,6 +314,8 @@ def load_embedder_and_tokenizer(name: str):
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-distilroberta-base-v1")
     else:
         raise ValueError(f'unknown embedder {name}')
+    
+    torch.compile(model)
     return model, tokenizer
 
 
