@@ -8,7 +8,7 @@ from transformers import LogitsProcessor, LogitsProcessorList
 
 from utils import embed_all_tokens
 
-MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_large", "ance_tele", "dpr_st", "gtr_base_st", "paraphrase-distilroberta"]
+MODEL_NAMES =  ["bert", "contriever", "dpr", "gtr_base", "gtr_base__random_init", "gtr_large", "ance_tele", "dpr_st", "gtr_base_st", "paraphrase-distilroberta"]
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
 EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
 
@@ -299,6 +299,10 @@ def load_embedder_and_tokenizer(name: str):
     elif name == "gtr_base":
         model = transformers.AutoModel.from_pretrained("sentence-transformers/gtr-t5-base").encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
+    elif name == "gtr_base__random_init":
+        config = transformers.AutoConfig.from_pretrained("sentence-transformers/gtr-t5-base")
+        model = transformers.AutoModel.from_config(config).encoder
+        tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
     elif name == "gtr_base_st":
         # TODO figure out why model w/ sentence transformers gives different results.
         model = SentenceTransformer("sentence-transformers/gtr-t5-base")
@@ -315,7 +319,7 @@ def load_embedder_and_tokenizer(name: str):
     else:
         raise ValueError(f'unknown embedder {name}')
     
-    torch.compile(model)
+    model = torch.compile(model)
     return model, tokenizer
 
 

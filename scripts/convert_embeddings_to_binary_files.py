@@ -1,9 +1,10 @@
 """ Reads embeddings from a file, converts to binary and writes binary strings to a text file in a folder.
 
-Written: 2023-03-06
+Written: 2023-03-14
 """
 
 import argparse
+import binascii
 import os
 import pickle
 import struct
@@ -54,17 +55,26 @@ def main():
 
     out_folder = args.embeddings_file.rstrip('.p')
     out_file_full = open(args.embeddings_file.rstrip('.p') + '_full.txt', 'w')
+    out_file_char = open(args.embeddings_file.rstrip('.p') + '_char.txt', 'wb')
     print(f'writing to folder {out_folder}')
-    os.makedirs(out_folder, exist_ok=False)
+    os.makedirs(out_folder, exist_ok=True)
 
     for i in tqdm.trange(len(b), desc='writing embeddings to disk'):
         emb_chars = map(str, b[i].flatten().astype(int).tolist())
         emb_str = ''.join(emb_chars)
+        # binary to hex char: stackoverflow.com/a/7397689/2287177
+        emb_str_int = int(emb_str, 2)
+        emb_str_total_bytes = (emb_str_int.bit_length() + 7) // 8
+        emb_str_bytes = emb_str_int.to_bytes(length=emb_str_total_bytes, byteorder="big")
+        # 
         open(os.path.join(out_folder, f'{i}.txt'), 'w').write(emb_str)
         out_file_full.write(emb_str + '\n')
+        out_file_char.write(emb_str_bytes)
+        out_file_char.write('\n'.encode())
 
         if i == 0:
             tqdm.tqdm.write(f'sample embedding (256 chars): {emb_str[:256]}')
+            # todo: write embedding as hex
     out_file_full.close()
     
     print(f'wrote {len(b)} binary embeddings to {out_folder}. :)')
