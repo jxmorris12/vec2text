@@ -17,10 +17,13 @@ python run.py --per_device_train_batch_size {batch_size} \
 --freeze_strategy {freeze_strategy} \
 --embedder_fake_with_zeros {embedder_fake_with_zeros} \
 --use_frozen_embeddings_as_input False \
---num_train_epochs 24 \
+--encoder_dropout_disabled False \
+--decoder_dropout_disabled False \
+--use_embedding_batch_norm False \
+--num_train_epochs 6 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
---warmup_steps 100000 \
+--warmup_steps 20000 \
 --bf16=1 \
 --use_wandb=1
 """
@@ -36,8 +39,8 @@ models = [
 
 # emb_models = ['dpr', 'ance_tele']
 # emb_models = ['dpr']
-emb_models = ['gtr_base__random_init']
-# emb_models = ["gtr_base", "gtr_large"]
+# emb_models = ['gtr_base__random_init']
+emb_models = ["gtr_base"]
 
 
 ##########################################
@@ -51,21 +54,23 @@ emb_models = ['gtr_base__random_init']
 # exp_group_name = 'mar9-freeze'
 # exp_group_name = 'mar13-freeze-2'
 # exp_group_name = 'mar17-baselines'
-exp_group_name = 'mar19-random'
+# exp_group_name = 'mar19-random'
+exp_group_name = 'mar21-bn-drop'
 ##########################################
 
 batch_size = 128
 # batch_size = 32
 
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
-max_seq_length = [8, 32, 128]
+# max_seq_length = [8, 32, 128]
+max_seq_length = [32]
 
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
 
 # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
 # learning_rates = [5e-4]
-learning_rates = [3e-4]
+learning_rates = [5e-3]
 
 num_repeat_tokens = [16]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]

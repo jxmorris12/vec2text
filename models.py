@@ -101,7 +101,7 @@ class InversionModel(nn.Module):
             encoder_dropout_disabled: bool = False,
             decoder_dropout_disabled: bool = False,
             use_frozen_embeddings_as_input: bool = False,
-            use_embedding_batch_norm: bool = True,
+            use_embedding_batch_norm: bool = False,
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: float = 0.0,
@@ -131,6 +131,7 @@ class InversionModel(nn.Module):
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
         if use_embedding_batch_norm:
+            print('Embedding batch norm enabled')
             self.embedding_batch_norm = torch.nn.BatchNorm1d(num_features=self.embedder_dim)
         else:
             self.embedding_batch_norm = None
