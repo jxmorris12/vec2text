@@ -27,6 +27,16 @@ class InversionTrainer(transformers.Trainer):
         self.metric_bleu = evaluate.load("sacrebleu")
         self.compute_metrics = self.compute_metrics_func
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
+        self.gen_kwargs = {
+                "early_stopping": True,
+                # "no_repeat_ngram_size": 3,
+                # From CtRL paper: We find that using a greedy sampling 
+                # and θ ≈ 1.2 yields a good balance between truthful generation
+                # and lack of repetition (arxiv.org/abs/1909.05858)
+                "repetition_penalty": 1.2,
+                "num_beams": 1,
+                'do_sample': False,
+            }
     
     def _log_preds_table(self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]):
         if not self.args.use_wandb:
@@ -63,21 +73,10 @@ class InversionTrainer(transformers.Trainer):
         for step, inputs in enumerate(tqdm.tqdm(eval_dataloader, desc='generating from val', leave=False)):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k,v in inputs.items()}
-            gen_kwargs = {
-                'max_length': inputs['input_ids'].shape[1],
-                "early_stopping": True,
-                # "no_repeat_ngram_size": 3,
-                # From CtRL paper: We find that using a greedy sampling 
-                # and θ ≈ 1.2 yields a good balance between truthful generation
-                # and lack of repetition (arxiv.org/abs/1909.05858)
-                "repetition_penalty": 1.2,
-                "num_beams": 1,
-                'do_sample': False,
-            }
             with torch.no_grad():
                 generated_text = self.model.generate(
                     inputs=inputs_cuda,
-                    generation_kwargs=gen_kwargs
+                    generation_kwargs=self.gen_kwargs
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs['input_ids'].cpu().tolist())
@@ -103,15 +102,10 @@ class InversionTrainer(transformers.Trainer):
         for step, inputs in enumerate(tqdm.tqdm(train_dataloader, desc='generating from train', leave=False)):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k,v in inputs.items()}
-            gen_kwargs = {
-                'max_length': inputs['input_ids'].shape[1],
-                'num_beams': 1,
-                'do_sample': False,
-            }
             with torch.no_grad():
                 generated_text = self.model.generate(
                     inputs=inputs_cuda,
-                    generation_kwargs=gen_kwargs
+                    generation_kwargs=self.gen_kwargs
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs['input_ids'].cpu().tolist())

@@ -48,6 +48,18 @@ class ModelArguments:
             "choices": EMBEDDING_TRANSFORM_STRATEGIES,
         }
     )
+    use_embedding_batch_norm: bool = field(
+        default=False,
+        metadata={"help": "Whether to include a batchnorm layer after the embeddings input"},
+    )
+    encoder_dropout_disabled: bool = field(
+        default=False,
+        metadata={"help": "Disable dropout on T5 encoder"}
+    )
+    decoder_dropout_disabled: bool = field(
+        default=False,
+        metadata={"help": "Disable dropout on T5 decoder"}
+    )
 
     model_type: Optional[str] = field(
         default=None,

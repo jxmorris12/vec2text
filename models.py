@@ -16,6 +16,12 @@ EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
+def disable_dropout(model: nn.Module):
+    dropout_modules = [m for m in model.modules() if isinstance(m, nn.Dropout)]
+    for m in dropout_modules: m.p = 0.0
+    print(f'Disabled {len(dropout_modules)} dropout modules from model type {type(model)}')
+
+
 def freeze_params(model: nn.Module):
     total_num_params = 0
     for name, params in model.named_parameters():
@@ -79,7 +85,8 @@ class InversionModel(nn.Module):
     embedding_transform_strategy: str # Way to transform bottleneck embedding into input for encoder-decoder
     use_frozen_embeddings_as_input: bool # Whether to train on frozen embeddings (usually False)
     token_decode_alpha: float # Alpha to apply to token embedding sims during decoding.
-    embedded_tokens: torch.Tensor
+    embedding_batch_norm: Optional[nn.Module] # Optionally apply batchnorm to batches of embeddings
+    embedded_tokens: torch.Tensor # used for decoding
 
     def __init__(
             self,
@@ -91,7 +98,10 @@ class InversionModel(nn.Module):
             embedder_no_grad: bool,
             freeze_strategy: str = "none",
             embedder_fake_with_zeros: bool = False,
+            encoder_dropout_disabled: bool = False,
+            decoder_dropout_disabled: bool = False,
             use_frozen_embeddings_as_input: bool = False,
+            use_embedding_batch_norm: bool = True,
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: float = 0.0,
@@ -120,6 +130,15 @@ class InversionModel(nn.Module):
             nn.GELU(),   # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
+        if use_embedding_batch_norm:
+            self.embedding_batch_norm = torch.nn.BatchNorm1d(num_features=self.embedder_dim)
+        else:
+            self.embedding_batch_norm = None
+        if encoder_dropout_disabled:
+            disable_dropout(self.encoder_decoder.encoder)
+        if decoder_dropout_disabled:
+            disable_dropout(self.encoder_decoder.decoder)
+            disable_dropout(self.encoder_decoder.lm_head)
         ######################################################
         self.tokenizer = tokenizer
         self.embedder_tokenizer = embedder_tokenizer
@@ -209,6 +228,9 @@ class InversionModel(nn.Module):
                 attention_mask=embedder_attention_mask,
             )
         
+        if self.embedding_batch_norm:
+            embeddings = self.embedding_batch_norm(embeddings)
+        
         if self.embedding_transform_strategy == "repeat":
             embeddings = self.embedding_transform(embeddings)
             batch_size = embedder_input_ids.shape[0]
@@ -227,6 +249,8 @@ class InversionModel(nn.Module):
             inputs: Dict[str, torch.Tensor],
             generation_kwargs: Dict[str, torch.Tensor]
         ) -> torch.Tensor:
+
+        generation_kwargs['max_length'] = inputs.get('input_ids', inputs['embedder_input_ids']).shape[1]
 
         if self.token_decode_alpha > 0:
             ########################################################################

@@ -11,7 +11,7 @@ from models import (
 
 @pytest.fixture
 def fake_data() -> Dict[str, torch.Tensor]:
-    input_ids = torch.tensor([[1, 2, 3, 4]], dtype=torch.long)
+    input_ids = torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=torch.long)
     attention_mask = torch.ones_like(input_ids)
     return {
         'embedder_input_ids': input_ids,
@@ -27,6 +27,7 @@ def __test_embedding_model(
         freeze_strategy: str,
         embedder_fake_with_zeros: bool,
         use_frozen_embeddings_as_input: bool,
+        dropout_disabled: bool,
     ):
     encoder_decoder_model_name = "t5-small"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -50,6 +51,8 @@ def __test_embedding_model(
         freeze_strategy=freeze_strategy,
         embedder_fake_with_zeros=embedder_fake_with_zeros,
         use_frozen_embeddings_as_input=use_frozen_embeddings_as_input,
+        encoder_dropout_disabled=dropout_disabled,
+        decoder_dropout_disabled=dropout_disabled,
     )
 
     # test model forward.
@@ -68,22 +71,26 @@ def __test_embedding_model(
 
 @pytest.mark.parametrize("model_name", MODEL_NAMES)
 def test_inversion_models(fake_data, model_name):
-    __test_embedding_model(fake_data, model_name, True, "none", False, False)
-    __test_embedding_model(fake_data, model_name, False, "none", False, False)
+    # test with no_grad
+    __test_embedding_model(fake_data, model_name, True, "none", False, False, False)
+    # test with grad
+    __test_embedding_model(fake_data, model_name, False, "none", False, False, False)
+    # test with dropout
+    __test_embedding_model(fake_data, model_name, False, "none", False, False, True)
 
 
 @pytest.mark.parametrize("freeze_strategy", FREEZE_STRATEGIES)
 def test_inversion_model_frozen(fake_data, freeze_strategy):
-    __test_embedding_model(fake_data, "dpr", True, freeze_strategy, False, False)
+    __test_embedding_model(fake_data, "dpr", True, freeze_strategy, False, False, False)
 
 
 def test_inversion_model_zeros(fake_data):
-    __test_embedding_model(fake_data, "dpr", True, "none", True, False)
+    __test_embedding_model(fake_data, "dpr", True, "none", True, False, False)
 
 
 def test_inversion_model_frozen_embeddings_input(fake_data):
     with pytest.raises(AssertionError):
-        __test_embedding_model(fake_data, "gtr_base", True, "none", False, True)
+        __test_embedding_model(fake_data, "gtr_base", True, "none", False, True, False)
     
     fake_data["frozen_embeddings"] = torch.randn((1, 768), dtype=torch.float32)
-    __test_embedding_model(fake_data, "gtr_base", True, "none", False, True)
+    __test_embedding_model(fake_data, "gtr_base", True, "none", False, True, False)

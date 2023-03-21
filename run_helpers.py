@@ -77,6 +77,9 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         embedder_no_grad=model_args.embedder_no_grad,
         embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
         use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
+        use_embedding_batch_norm=model_args.use_embedding_batch_norm,
+        encoder_dropout_disabled=model_args.encoder_dropout_disabled,
+        decoder_dropout_disabled=model_args.decoder_dropout_disabled,
         freeze_strategy=model_args.freeze_strategy,
         token_decode_alpha=model_args.token_decode_alpha,
     )
