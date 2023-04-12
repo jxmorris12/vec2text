@@ -71,10 +71,15 @@ class TokenLogitsProcessor(LogitsProcessor):
 
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
+# TODO: Need config to subclass transformers.PreTrainedModel.
 class InversionModel(nn.Module):
+    """A class of model that conditions on embeddings from a pre-trained sentence embedding model
+    to decode text autoregressively.
+    """
     embedder: nn.Module
     embedder_tokenizer: transformers.PreTrainedTokenizer # embedder's tokenizer
     encoder_decoder: transformers.AutoModelForSeq2SeqLM
+    encoder_decoder_lora: bool # Whether to use LoRA for the encoder-decoder model
     tokenizer: transformers.PreTrainedTokenizer # encoder_decoder's tokenizer
     embedding_transform: nn.Module # Module that transformers embedder output into encoder-decoder input
     bottleneck_dim: int # Bottleneck dimension for embedding_transform
@@ -102,6 +107,7 @@ class InversionModel(nn.Module):
             decoder_dropout_disabled: bool = False,
             use_frozen_embeddings_as_input: bool = False,
             use_embedding_batch_norm: bool = False,
+            encoder_decoder_lora: bool = False, # TODO: thoroughly test this option.
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: float = 0.0,
@@ -109,6 +115,13 @@ class InversionModel(nn.Module):
         super().__init__()
         self.embedder = embedder
         self.encoder_decoder = encoder_decoder
+        if encoder_decoder_lora:
+            from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+            peft_config = LoraConfig(
+                task_type=TaskType.SEQ_2_SEQ_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1
+            )
+            print("Initializing LORA model with config:", peft_config)
+            self.encoder_decoder = get_peft_model(self.encoder_decoder, peft_config)
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
         # if use_frozen_embeddings_as_input:
@@ -307,6 +320,10 @@ class InversionModel(nn.Module):
 
 def load_embedder_and_tokenizer(name: str):
     # TODO make abstract/argparse for it etc.
+    model_kwargs = {
+        "low_cpu_mem_usage": True,
+    }
+
     if name == "dpr":
         # model = SentenceTransformer("sentence-transformers/facebook-dpr-question_encoder-multiset-base")
         model = transformers.DPRContextEncoder.from_pretrained("facebook/dpr-ctx_encoder-single-nq-base")
@@ -316,17 +333,17 @@ def load_embedder_and_tokenizer(name: str):
         model = SentenceTransformer("sentence-transformers/facebook-dpr-question_encoder-multiset-base")
         tokenizer = model.tokenizer
     elif name == "contriever":
-        model = transformers.AutoModel.from_pretrained("facebook/contriever")
+        model = transformers.AutoModel.from_pretrained("facebook/contriever", **model_kwargs)
         tokenizer = transformers.AutoTokenizer.from_pretrained("facebook/contriever")
     elif name == "bert":
-        model = transformers.AutoModel.from_pretrained("bert-base-uncased")
+        model = transformers.AutoModel.from_pretrained("bert-base-uncased", **model_kwargs)
         tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
     elif name == "gtr_base":
-        model = transformers.AutoModel.from_pretrained("sentence-transformers/gtr-t5-base").encoder
+        model = transformers.AutoModel.from_pretrained("sentence-transformers/gtr-t5-base", **model_kwargs).encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
     elif name == "gtr_base__random_init":
         config = transformers.AutoConfig.from_pretrained("sentence-transformers/gtr-t5-base")
-        model = transformers.AutoModel.from_config(config).encoder
+        model = transformers.AutoModel.from_config(config, **model_kwargs).encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
     elif name == "gtr_base_st":
         # TODO figure out why model w/ sentence transformers gives different results.
@@ -336,17 +353,40 @@ def load_embedder_and_tokenizer(name: str):
         model = SentenceTransformer("sentence-transformers/gtr-t5-large")
         tokenizer = model.tokenizer
     elif name == "ance_tele":
-        model = transformers.AutoModel.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
+        model = transformers.AutoModel.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder", **model_kwargs)
         tokenizer = transformers.AutoTokenizer.from_pretrained("OpenMatch/ance-tele_nq_psg-encoder")
     elif name == "paraphrase-distilroberta":
-        model = transformers.AutoModel.from_pretrained("sentence-transformers/paraphrase-distilroberta-base-v1")
+        model = transformers.AutoModel.from_pretrained("sentence-transformers/paraphrase-distilroberta-base-v1", **model_kwargs)
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/paraphrase-distilroberta-base-v1")
     else:
         raise ValueError(f'unknown embedder {name}')
     
     model = torch.compile(model)
+    
     return model, tokenizer
 
 
+class FutureEmbeddingPredictor(nn.Module):
+    """Given an embedding prefix, predicts the final embedding of the completion
+    of that prefix.
+    """
+    embedder: nn.Module # embeds a prefix
+    encoder: nn.Module # encodes prefix, outputs encoding
+    mlp: nn.Module # maps encoding to 
+    def __init__(self, embedder, encoder):
+        self.embedder = embedder
+        self.encoder = encdoer
+        embedder_hidden_size = self.embedder.config.hidden_size
+        encoder_hidden_size = self.encoder.config.hidden_size
+        self.mlp = nn.Sequential(
+            nn.Linear(encoder_hidden_size, encoder_hidden_size),
+            nn.GELU(),
+            nn.Linear(encoder_hidden_size, embedder_hidden_size)
+        )
+
+
 def load_encoder_decoder(model_name: str) -> transformers.AutoModelForSeq2SeqLM:
-    return transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name) # for testing
+    model_kwargs = {
+        "low_cpu_mem_usage": True,
+    }
+    return transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name, **model_kwargs)

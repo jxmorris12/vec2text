@@ -1,6 +1,7 @@
 datasets
 evaluate
 sacrebleu
+sentence_transformers
 tokenizers
 tqdm
 transformers

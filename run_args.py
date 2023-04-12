@@ -3,6 +3,7 @@ from typing import Optional
 from dataclasses import dataclass, field
 import os
 
+import torch
 import transformers
 from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
 
@@ -229,7 +230,7 @@ class TrainingArguments(transformers.TrainingArguments):
     per_device_train_batch_size: int = field(
         default=128, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
     )
-
+    # torch_compile: bool = True # for torch 2
 
     ##################### Experimental Settings ####################
     exp_name: str = field(
@@ -274,10 +275,10 @@ class TrainingArguments(transformers.TrainingArguments):
     include_inputs_for_metrics: bool = True
 
     def __post_init__(self):
-        self.report_to = ["wandb"] if (self.use_wandb) else []
+        self.report_to = ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         # self.dataloader_num_workers = 0
         self.dataloader_pin_memory = True
-        self.dataloader_num_workers = len(os.sched_getaffinity(0))
+        self.dataloader_num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
         print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")
 
         self.dataloader_drop_last = True

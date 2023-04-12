@@ -38,7 +38,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         training_args.output_dir, kwargs_hash        
     )
 
-    if training_args.use_wandb:
+    if training_args.use_wandb and (training_args.local_rank <= 0) and (int(os.environ.get("LOCAL_RANK", 0)) <= 0):
         import wandb
 
         wandb.init(

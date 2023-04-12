@@ -23,8 +23,8 @@ python run.py --per_device_train_batch_size {batch_size} \
 --num_train_epochs 6 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
---warmup_steps 20000 \
---bf16=1 \
+--warmup_steps 50000 \
+--bf16=0 \
 --use_wandb=1
 """
 
@@ -70,7 +70,7 @@ embedder_no_grad = [True]
 
 # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
 # learning_rates = [5e-4]
-learning_rates = [5e-3]
+learning_rates = [2e-3]
 
 num_repeat_tokens = [16]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]

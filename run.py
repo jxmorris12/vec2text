@@ -15,6 +15,9 @@ from run_helpers import md5_hash_kwargs, trainer_from_args
 from trainer import InversionTrainer
 
 
+os.environ["WANDB__SERVICE_WAIT"] = "300"
+os.environ["_WANDB_STARTUP_DEBUG"] = "true"
+
 logger = logging.getLogger(__name__)
 
 
