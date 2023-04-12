@@ -21,10 +21,8 @@ transformers.logging.set_verbosity_error()
 
 #############################################################################
 
-WANDB_ARGS_STR = '--per_device_train_batch_size 128 --per_device_eval_batch_size 128 --max_seq_length 128 --model_name_or_path t5-base --embedder_model_name gtr_base --num_repeat_tokens 16 --embedder_no_grad True --exp_group_name mar17-baselines --learning_rate 0.0003 --freeze_strategy none --embedder_fake_with_zeros False --use_frozen_embeddings_as_input False --num_train_epochs 24 --max_eval_samples 500 --eval_steps 25000 --warmup_steps 100000 --bf16=1 --use_wandb=1'
-args = shlex.split(WANDB_ARGS_STR)
-
-def load_inversion_model_and_trainer(checkpoint_folder: str) -> Tuple[InversionModel, InversionTrainer]:
+def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> Tuple[InversionModel, InversionTrainer]:
+    args = shlex.split(args_str)
     checkpoint = get_last_checkpoint(checkpoint_folder) # a checkpoint
     print("[0] Loading model from checkpoint:", checkpoint)
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
@@ -32,9 +30,9 @@ def load_inversion_model_and_trainer(checkpoint_folder: str) -> Tuple[InversionM
 
     training_args.dataloader_num_workers = 0 # no multiprocesisng :)
 
-    checkpoint = '/home/jxm3/research/retrieval/inversion/saves/c9a30cba01655d513e46040f949f6da7'
     training_args = torch.load(os.path.join(checkpoint, 'training_args.bin'))
     training_args.use_wandb = False
+    training_args.report_to = []
 
     set_seed(training_args.seed)
 
@@ -65,6 +63,7 @@ def load_inversion_model_and_trainer(checkpoint_folder: str) -> Tuple[InversionM
         decoder_dropout_disabled=model_args.decoder_dropout_disabled,
         freeze_strategy=model_args.freeze_strategy,
         token_decode_alpha=model_args.token_decode_alpha,
+        bottleneck_dim=768,
     )
     model._keys_to_ignore_on_save = []
 
@@ -106,11 +105,12 @@ def load_inversion_model_and_trainer(checkpoint_folder: str) -> Tuple[InversionM
         tokenizer=tokenizer,
         data_collator=CustomCollator(tokenizer=tokenizer),
     )
-
+    # filter out the stupid WandbCallback since we're just evaluating
+    trainer.callback_handler.callbacks = [c for c in trainer.callback_handler.callbacks if not isinstance(c, transformers.integrations.WandbCallback)]
     print("[4] getting ckpnt")
     # *** Evaluation ***
 
-    print("[5] loading ckpt")
+    print(f"[5] loading ckpt {checkpoint}")
     trainer._load_from_checkpoint(checkpoint)
     return trainer
 

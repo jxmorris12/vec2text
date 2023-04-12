@@ -51,4 +51,6 @@ def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokeniz
     all_token_embeddings = torch.stack(all_token_embeddings)
     print('all_token_embeddings.shape:', all_token_embeddings.shape)
     assert all_token_embeddings.shape == (tokenizer.vocab_size, 768)
+
+    all_token_embeddings /= all_token_embeddings.norm(p=2, dim=1, keepdim=True)
     return all_token_embeddings

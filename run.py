@@ -33,7 +33,7 @@ def main():
         training_args.output_dir, kwargs_hash        
     )
 
-    # Setup logging
+    # Set up logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
@@ -90,6 +90,12 @@ def main():
             checkpoint = training_args.resume_from_checkpoint
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
+
+        # Save model_args and data_args before training. Trainer will save training_args.
+        torch.save(data_args, os.path.join(training_args.output_dir, 'data_args.bin'))
+        torch.save(model_args, os.path.join(training_args.output_dir, 'model_args.bin'))
+
+        # train.
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 

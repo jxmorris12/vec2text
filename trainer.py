@@ -21,9 +21,7 @@ def preprocess_logits_for_metrics(logits, labels):
 class InversionTrainer(transformers.Trainer):
     def __init__(
             self, *args, **kwargs):
-        print(">> Inversion Trainer calling super()")
         super().__init__(*args, **kwargs)
-        print(">> Initializing inversion trainer...")
         ###################################################### 
         self.metric_accuracy = evaluate.load("accuracy")
         self.metric_bleu = evaluate.load("sacrebleu")

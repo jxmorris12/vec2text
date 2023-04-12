@@ -109,7 +109,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
     tokenized_datasets = raw_datasets.map(
         tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
         batched=True,
-        num_proc=training_args.dataloader_num_workers,
+        # num_proc=training_args.dataloader_num_workers,
         remove_columns=column_names,
         load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",

@@ -41,31 +41,46 @@ def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_
     return pooled_outputs
 
 
+def max_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
+    if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
+        return outputs.pooler_output
+    B, S, D = outputs.last_hidden_state.shape
+    unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None]) # Set masked activations to zero
+    pooled_outputs = unmasked_outputs.max(dim=1).values
+    assert pooled_outputs.shape == (B, D)
+    return pooled_outputs
+
+
+def stack_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
+    if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
+        return outputs.pooler_output
+    B, S, D = outputs.last_hidden_state.shape
+    unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None])
+    pooled_outputs = unmasked_outputs.reshape((B, S*D)) # stack along seq length
+    assert pooled_outputs.shape == (B, S*D)
+    return pooled_outputs
+
+
 class TokenLogitsProcessor(LogitsProcessor):
     embedded_tokens: torch.Tensor
     alpha: float
-    temperature: float
-    def __init__(self, token_scores: torch.Tensor, alpha: float, temperature: float):
+    def __init__(self, token_scores: torch.Tensor, alpha: float, tokenizer: transformers.PreTrainedTokenizer):
         self.token_scores = token_scores
         self.alpha = alpha
-        self.temperature = temperature
+        self.tokenizer = tokenizer
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        assert len(input_ids) == len(self.token_scores) == len(scores)
         batch_size = scores.shape[0]
         scores = scores.log_softmax(dim=-1)
-        # print('alpha =', self.alpha, '/ temp =', self.temperature)
 
         # Weird detail: have to add zeros for 'fake' tokens that don't receive scores but are in the vocabulary.
-        token_scores = (self.token_scores / self.temperature).log_softmax(dim=-1)
         num_zeros = scores.shape[1] - self.token_scores.shape[1]
         if num_zeros > 0:
-            zeros_to_add = torch.tensor([[0]], device=device).repeat(batch_size, num_zeros)
-            token_scores = torch.cat((token_scores, zeros_to_add), dim=1)
-        #  scores.shape - torch.Size([128, 32128])
-        #  self.embedded_tokens.shape - torch.Size([30522, 768])
-        # print('scores[0]', scores[0])
-        # print('token_scores[0]', token_scores[0])
+            zeros_to_add = torch.tensor([[1e-10]], device=device).repeat(batch_size, num_zeros)
+            token_scores = torch.cat((self.token_scores, zeros_to_add), dim=1)
 
+        token_scores = (token_scores).log()
         return (scores * self.alpha) + (token_scores * (1.0 - self.alpha))
 
 
@@ -139,7 +154,7 @@ class InversionModel(nn.Module):
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
-            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Linear(self.embedder_dim*1, bottleneck_dim),
             nn.GELU(),   # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
@@ -161,7 +176,6 @@ class InversionModel(nn.Module):
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
         self.embedding_transform_strategy = embedding_transform_strategy
         self.token_decode_alpha = token_decode_alpha
-        # self.token_decode_temperature = 0.1
         if token_decode_alpha > 0:
             assert embedder_tokenizer is not None
             self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
@@ -217,6 +231,8 @@ class InversionModel(nn.Module):
         else:
             model_output = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
             embeddings = mean_pool(model_output, attention_mask)
+            # embeddings = max_pool(model_output, attention_mask)
+            # embeddings = stack_pool(model_output, attention_mask)
         return embeddings
 
     def embed(
@@ -268,16 +284,17 @@ class InversionModel(nn.Module):
 
         if self.token_decode_alpha > 0:
             ########################################################################
-            # TODO: optimize to avoid re-embedding.
+            # TODO: optimize this code to avoid re-embedding.
             initial_embeddings = self.call_embedding_model(
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
             )
+            initial_embeddings /= initial_embeddings.norm(p=2, dim=1, keepdim=True)
             token_scores = initial_embeddings @ self.embedded_tokens.T
             embedded_tokens_logits_processor = TokenLogitsProcessor(
                 token_scores=token_scores,
                 alpha=self.token_decode_alpha,
-                temperature=self.token_decode_temperature,
+                tokenizer=self.embedder_tokenizer,
             )
             generation_kwargs["logits_processor"] = LogitsProcessorList([
                 embedded_tokens_logits_processor,
