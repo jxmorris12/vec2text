@@ -295,4 +295,4 @@ class TrainingArguments(transformers.TrainingArguments):
         # TODO: consider this weight decay strategy, maybe just for
         # full model fine-tuning...
         # https://github.com/UKPLab/sentence-transformers/blob/0422a5e07a5a998948721dea435235b342a9f610/sentence_transformers/SentenceTransformer.py#L661-L674
-        # self.weight_decay = 0.1 # TODO: hope this doesn't break everything but it might.
+        # self.weight_decay = 0.1

@@ -67,9 +67,22 @@ def load_dpr_corpus(name: str) -> datasets.Dataset:
     
     return dataset
 
+
 def load_luar_reddit() -> datasets.Dataset:
     d = datasets.load_dataset("friendshipkim/reddit_eval_embeddings_luar")
     d = d.rename_column('full_text', 'text')
     d = d.rename_column('embedding', 'frozen_embeddings')
     return d
+
+def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict,
+    assert "embedder_input_ids" in batch, f"invalid keys {batch.keys()}"
+    assert "embedder_attention_mask" in batch, f"invalid keys {batch.keys()}"
+
+    with torch.no_grad():
+        batch["frozen_embeddings"] = model.call_embedding_model(
+            input_ids=batch["embedder_input_ids"],
+            attention_mask=batch["embedder_attention_mask"],
+        )
+
+    return batch
 

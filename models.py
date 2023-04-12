@@ -62,25 +62,51 @@ def stack_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention
 
 
 class TokenLogitsProcessor(LogitsProcessor):
+    embeddings: torch.Tensor
     embedded_tokens: torch.Tensor
     alpha: float
-    def __init__(self, token_scores: torch.Tensor, alpha: float, tokenizer: transformers.PreTrainedTokenizer):
-        self.token_scores = token_scores
+    def __init__(self, embeddings: torch.Tensor, embedded_tokens: torch.Tensor, alpha: float, tokenizer: transformers.PreTrainedTokenizer):
+        self.embeddings = embeddings
+        self.embedded_tokens = embedded_tokens
         self.alpha = alpha
         self.tokenizer = tokenizer
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
-        assert len(input_ids) == len(self.token_scores) == len(scores)
+        assert len(input_ids) == len(self.embeddings) == len(scores)
+        
+        # Compute token scores based on the currently generated tokens
+        if input_ids.shape[1] == 1:
+            # first token, nothing to embed yet.
+            current_embedding = torch.zeros_like(self.embeddings, device=self.embeddings.device)
+        else:
+            # subtract the embedding of the currently embedded tokens.
+            current_token_embeddings = self.embedded_tokens[input_ids]
+            current_embedding = current_token_embeddings[:, 1:, :].mean(dim=1)
+        token_scores = (self.embeddings - current_embedding) @ self.embedded_tokens.T
+        # import pdb; pdb.set_trace()
+
+        # Softmax the actual model scores for next tokens.
         batch_size = scores.shape[0]
         scores = scores.log_softmax(dim=-1)
 
         # Weird detail: have to add zeros for 'fake' tokens that don't receive scores but are in the vocabulary.
-        num_zeros = scores.shape[1] - self.token_scores.shape[1]
+        num_zeros = scores.shape[1] - token_scores.shape[1]
         if num_zeros > 0:
             zeros_to_add = torch.tensor([[1e-10]], device=device).repeat(batch_size, num_zeros)
-            token_scores = torch.cat((self.token_scores, zeros_to_add), dim=1)
+            token_scores = torch.cat((token_scores, zeros_to_add), dim=1)
+        
+        # Second weird detail: Need to set negative cosine similarities to zero before log.
+        # These terms have essentially a probability of zero anyway.
+        token_scores = token_scores.clamp(min=1e-10)
+        assert not token_scores.isnan().any()
+        assert not token_scores.isinf().any()
 
-        token_scores = (token_scores).log()
+        # Last weird detail: we normalize.
+        token_scores /= token_scores.max(dim=-1, keepdim=True).values
+
+        # convert logits to log-probs.
+        token_scores = token_scores.log()
+
         return (scores * self.alpha) + (token_scores * (1.0 - self.alpha))
 
 
@@ -104,7 +130,7 @@ class InversionModel(nn.Module):
     embedder_fake_with_zeros: bool # Whether to just provide zeros as input for encoder-decoder (unconditional)
     embedding_transform_strategy: str # Way to transform bottleneck embedding into input for encoder-decoder
     use_frozen_embeddings_as_input: bool # Whether to train on frozen embeddings (usually False)
-    token_decode_alpha: float # Alpha to apply to token embedding sims during decoding.
+    token_decode_alpha: Optional[float] # Alpha to apply to token embedding sims during decoding.
     embedding_batch_norm: Optional[nn.Module] # Optionally apply batchnorm to batches of embeddings
     embedded_tokens: torch.Tensor # used for decoding
 
@@ -125,7 +151,7 @@ class InversionModel(nn.Module):
             encoder_decoder_lora: bool = False, # TODO: thoroughly test this option.
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
-            token_decode_alpha: float = 0.0,
+            token_decode_alpha: Optional[float] = None,
         ):
         super().__init__()
         self.embedder = embedder
@@ -282,7 +308,7 @@ class InversionModel(nn.Module):
 
         generation_kwargs['max_length'] = inputs.get('input_ids', inputs['embedder_input_ids']).shape[1]
 
-        if self.token_decode_alpha > 0:
+        if self.token_decode_alpha is not None:
             ########################################################################
             # TODO: optimize this code to avoid re-embedding.
             initial_embeddings = self.call_embedding_model(
@@ -290,16 +316,16 @@ class InversionModel(nn.Module):
                 attention_mask=inputs["embedder_attention_mask"],
             )
             initial_embeddings /= initial_embeddings.norm(p=2, dim=1, keepdim=True)
-            token_scores = initial_embeddings @ self.embedded_tokens.T
             embedded_tokens_logits_processor = TokenLogitsProcessor(
-                token_scores=token_scores,
+                embeddings=initial_embeddings,
+                embedded_tokens=self.embedded_tokens,
                 alpha=self.token_decode_alpha,
                 tokenizer=self.embedder_tokenizer,
             )
             generation_kwargs["logits_processor"] = LogitsProcessorList([
                 embedded_tokens_logits_processor,
             ])
-            generation_kwargs["renormalize_logits"] = False
+            generation_kwargs["renormalize_logits"] = True
             ########################################################################
         
         inputs_embeds, attention_mask = self.embed(

@@ -1,4 +1,5 @@
 import hashlib
+import functools
 import json
 import logging
 import os
@@ -9,7 +10,7 @@ import transformers
 from transformers import AutoTokenizer, set_seed
 
 from collator import CustomCollator
-from data_helpers import load_dpr_corpus, load_luar_reddit, NQ_DEV, NQ_TRAIN
+from data_helpers import load_dpr_corpus, load_luar_reddit, embed_dataset_batch, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from tokenize_data import tokenize_function
 from trainer import InversionTrainer
@@ -83,7 +84,6 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         freeze_strategy=model_args.freeze_strategy,
         token_decode_alpha=model_args.token_decode_alpha,
     )
-    ###########################################################################
 
     logger.info("Loading datasets...")
 
@@ -114,6 +114,15 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",
     )
+    ###########################################################################
+    # Preprocess embeddings
+    tokenized_datasets = raw_datasets.map(
+        functools.partial(embed_dataset_batch, model),
+        batched=True,
+        batch_size=train_args.per_device_train_batch_size,
+    )
+    
+    ###########################################################################
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
 
