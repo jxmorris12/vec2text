@@ -117,7 +117,15 @@ class ModelArguments:
     )
     use_frozen_embeddings_as_input: bool = field(
         default=False,
-        metadata={"help": "Whether to pass an 'embedding' column and train on that instead of generating embeddings on-the-fly"}
+        metadata={"help": "Whether to pass a 'frozen_embedding' column and train on that instead of generating embeddings on-the-fly"}
+    )
+    use_frozen_whitened_embeddings_as_input: bool = field(
+        default=False,
+        metadata={"help": "Whether to pass a 'frozen_embedding' column and train on that instead of generating embeddings on-the-fly"}
+    )
+    ten_percent_training: bool = field(
+        default=False,
+        metadata={"help": "Whether to take only 10\% of the training set"}
     )
     freeze_strategy: str = field(
         default="none",
@@ -173,18 +181,13 @@ class DataTrainingArguments:
             )
         },
     )
-    streaming: bool = field(default=False, metadata={"help": "Enable streaming mode"})
-    overwrite_cache: bool = field(
-        default=False, metadata={"help": "Overwrite the cached training and evaluation sets"}
-    )
-    validation_split_percentage: Optional[int] = field(
-        default=5,
+    use_less_data: bool = field(
+        default=False,
         metadata={
-            "help": "The percentage of the train set used as validation set in case there's no validation split"
-        },
-    )
-    keep_linebreaks: bool = field(
-        default=True, metadata={"help": "Whether to keep line breaks when using TXT files or not."}
+            "help": {
+                "Use a small amount of the training/eval data (for testing)"
+            }
+        }
     )
 
     def __post_init__(self):

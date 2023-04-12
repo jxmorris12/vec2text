@@ -10,9 +10,9 @@ import transformers
 from transformers import AutoTokenizer, set_seed
 
 from collator import CustomCollator
-from data_helpers import load_dpr_corpus, load_luar_reddit, embed_dataset_batch, NQ_DEV, NQ_TRAIN
+from data_helpers import load_dpr_corpus, load_luar_reddit, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
-from tokenize_data import tokenize_function
+from tokenize_data import tokenize_function, whiten_embedded_dataset, embed_dataset_batch
 from trainer import InversionTrainer
 
 
@@ -111,16 +111,26 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         batched=True,
         # num_proc=training_args.dataloader_num_workers,
         remove_columns=column_names,
-        load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",
     )
+
+    if data_args.use_less_data:
+        for key in tokenized_datasets:
+            d = tokenized_datasets[key]
+            new_length = min(256, int(len(d) * .01))
+            tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
     ###########################################################################
     # Preprocess embeddings
-    tokenized_datasets = raw_datasets.map(
-        functools.partial(embed_dataset_batch, model),
-        batched=True,
-        batch_size=train_args.per_device_train_batch_size,
-    )
+    if model_args.use_frozen_embeddings_as_input or model_args.use_frozen_whitened_embeddings_as_input:
+        datasets.set_caching_enabled(False)
+        tokenized_datasets = raw_datasets.map(
+            functools.partial(embed_dataset_batch, model),
+            batched=True,
+            batch_size=train_args.per_device_train_batch_size,
+        )
+    if model_args.use_frozen_whitened_embeddings_as_input:
+        tokenized_datasets = whiten_embedded_dataset(raw_datasets)
+
     
     ###########################################################################
     train_dataset = tokenized_datasets["train"]

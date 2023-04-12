@@ -1,5 +1,6 @@
 from typing import Tuple
 
+import functools
 import os
 import shlex
 
@@ -13,10 +14,11 @@ from collator import CustomCollator
 from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
-from tokenize_data import tokenize_function
+from tokenize_data import embed_dataset_batch, tokenize_function, whiten_embedded_dataset
 from trainer import InversionTrainer
 
 
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 transformers.logging.set_verbosity_error()
 
 #############################################################################
@@ -62,7 +64,7 @@ def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> T
         encoder_dropout_disabled=model_args.encoder_dropout_disabled,
         decoder_dropout_disabled=model_args.decoder_dropout_disabled,
         freeze_strategy=model_args.freeze_strategy,
-        token_decode_alpha=model_args.token_decode_alpha,
+        # token_decode_alpha=model_args.token_decode_alpha,
         bottleneck_dim=768,
     )
     model._keys_to_ignore_on_save = []
@@ -77,22 +79,39 @@ def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> T
     })
     column_names = list(raw_datasets["train"].features)
 
-    print("[2] tokenizing dataset")
+    print("[2] tokenizing dataset & preprocessing embeddings")
     tokenized_datasets = raw_datasets.map(
         tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
         batched=True,
         remove_columns=column_names,
-        load_from_cache_file=not data_args.overwrite_cache,
         desc="Running tokenizer on dataset",
     )
+    data_args.use_less_data = True
+    if data_args.use_less_data:
+        for key in tokenized_datasets:
+            d = tokenized_datasets[key]
+            new_length = min(256, int(len(d) * .01))
+            tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]
+    
+    #############################################################################
+    model_args.use_frozen_whitened_embeddings_as_input = True
+    # Preprocess embeddings
+    if model_args.use_frozen_embeddings_as_input or model_args.use_frozen_whitened_embeddings_as_input:
+        datasets.set_caching_enabled(False)
+        model = model.to(device)
+        tokenized_datasets = raw_datasets.map(
+            functools.partial(embed_dataset_batch, model),
+            batched=True,
+            batch_size=training_args.per_device_train_batch_size,
+        )
+    if model_args.use_frozen_whitened_embeddings_as_input:
+        tokenized_datasets = whiten_embedded_dataset(raw_datasets)
 
     if data_args.max_eval_samples is not None:
         max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
         eval_dataset = eval_dataset.select(range(max_eval_samples))
-
-
     #############################################################################
 
     # Initialize our Trainer

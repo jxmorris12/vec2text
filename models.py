@@ -83,7 +83,6 @@ class TokenLogitsProcessor(LogitsProcessor):
             current_token_embeddings = self.embedded_tokens[input_ids]
             current_embedding = current_token_embeddings[:, 1:, :].mean(dim=1)
         token_scores = (self.embeddings - current_embedding) @ self.embedded_tokens.T
-        # import pdb; pdb.set_trace()
 
         # Softmax the actual model scores for next tokens.
         batch_size = scores.shape[0]
@@ -129,7 +128,8 @@ class InversionModel(nn.Module):
     embedder_no_grad: bool # Disable gradients for embedding model
     embedder_fake_with_zeros: bool # Whether to just provide zeros as input for encoder-decoder (unconditional)
     embedding_transform_strategy: str # Way to transform bottleneck embedding into input for encoder-decoder
-    use_frozen_embeddings_as_input: bool # Whether to train on frozen embeddings (usually False)
+    use_frozen_embeddings_as_input: bool # Whether to train/evaluate on frozen embeddings 
+    use_frozen_whitened_embeddings_as_input: bool # Whether to train/evaluate on frozen and whitened embeddings
     token_decode_alpha: Optional[float] # Alpha to apply to token embedding sims during decoding.
     embedding_batch_norm: Optional[nn.Module] # Optionally apply batchnorm to batches of embeddings
     embedded_tokens: torch.Tensor # used for decoding
@@ -147,6 +147,7 @@ class InversionModel(nn.Module):
             encoder_dropout_disabled: bool = False,
             decoder_dropout_disabled: bool = False,
             use_frozen_embeddings_as_input: bool = False,
+            use_frozen_whitened_embeddings_as_input: bool = False,
             use_embedding_batch_norm: bool = False,
             encoder_decoder_lora: bool = False, # TODO: thoroughly test this option.
             embedding_transform_strategy: str = "repeat",
@@ -177,7 +178,9 @@ class InversionModel(nn.Module):
             
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
+        assert not (use_frozen_embeddings_as_input and use_frozen_whitened_embeddings_as_input)
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
+        self.use_frozen_whitened_embeddings_as_input = use_frozen_whitened_embeddings_as_input
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim*1, bottleneck_dim),
@@ -202,7 +205,7 @@ class InversionModel(nn.Module):
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
         self.embedding_transform_strategy = embedding_transform_strategy
         self.token_decode_alpha = token_decode_alpha
-        if token_decode_alpha > 0:
+        if token_decode_alpha is not None:
             assert embedder_tokenizer is not None
             self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
         else:
