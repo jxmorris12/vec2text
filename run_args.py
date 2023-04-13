@@ -49,10 +49,6 @@ class ModelArguments:
             "choices": EMBEDDING_TRANSFORM_STRATEGIES,
         }
     )
-    use_embedding_batch_norm: bool = field(
-        default=False,
-        metadata={"help": "Whether to include a batchnorm layer after the embeddings input"},
-    )
     encoder_dropout_disabled: bool = field(
         default=False,
         metadata={"help": "Disable dropout on T5 encoder"}
@@ -119,13 +115,9 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to pass a 'frozen_embedding' column and train on that instead of generating embeddings on-the-fly"}
     )
-    use_frozen_whitened_embeddings_as_input: bool = field(
+    whiten_embeddings: bool = field(
         default=False,
-        metadata={"help": "Whether to pass a 'frozen_embedding' column and train on that instead of generating embeddings on-the-fly"}
-    )
-    ten_percent_training: bool = field(
-        default=False,
-        metadata={"help": "Whether to take only 10\% of the training set"}
+        metadata={"help": "Whether to do whitening on embeddings (requires computing expensive covariance matrix first)"}
     )
     freeze_strategy: str = field(
         default="none",
@@ -134,8 +126,8 @@ class ModelArguments:
             "choices": FREEZE_STRATEGIES,
         },
     )
-    token_decode_alpha: float = field(
-        default=0.0,
+    token_decode_alpha: Optional[float] = field(
+        default=None,
         metadata={
             "help": "",
         }

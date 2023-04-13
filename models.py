@@ -3,6 +3,7 @@ from typing import Dict, Optional, Tuple
 from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
+import tqdm
 import transformers
 from transformers import LogitsProcessor, LogitsProcessorList
 
@@ -129,9 +130,8 @@ class InversionModel(nn.Module):
     embedder_fake_with_zeros: bool # Whether to just provide zeros as input for encoder-decoder (unconditional)
     embedding_transform_strategy: str # Way to transform bottleneck embedding into input for encoder-decoder
     use_frozen_embeddings_as_input: bool # Whether to train/evaluate on frozen embeddings 
-    use_frozen_whitened_embeddings_as_input: bool # Whether to train/evaluate on frozen and whitened embeddings
+    whiten_embeddings: bool # Preprocess all embeddings using 'whitening'
     token_decode_alpha: Optional[float] # Alpha to apply to token embedding sims during decoding.
-    embedding_batch_norm: Optional[nn.Module] # Optionally apply batchnorm to batches of embeddings
     embedded_tokens: torch.Tensor # used for decoding
 
     def __init__(
@@ -147,8 +147,7 @@ class InversionModel(nn.Module):
             encoder_dropout_disabled: bool = False,
             decoder_dropout_disabled: bool = False,
             use_frozen_embeddings_as_input: bool = False,
-            use_frozen_whitened_embeddings_as_input: bool = False,
-            use_embedding_batch_norm: bool = False,
+            whiten_embeddings: bool = False,
             encoder_decoder_lora: bool = False, # TODO: thoroughly test this option.
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
@@ -178,20 +177,14 @@ class InversionModel(nn.Module):
             
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
-        assert not (use_frozen_embeddings_as_input and use_frozen_whitened_embeddings_as_input)
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
-        self.use_frozen_whitened_embeddings_as_input = use_frozen_whitened_embeddings_as_input
+        self.whiten_embeddings = whiten_embeddings
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim*1, bottleneck_dim),
             nn.GELU(),   # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
-        if use_embedding_batch_norm:
-            print('Embedding batch norm enabled')
-            self.embedding_batch_norm = torch.nn.BatchNorm1d(num_features=self.embedder_dim)
-        else:
-            self.embedding_batch_norm = None
         if encoder_dropout_disabled:
             disable_dropout(self.encoder_decoder.encoder)
         if decoder_dropout_disabled:
@@ -210,6 +203,41 @@ class InversionModel(nn.Module):
             self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
         else:
             self.embedded_tokens = None
+    
+    def precompute_whitening_params(self, train_dataloader):
+        if not self.whiten_embeddings:
+            return
+        # TODO pre-store this.
+        n_sample = 50_000 # TODO argparse for this.
+        n_points = 0
+        for inputs in tqdm.tqdm(train_dataloader, desc='computing initial embeddings for whitening'):
+            n_points += len(inputs["embedder_input_ids"])
+            if self.use_frozen_embeddings_as_input:
+                frozen_embeddings = inputs["frozen_embeddings"]
+            else:
+                with torch.no_grad():
+                    frozen_embedding = self.call_embedding_model(
+                        input_ids=inputs["embedder_input_ids"],
+                        attention_mask=inputs["embedder_attention_mask"],
+                    )
+            if n_points >= 50_000: # TODO argparse for this
+        mu = torch.mean(embeddings, dim=0, keepdim=True)
+        embeddings_sample = embeddings[:n_sample]
+        print('\t[whitening]  cov')
+        cov = torch.mm((embeddings_sample - mu).t(), embeddings_sample - mu)
+        print('\t[whitening] svd')
+        u, s, vt = torch.svd(cov)
+        print('\t[whitening] W')
+        W = torch.mm(u, torch.diag(1/torch.sqrt(s)))
+        print('\t[whitening] output')
+        self.whitening_mu = mu
+        self.whitening_W = W
+    
+    def whiten(self, embeddings: torch.Tensor) -> torch.Tensor:
+        if not self.whiten_embeddings:
+            return embeddings
+        return torch.mm(embeddings - self.whitening_mu, self.whitening_W)
+
     
     def _freeze_encoder(self):
         freeze_params(self.encoder_decoder.encoder)
@@ -264,7 +292,7 @@ class InversionModel(nn.Module):
             # embeddings = stack_pool(model_output, attention_mask)
         return embeddings
 
-    def embed(
+    def embed_and_project(
             self, 
             embedder_input_ids: torch.Tensor,
             embedder_attention_mask: torch.Tensor,
@@ -286,9 +314,6 @@ class InversionModel(nn.Module):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        
-        if self.embedding_batch_norm:
-            embeddings = self.embedding_batch_norm(embeddings)
         
         if self.embedding_transform_strategy == "repeat":
             embeddings = self.embedding_transform(embeddings)
@@ -331,7 +356,7 @@ class InversionModel(nn.Module):
             generation_kwargs["renormalize_logits"] = True
             ########################################################################
         
-        inputs_embeds, attention_mask = self.embed(
+        inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
             frozen_embeddings=inputs.get("frozen_embeddings"),
@@ -352,7 +377,7 @@ class InversionModel(nn.Module):
             **kwargs
         ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask, embedder_token_type_ids
-        inputs_embeds, attention_mask = self.embed(
+        inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,
             embedder_attention_mask=embedder_attention_mask,
             frozen_embeddings=frozen_embeddings,

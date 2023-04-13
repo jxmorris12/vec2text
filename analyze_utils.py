@@ -90,28 +90,32 @@ def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> T
     if data_args.use_less_data:
         for key in tokenized_datasets:
             d = tokenized_datasets[key]
-            new_length = min(256, int(len(d) * .01))
+            new_length = min(256, int(len(d) * .02))
             tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
-    train_dataset = tokenized_datasets["train"]
-    eval_dataset = tokenized_datasets["validation"]
+            import pdb; pdb.set_trace()
     
     #############################################################################
     model_args.use_frozen_whitened_embeddings_as_input = True
     # Preprocess embeddings
     if model_args.use_frozen_embeddings_as_input or model_args.use_frozen_whitened_embeddings_as_input:
-        datasets.set_caching_enabled(False)
+        # files are just too big to cache :( 5 million 768-dim embeddings is 15gb 
+        # datasets.disable_caching()
         model = model.to(device)
-        tokenized_datasets = raw_datasets.map(
+        tokenized_datasets = tokenized_datasets.map(
             functools.partial(embed_dataset_batch, model),
             batched=True,
             batch_size=training_args.per_device_train_batch_size,
         )
     if model_args.use_frozen_whitened_embeddings_as_input:
-        tokenized_datasets = whiten_embedded_dataset(raw_datasets)
+        tokenized_datasets = whiten_embedded_dataset(tokenized_datasets)
+
+    train_dataset = tokenized_datasets["train"]
+    eval_dataset = tokenized_datasets["validation"]
 
     if data_args.max_eval_samples is not None:
         max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
         eval_dataset = eval_dataset.select(range(max_eval_samples))
+    
     #############################################################################
 
     # Initialize our Trainer

@@ -37,6 +37,7 @@ class InversionTrainer(transformers.Trainer):
                 "num_beams": 1,
                 'do_sample': False,
             }
+        self.model.precompute_whitening_params(self.get_train_dataloader())
     
     def _log_preds_table(self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]):
         if not self.args.use_wandb:
