@@ -1,5 +1,7 @@
 from typing import Dict, Optional, Tuple
 
+import logging
+
 from sentence_transformers import SentenceTransformer
 import torch
 import torch.nn as nn
@@ -14,6 +16,7 @@ FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
 EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
 
 
+logger = logging.getLogger(__name__)
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
 
@@ -207,9 +210,11 @@ class InversionModel(nn.Module):
     def precompute_whitening_params(self, train_dataloader):
         if not self.whiten_embeddings:
             return
+        self.embedder.to(device)
         # TODO pre-store this.
-        n_sample = 50_000 # TODO argparse for this.
+        n_sample = 500_000 # TODO argparse for this.
         n_points = 0
+        embeddings = []
         for inputs in tqdm.tqdm(train_dataloader, desc='computing initial embeddings for whitening'):
             n_points += len(inputs["embedder_input_ids"])
             if self.use_frozen_embeddings_as_input:
@@ -217,27 +222,29 @@ class InversionModel(nn.Module):
             else:
                 with torch.no_grad():
                     frozen_embedding = self.call_embedding_model(
-                        input_ids=inputs["embedder_input_ids"],
-                        attention_mask=inputs["embedder_attention_mask"],
+                        input_ids=inputs["embedder_input_ids"].to(device),
+                        attention_mask=inputs["embedder_attention_mask"].to(device),
                     )
-            if n_points >= 50_000: # TODO argparse for this
+                embeddings.append(frozen_embedding.cpu())
+            if n_points >= 100_000: # TODO argparse for this
+                break
+        embeddings = torch.cat(embeddings, dim=0)
+        logger.info('[whitening] mean & sample')
         mu = torch.mean(embeddings, dim=0, keepdim=True)
         embeddings_sample = embeddings[:n_sample]
-        print('\t[whitening]  cov')
+        logger.info('[whitening] cov')
         cov = torch.mm((embeddings_sample - mu).t(), embeddings_sample - mu)
-        print('\t[whitening] svd')
+        logger.info('[whitening] SVD')
         u, s, vt = torch.svd(cov)
-        print('\t[whitening] W')
+        logger.info('[whitening] computing W')
         W = torch.mm(u, torch.diag(1/torch.sqrt(s)))
-        print('\t[whitening] output')
-        self.whitening_mu = mu
-        self.whitening_W = W
+        self.whitening_mu = mu.to(device)
+        self.whitening_W = W.to(device)
     
-    def whiten(self, embeddings: torch.Tensor) -> torch.Tensor:
+    def consider_whitening(self, embeddings: torch.Tensor) -> torch.Tensor:
         if not self.whiten_embeddings:
             return embeddings
         return torch.mm(embeddings - self.whitening_mu, self.whitening_W)
-
     
     def _freeze_encoder(self):
         freeze_params(self.encoder_decoder.encoder)
@@ -314,6 +321,7 @@ class InversionModel(nn.Module):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
+        embeddings = self.consider_whitening(embeddings)
         
         if self.embedding_transform_strategy == "repeat":
             embeddings = self.embedding_transform(embeddings)

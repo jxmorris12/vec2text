@@ -116,7 +116,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
     )
     ###########################################################################
     # Preprocess embeddings
-    if model_args.use_frozen_embeddings_as_input or model_args.use_frozen_whitened_embeddings_as_input:
+    if model_args.use_frozen_embeddings_as_input:
         # files are just too big to cache :( 5 million 768-dim embeddings is 15gb 
         # datasets.disable_caching()
         model = model.to(device)
@@ -129,7 +129,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
     if data_args.use_less_data:
         for key in tokenized_datasets:
             d = tokenized_datasets[key]
-            new_length = max(256, int(len(d) * .02))
+            new_length = max(256, int(len(d) * .1))
             tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
     
     ###########################################################################
