@@ -107,6 +107,10 @@ class ModelArguments:
         default=True,
         metadata={"help": "Whether to disable grads for DPR"}
     )
+    use_lora: bool = field(
+        default=False,
+        metadata={"help": "Whether to use LORA+int8 for fine-tuning"}
+    )
     embedder_fake_with_zeros: bool = field(
         default=False,
         metadata={"help": "Whether to pass all zeros as embedding (and not use DPR at all)"}

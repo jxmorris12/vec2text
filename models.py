@@ -151,7 +151,7 @@ class InversionModel(nn.Module):
             decoder_dropout_disabled: bool = False,
             use_frozen_embeddings_as_input: bool = False,
             whiten_embeddings: bool = False,
-            encoder_decoder_lora: bool = False, # TODO: thoroughly test this option.
+            encoder_decoder_lora: bool = False,
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: Optional[float] = None,
@@ -160,11 +160,12 @@ class InversionModel(nn.Module):
         self.embedder = embedder
         self.encoder_decoder = encoder_decoder
         if encoder_decoder_lora:
-            from peft import get_peft_config, get_peft_model, LoraConfig, TaskType
+            from peft import get_peft_config, get_peft_model, LoraConfig, TaskType, prepare_model_for_int8_training
             peft_config = LoraConfig(
-                task_type=TaskType.SEQ_2_SEQ_LM, inference_mode=False, r=8, lora_alpha=32, lora_dropout=0.1
+                task_type=TaskType.SEQ_2_SEQ_LM, inference_mode=False, r=16, lora_alpha=32, lora_dropout=0.1
             )
             print("Initializing LORA model with config:", peft_config)
+            self.encoder_decoder = prepare_model_for_int8_training(self.encoder_decoder)
             self.encoder_decoder = get_peft_model(self.encoder_decoder, peft_config)
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
@@ -226,7 +227,7 @@ class InversionModel(nn.Module):
                         attention_mask=inputs["embedder_attention_mask"].to(device),
                     )
                 embeddings.append(frozen_embedding.cpu())
-            if n_points >= 100_000: # TODO argparse for this
+            if n_points >= 200_000: # TODO argparse for this
                 break
         embeddings = torch.cat(embeddings, dim=0)
         logger.info('[whitening] mean & sample')
@@ -464,8 +465,13 @@ class FutureEmbeddingPredictor(nn.Module):
         )
 
 
-def load_encoder_decoder(model_name: str) -> transformers.AutoModelForSeq2SeqLM:
+def load_encoder_decoder(model_name: str, lora: bool = False) -> transformers.AutoModelForSeq2SeqLM:
     model_kwargs = {
         "low_cpu_mem_usage": True,
     }
+    if lora:
+        model_kwargs.update({
+            "load_in_8bit": True,
+            "device_map": "auto",
+        })
     return transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name, **model_kwargs)

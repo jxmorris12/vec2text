@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Optional, Tuple
 
 import functools
 import os
@@ -23,9 +23,14 @@ transformers.logging.set_verbosity_error()
 
 #############################################################################
 
-def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> Tuple[InversionModel, InversionTrainer]:
+def load_inversion_model_and_trainer(
+        checkpoint_folder: str,
+        args_str: str,
+        checkpoint: Optional[str] = None
+    ) -> Tuple[InversionModel, InversionTrainer]:
     args = shlex.split(args_str)
-    checkpoint = get_last_checkpoint(checkpoint_folder) # a checkpoint
+    if checkpoint is None:
+        checkpoint = get_last_checkpoint(checkpoint_folder) # a checkpoint
     print("[0] Loading model from checkpoint:", checkpoint)
     parser = HfArgumentParser((ModelArguments, DataTrainingArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=args)
@@ -54,19 +59,21 @@ def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> T
         embedder_tokenizer=embedder_tokenizer,
         tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(
-            model_name=model_args.model_name_or_path
+            model_name=model_args.model_name_or_path,
+            lora=model_args.use_lora,
         ),
         num_repeat_tokens=model_args.num_repeat_tokens,
         embedder_no_grad=model_args.embedder_no_grad,
         embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
         use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
-        use_embedding_batch_norm=model_args.use_embedding_batch_norm,
+        whiten_embeddings=model_args.whiten_embeddings,
         encoder_dropout_disabled=model_args.encoder_dropout_disabled,
         decoder_dropout_disabled=model_args.decoder_dropout_disabled,
         freeze_strategy=model_args.freeze_strategy,
-        # token_decode_alpha=model_args.token_decode_alpha,
+        encoder_decoder_lora=model_args.use_lora,
+        token_decode_alpha=model_args.token_decode_alpha,
         bottleneck_dim=768,
-    )
+)
     model._keys_to_ignore_on_save = []
 
     #############################################################################
@@ -80,24 +87,21 @@ def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> T
     column_names = list(raw_datasets["train"].features)
 
     print("[2] tokenizing dataset & preprocessing embeddings")
+    if data_args.use_less_data:
+        for key in raw_datasets:
+            d = raw_datasets[key]
+            new_length = min(256, int(len(d) * .02))
+            raw_datasets[key] = raw_datasets[key].select(range(new_length))
     tokenized_datasets = raw_datasets.map(
         tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
         batched=True,
         remove_columns=column_names,
         desc="Running tokenizer on dataset",
     )
-    data_args.use_less_data = True
-    if data_args.use_less_data:
-        for key in tokenized_datasets:
-            d = tokenized_datasets[key]
-            new_length = min(256, int(len(d) * .02))
-            tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
-            import pdb; pdb.set_trace()
     
     #############################################################################
-    model_args.use_frozen_whitened_embeddings_as_input = True
     # Preprocess embeddings
-    if model_args.use_frozen_embeddings_as_input or model_args.use_frozen_whitened_embeddings_as_input:
+    if model_args.use_frozen_embeddings_as_input:
         # files are just too big to cache :( 5 million 768-dim embeddings is 15gb 
         # datasets.disable_caching()
         model = model.to(device)
@@ -106,8 +110,8 @@ def load_inversion_model_and_trainer(checkpoint_folder: str, args_str: str) -> T
             batched=True,
             batch_size=training_args.per_device_train_batch_size,
         )
-    if model_args.use_frozen_whitened_embeddings_as_input:
-        tokenized_datasets = whiten_embedded_dataset(tokenized_datasets)
+    # if model_args.use_frozen_whitened_embeddings_as_input:
+    #     tokenized_datasets = whiten_embedded_dataset(tokenized_datasets)
 
     train_dataset = tokenized_datasets["train"]
     eval_dataset = tokenized_datasets["validation"]

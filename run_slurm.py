@@ -19,22 +19,23 @@ python run.py --per_device_train_batch_size {batch_size} \
 --use_frozen_embeddings_as_input False \
 --encoder_dropout_disabled False \
 --decoder_dropout_disabled False \
---use_embedding_batch_norm False \
---num_train_epochs 6 \
+--use_less_data 0 \
+--num_train_epochs 24 \
 --max_eval_samples 500 \
---eval_steps 25000 \
---warmup_steps 50000 \
---bf16=0 \
+--eval_steps 2500000000000 \
+--warmup_steps 100000 \
+--bf16=1 \
+--use_lora=1 \
 --use_wandb=1
 """
 
 
 models = [
     # 't5-small',
-    't5-base',
+    # 't5-base',
     # 't5-large',
     # 't5-3b',
-    # 't5-11b',
+    't5-11b',
 ]
 
 # emb_models = ['dpr', 'ance_tele']
@@ -55,15 +56,16 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar13-freeze-2'
 # exp_group_name = 'mar17-baselines'
 # exp_group_name = 'mar19-random'
-exp_group_name = 'mar21-bn-drop'
+# exp_group_name = 'mar21-bn-drop'
+exp_group_name = 'apr14-huge'
 ##########################################
 
-batch_size = 128
-# batch_size = 32
+# batch_size = 128
+batch_size = 32
 
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
 # max_seq_length = [8, 32, 128]
-max_seq_length = [32]
+max_seq_length = [8, 32, 128]
 
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
@@ -102,7 +104,8 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                "time": "72:00:00",
+                # "time": "72:00:00",
+                "time": "336:00:00",
             },
             slurm_flags=["requeue",],
         )

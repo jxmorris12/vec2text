@@ -73,7 +73,8 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         embedder_tokenizer=embedder_tokenizer,
         tokenizer=tokenizer,
         encoder_decoder=load_encoder_decoder(
-            model_name=model_args.model_name_or_path
+            model_name=model_args.model_name_or_path,
+            lora=model_args.use_lora,
         ),
         num_repeat_tokens=model_args.num_repeat_tokens,
         embedder_no_grad=model_args.embedder_no_grad,
@@ -83,6 +84,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         encoder_dropout_disabled=model_args.encoder_dropout_disabled,
         decoder_dropout_disabled=model_args.decoder_dropout_disabled,
         freeze_strategy=model_args.freeze_strategy,
+        encoder_decoder_lora=model_args.use_lora,
         token_decode_alpha=model_args.token_decode_alpha,
     )
 
