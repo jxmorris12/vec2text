@@ -86,6 +86,7 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
         freeze_strategy=model_args.freeze_strategy,
         encoder_decoder_lora=model_args.use_lora,
         token_decode_alpha=model_args.token_decode_alpha,
+        embeddings_from_layer_n=model_args.embeddings_from_layer_n,
     )
 
     logger.info("Loading datasets...")

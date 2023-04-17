@@ -57,7 +57,7 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar17-baselines'
 # exp_group_name = 'mar19-random'
 # exp_group_name = 'mar21-bn-drop'
-exp_group_name = 'apr14-huge'
+exp_group_name = 'apr16-huge'
 ##########################################
 
 # batch_size = 128
@@ -72,7 +72,7 @@ embedder_no_grad = [True]
 
 # learning_rates = [1e-4, 5e-4, 1e-3, 5e-3]
 # learning_rates = [5e-4]
-learning_rates = [2e-3]
+learning_rates = [2e-4]
 
 num_repeat_tokens = [16]
 # num_repeat_tokens = [1, 2, 4, 8, 16, 32, 64, 128]

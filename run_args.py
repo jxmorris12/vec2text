@@ -123,6 +123,10 @@ class ModelArguments:
         default=False,
         metadata={"help": "Whether to do whitening on embeddings (requires computing expensive covariance matrix first)"}
     )
+    embeddings_from_layer_n: int = field(
+        default=None,
+        metadata={"help": "If set, uses embeddings from layer n - for example set to 0 to use word embeddings"}
+    )
     freeze_strategy: str = field(
         default="none",
         metadata={

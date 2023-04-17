@@ -1,4 +1,4 @@
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 import logging
 
@@ -35,31 +35,25 @@ def freeze_params(model: nn.Module):
     print(f'Froze {total_num_params} params from model type {type(model)}')
 
 
-def mean_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
-    if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
-        return outputs.pooler_output
-    B, S, D = outputs.last_hidden_state.shape
-    unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None])
+def mean_pool(hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    B, S, D = hidden_states.shape
+    unmasked_outputs = (hidden_states * attention_mask[..., None])
     pooled_outputs = unmasked_outputs.sum(dim=1) / attention_mask.sum(dim=1)[:, None]
     assert pooled_outputs.shape == (B, D)
     return pooled_outputs
 
 
-def max_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
-    if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
-        return outputs.pooler_output
-    B, S, D = outputs.last_hidden_state.shape
-    unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None]) # Set masked activations to zero
+def max_pool(hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    B, S, D = hidden_states.shape
+    unmasked_outputs = (hidden_states * attention_mask[..., None])
     pooled_outputs = unmasked_outputs.max(dim=1).values
     assert pooled_outputs.shape == (B, D)
     return pooled_outputs
 
 
-def stack_pool(outputs: transformers.modeling_outputs.BaseModelOutput, attention_mask: torch.Tensor) -> torch.Tensor:
-    if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
-        return outputs.pooler_output
-    B, S, D = outputs.last_hidden_state.shape
-    unmasked_outputs = (outputs.last_hidden_state * attention_mask[..., None])
+def stack_pool(hidden_states: torch.Tensor, attention_mask: torch.Tensor) -> torch.Tensor:
+    B, S, D = hidden_states.shape
+    unmasked_outputs = (hidden_states * attention_mask[..., None])
     pooled_outputs = unmasked_outputs.reshape((B, S*D)) # stack along seq length
     assert pooled_outputs.shape == (B, S*D)
     return pooled_outputs
@@ -113,6 +107,49 @@ class TokenLogitsProcessor(LogitsProcessor):
         return (scores * self.alpha) + (token_scores * (1.0 - self.alpha))
 
 
+class EmbedderScoringLogitsProcessor(LogitsProcessor):
+    embedder: nn.Module
+    process_embedder_output: Callable
+    true_embeddings: torch.Tensor
+    topk: int
+    def __init__(self, embedder: nn.Module, process_embedder_output: Callable, true_embeddings: torch.Tensor, topk: int = 200):
+        self.embedder = embedder
+        self.process_embedder_output = process_embedder_output
+        self.true_embeddings = true_embeddings
+        self.topk = topk
+
+    def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
+        assert len(input_ids) == len(self.true_embeddings) == len(scores)
+        print("scoring input_ids of shape", input_ids.shape)
+        
+        # Softmax the actual model scores for next tokens.
+        batch_size = scores.shape[0]
+        scores = scores.log_softmax(dim=-1)
+
+        token_scores = torch.zeros_like(scores)
+        for i in range(batch_size):
+            top_idxs = (-scores[i]).argsort()[:self.topk]
+
+            potential_next_tokens = input_ids[None, i]
+            potential_next_tokens = potential_next_tokens.repeat((self.topk, 1))
+            potential_next_input_ids = torch.cat((potential_next_tokens, top_idxs[:, None]), dim=1)
+            attention_mask = torch.ones_like(potential_next_input_ids, device=potential_next_input_ids.device)
+
+            with torch.no_grad():
+                model_output = self.embedder(
+                    input_ids=potential_next_input_ids,
+                    attention_mask=attention_mask
+                )
+            model_output = self.process_embedder_output(model_output)
+            potential_next_embeddings = mean_pool(model_output, attention_mask)
+            emb_scores = potential_next_embeddings @ self.true_embeddings[i].T
+            token_scores[i, top_idxs] = emb_scores
+        
+        token_scores = (token_scores + 1e-10).log()
+
+        return scores + token_scores
+
+
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
 # TODO: Need config to subclass transformers.PreTrainedModel.
@@ -135,6 +172,7 @@ class InversionModel(nn.Module):
     use_frozen_embeddings_as_input: bool # Whether to train/evaluate on frozen embeddings 
     whiten_embeddings: bool # Preprocess all embeddings using 'whitening'
     token_decode_alpha: Optional[float] # Alpha to apply to token embedding sims during decoding.
+    embedder_decode_score: bool # Actually call embedder during decoding.
     embedded_tokens: torch.Tensor # used for decoding
 
     def __init__(
@@ -155,6 +193,8 @@ class InversionModel(nn.Module):
             embedding_transform_strategy: str = "repeat",
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: Optional[float] = None,
+            embedder_decode_score: bool = False,
+            embeddings_from_layer_n: Optional[int] = None,
         ):
         super().__init__()
         self.embedder = embedder
@@ -185,7 +225,7 @@ class InversionModel(nn.Module):
         self.whiten_embeddings = whiten_embeddings
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
-            nn.Linear(self.embedder_dim*1, bottleneck_dim),
+            nn.Linear(self.embedder_dim, bottleneck_dim),
             nn.GELU(),   # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens)
         )
@@ -200,13 +240,15 @@ class InversionModel(nn.Module):
         self.freeze(freeze_strategy=freeze_strategy)
         self.embedder_fake_with_zeros = embedder_fake_with_zeros
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
-        self.embedding_transform_strategy = embedding_transform_strategy
+        self.embedding_transform_strategy = "repeat" # "none" # "repeat"
         self.token_decode_alpha = token_decode_alpha
         if token_decode_alpha is not None:
             assert embedder_tokenizer is not None
             self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
         else:
             self.embedded_tokens = None
+        self.embedder_decode_score = embedder_decode_score
+        self.embeddings_from_layer_n = embeddings_from_layer_n
     
     def precompute_whitening_params(self, train_dataloader):
         if not self.whiten_embeddings:
@@ -276,6 +318,14 @@ class InversionModel(nn.Module):
     def embedder_device(self) -> torch.device:
         return next(self.embedder.parameters()).device
     
+    def _process_embedder_output(self, outputs: transformers.modeling_outputs.BaseModelOutput) -> torch.Tensor:
+        if self.embeddings_from_layer_n is not None:
+            assert hasattr(outputs, 'hidden_states'), f'output missing hidden states - did you remember to initialize the model with output_hidden_states=True?'
+            return outputs.hidden_states[self.embeddings_from_layer_n]
+        elif hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
+            return outputs.pooler_output
+        return outputs.last_hidden_state
+    
     def call_embedding_model(
             self,
             input_ids: torch.Tensor,
@@ -295,6 +345,9 @@ class InversionModel(nn.Module):
             embeddings = model_output['sentence_embedding']
         else:
             model_output = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
+            model_output = self._process_embedder_output(model_output)
+
+            # embeddings = model_output
             embeddings = mean_pool(model_output, attention_mask)
             # embeddings = max_pool(model_output, attention_mask)
             # embeddings = stack_pool(model_output, attention_mask)
@@ -324,7 +377,9 @@ class InversionModel(nn.Module):
             )
         embeddings = self.consider_whitening(embeddings)
         
-        if self.embedding_transform_strategy == "repeat":
+        if self.embedding_transform_strategy == "none":
+            pass
+        elif self.embedding_transform_strategy == "repeat":
             embeddings = self.embedding_transform(embeddings)
             batch_size = embedder_input_ids.shape[0]
             # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
@@ -334,7 +389,7 @@ class InversionModel(nn.Module):
             raise NotImplementedError()
         else:
             raise ValueError(f'unknown embedding transformation strategy {self.embedding_transform_strategy}')
-        attention_mask = torch.ones((embeddings.shape[0], self.num_repeat_tokens), device=embeddings.device)
+        attention_mask = torch.ones((embeddings.shape[0], embeddings.shape[1]), device=embeddings.device)
         return embeddings, attention_mask
     
     def generate(
@@ -361,6 +416,27 @@ class InversionModel(nn.Module):
             )
             generation_kwargs["logits_processor"] = LogitsProcessorList([
                 embedded_tokens_logits_processor,
+            ])
+            generation_kwargs["renormalize_logits"] = True
+            ########################################################################
+        
+        elif self.embedder_decode_score:
+            ########################################################################
+            print("Using EmbedderScoringLogitsProcessor")
+            # TODO: optimize this code to avoid re-embedding.
+            initial_embeddings = self.call_embedding_model(
+                input_ids=inputs["embedder_input_ids"],
+                attention_mask=inputs["embedder_attention_mask"],
+            )
+            initial_embeddings /= initial_embeddings.norm(p=2, dim=1, keepdim=True)
+            embedder_scoring_logits_processor = EmbedderScoringLogitsProcessor(
+                embedder=self.embedder,
+                process_embedder_output=self._process_embedder_output,
+                true_embeddings=initial_embeddings,
+                topk=8, # 256
+            )
+            generation_kwargs["logits_processor"] = LogitsProcessorList([
+                embedder_scoring_logits_processor,
             ])
             generation_kwargs["renormalize_logits"] = True
             ########################################################################
@@ -402,6 +478,7 @@ def load_embedder_and_tokenizer(name: str):
     # TODO make abstract/argparse for it etc.
     model_kwargs = {
         "low_cpu_mem_usage": True,
+        "output_hidden_states": True,
     }
 
     if name == "dpr":
@@ -446,23 +523,23 @@ def load_embedder_and_tokenizer(name: str):
     return model, tokenizer
 
 
-class FutureEmbeddingPredictor(nn.Module):
-    """Given an embedding prefix, predicts the final embedding of the completion
-    of that prefix.
-    """
-    embedder: nn.Module # embeds a prefix
-    encoder: nn.Module # encodes prefix, outputs encoding
-    mlp: nn.Module # maps encoding to 
-    def __init__(self, embedder, encoder):
-        self.embedder = embedder
-        self.encoder = encdoer
-        embedder_hidden_size = self.embedder.config.hidden_size
-        encoder_hidden_size = self.encoder.config.hidden_size
-        self.mlp = nn.Sequential(
-            nn.Linear(encoder_hidden_size, encoder_hidden_size),
-            nn.GELU(),
-            nn.Linear(encoder_hidden_size, embedder_hidden_size)
-        )
+# class FutureEmbeddingPredictor(nn.Module):
+#     """Given an embedding prefix, predicts the final embedding of the completion
+#     of that prefix.
+#     """
+#     embedder: nn.Module # embeds a prefix
+#     encoder: nn.Module # encodes prefix, outputs encoding
+#     mlp: nn.Module # maps encoding to 
+#     def __init__(self, embedder, encoder):
+#         self.embedder = embedder
+#         self.encoder = encdoer
+#         embedder_hidden_size = self.embedder.config.hidden_size
+#         encoder_hidden_size = self.encoder.config.hidden_size
+#         self.mlp = nn.Sequential(
+#             nn.Linear(encoder_hidden_size, encoder_hidden_size),
+#             nn.GELU(),
+#             nn.Linear(encoder_hidden_size, embedder_hidden_size)
+#         )
 
 
 def load_encoder_decoder(model_name: str, lora: bool = False) -> transformers.AutoModelForSeq2SeqLM:
