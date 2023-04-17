@@ -1,4 +1,4 @@
-from typing import Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import math
 import random
@@ -27,17 +27,20 @@ class InversionTrainer(transformers.Trainer):
         self.metric_bleu = evaluate.load("sacrebleu")
         self.compute_metrics = self.compute_metrics_func
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
-        self.gen_kwargs = {
-                "early_stopping": True,
-                # "no_repeat_ngram_size": 3,
-                # From CtRL paper: We find that using a greedy sampling 
-                # and θ ≈ 1.2 yields a good balance between truthful generation
-                # and lack of repetition (arxiv.org/abs/1909.05858)
-                "repetition_penalty": 1.2,
-                "num_beams": 1,
-                'do_sample': False,
-            }
         self.model.precompute_whitening_params(self.get_train_dataloader())
+    
+    @property
+    def gen_kwargs(self) -> Dict[str, Any]:
+        return {
+            "early_stopping": True,
+            # "no_repeat_ngram_size": 3,
+            # From CtRL paper: We find that using a greedy sampling 
+            # and θ ≈ 1.2 yields a good balance between truthful generation
+            # and lack of repetition (arxiv.org/abs/1909.05858)
+            "repetition_penalty": 1.2,
+            "num_beams": 1,
+            'do_sample': False,
+        }
     
     def _log_preds_table(self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]):
         if not self.args.use_wandb:

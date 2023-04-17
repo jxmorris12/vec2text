@@ -1,4 +1,4 @@
-from typing import Callable, Dict, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 import logging
 
@@ -31,7 +31,6 @@ def freeze_params(model: nn.Module):
     for name, params in model.named_parameters():
         params.requires_grad = False
         total_num_params += params.numel()
-
     print(f'Froze {total_num_params} params from model type {type(model)}')
 
 
@@ -111,28 +110,41 @@ class EmbedderScoringLogitsProcessor(LogitsProcessor):
     embedder: nn.Module
     process_embedder_output: Callable
     true_embeddings: torch.Tensor
+    special_token_ids: List[int]
     topk: int
-    def __init__(self, embedder: nn.Module, process_embedder_output: Callable, true_embeddings: torch.Tensor, topk: int = 200):
+    _lambda: float
+
+    def __init__(self, embedder: nn.Module, process_embedder_output: Callable, true_embeddings: torch.Tensor, special_token_ids: List[int],
+        topk: int = 200, lambda_val: float = 0.5):
         self.embedder = embedder
         self.process_embedder_output = process_embedder_output
         self.true_embeddings = true_embeddings
+        self.special_token_ids = special_token_ids
         self.topk = topk
+        self._lambda = lambda_val
+        print("lambda = ", lambda_val)
 
     def __call__(self, input_ids: torch.LongTensor, scores: torch.FloatTensor) -> torch.FloatTensor:
         assert len(input_ids) == len(self.true_embeddings) == len(scores)
-        print("scoring input_ids of shape", input_ids.shape)
+        batch_size, vocab_size = scores.shape
+
+        # Set special token scores to zero so we don't embed them
+        special_tokens_mask = (
+            torch.arange(scores.shape[1])[:, None] == torch.tensor(self.special_token_ids)[None, :]
+        ).any(dim=1)
+        scores = scores - ((10**10) * special_tokens_mask.float().to(scores.device))
         
         # Softmax the actual model scores for next tokens.
-        batch_size = scores.shape[0]
-        scores = scores.log_softmax(dim=-1)
+        scores = scores.log_softmax(dim=1)
 
         token_scores = torch.zeros_like(scores)
         for i in range(batch_size):
             top_idxs = (-scores[i]).argsort()[:self.topk]
-
-            potential_next_tokens = input_ids[None, i]
-            potential_next_tokens = potential_next_tokens.repeat((self.topk, 1))
-            potential_next_input_ids = torch.cat((potential_next_tokens, top_idxs[:, None]), dim=1)
+            potential_next_input_ids = input_ids[None, i]
+            potential_next_input_ids = potential_next_input_ids.repeat((self.topk, 1))
+            potential_next_input_ids = torch.cat((potential_next_input_ids, top_idxs[:, None]), dim=1)
+            # Strip BOS token and add EOS token. (TODO: don't assume EOS is always 1.)
+            potential_next_input_ids = torch.cat((potential_next_input_ids[:, 1:], torch.ones_like(top_idxs[:, None], device=potential_next_input_ids.device)), dim=1)
             attention_mask = torch.ones_like(potential_next_input_ids, device=potential_next_input_ids.device)
 
             with torch.no_grad():
@@ -142,12 +154,13 @@ class EmbedderScoringLogitsProcessor(LogitsProcessor):
                 )
             model_output = self.process_embedder_output(model_output)
             potential_next_embeddings = mean_pool(model_output, attention_mask)
-            emb_scores = potential_next_embeddings @ self.true_embeddings[i].T
+            # emb_scores = potential_next_embeddings @ self.true_embeddings[i].T
+            emb_scores = torch.nn.CosineSimilarity(dim=1)(potential_next_embeddings, self.true_embeddings[i])
             token_scores[i, top_idxs] = emb_scores
         
-        token_scores = (token_scores + 1e-10).log()
-
-        return scores + token_scores
+        token_scores = (token_scores.clamp(min=0) + 1e-10).log()
+        assert not token_scores.isnan().any()
+        return ((1.0 - self._lambda) * scores) + ((self._lambda) * token_scores)
 
 
 # TODO: can we make this class a HF pretrained model so it works nicely with
@@ -194,6 +207,8 @@ class InversionModel(nn.Module):
             bottleneck_dim: int = 768, # 128,
             token_decode_alpha: Optional[float] = None,
             embedder_decode_score: bool = False,
+            embedding_decode_score_lambda_val: float = 0.5,
+            embedding_decode_score_topk: int = 8,
             embeddings_from_layer_n: Optional[int] = None,
         ):
         super().__init__()
@@ -248,13 +263,14 @@ class InversionModel(nn.Module):
         else:
             self.embedded_tokens = None
         self.embedder_decode_score = embedder_decode_score
+        self.embedding_decode_score_lambda_val = embedding_decode_score_lambda_val
+        self.embedding_decode_score_topk = embedding_decode_score_topk
         self.embeddings_from_layer_n = embeddings_from_layer_n
     
     def precompute_whitening_params(self, train_dataloader):
         if not self.whiten_embeddings:
             return
         self.embedder.to(device)
-        # TODO pre-store this.
         n_sample = 500_000 # TODO argparse for this.
         n_points = 0
         embeddings = []
@@ -399,6 +415,7 @@ class InversionModel(nn.Module):
         ) -> torch.Tensor:
 
         generation_kwargs['max_length'] = inputs.get('input_ids', inputs['embedder_input_ids']).shape[1]
+        print("generate() -- embedder_decode_score", self.embedder_decode_score)
 
         if self.token_decode_alpha is not None:
             ########################################################################
@@ -422,18 +439,21 @@ class InversionModel(nn.Module):
         
         elif self.embedder_decode_score:
             ########################################################################
-            print("Using EmbedderScoringLogitsProcessor")
+            # print("Using EmbedderScoringLogitsProcessor")
             # TODO: optimize this code to avoid re-embedding.
             initial_embeddings = self.call_embedding_model(
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
             )
             initial_embeddings /= initial_embeddings.norm(p=2, dim=1, keepdim=True)
+            print("self.embedding_decode_score_lambda_val =", self.embedding_decode_score_lambda_val)
             embedder_scoring_logits_processor = EmbedderScoringLogitsProcessor(
                 embedder=self.embedder,
                 process_embedder_output=self._process_embedder_output,
                 true_embeddings=initial_embeddings,
-                topk=8, # 256
+                special_token_ids=self.embedder_tokenizer.all_special_ids,
+                topk=self.embedding_decode_score_topk, # 256
+                lambda_val=self.embedding_decode_score_lambda_val,
             )
             generation_kwargs["logits_processor"] = LogitsProcessorList([
                 embedder_scoring_logits_processor,
@@ -518,8 +538,7 @@ def load_embedder_and_tokenizer(name: str):
     else:
         raise ValueError(f'unknown embedder {name}')
     
-    model = torch.compile(model)
-    
+    # model = torch.compile(model)    
     return model, tokenizer
 
 
