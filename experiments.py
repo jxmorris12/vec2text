@@ -259,17 +259,22 @@ class Experiment(abc.ABC):
         ###########################################################################
         # Preprocess embeddings
         if self.model_args.use_frozen_embeddings_as_input:
-            # files are just too big to cache :( 5 million 768-dim embeddings is 15gb
-            # datasets.disable_caching()
-            # model = model.to(device)
-            # tokenized_datasets = tokenized_datasets.map(
-            #     functools.partial(embed_dataset_batch, model),
-            #     batched=True,
-            #     batch_size=training_args.per_device_train_batch_size,
-            # )
-            raise ValueError(
-                "broken feature - this breaks caching. fix caching to use."
-            )
+            if "frozen_embeddings" in tokenized_datasets["train"].column_names:
+                logging.info(
+                    "Frozen embeddings already present in the dataset. Skipping re-embedding."
+                )
+            else:
+                # files are just too big to cache :( 5 million 768-dim embeddings is 15gb
+                # datasets.disable_caching()
+                # model = model.to(device)
+                # tokenized_datasets = tokenized_datasets.map(
+                #     functools.partial(embed_dataset_batch, model),
+                #     batched=True,
+                #     batch_size=training_args.per_device_train_batch_size,
+                # )
+                raise ValueError(
+                    "broken feature - this breaks caching. fix caching to use."
+                )
 
         if data_args.use_less_data:
             for key in tokenized_datasets:

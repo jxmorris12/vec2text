@@ -293,12 +293,11 @@ class InversionModel(nn.Module):
             self.encoder_decoder = get_peft_model(self.encoder_decoder, peft_config)
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
-        # if use_frozen_embeddings_as_input:
-        # pass
-        # self.embedder_dim = 512
-        # temp hack to set fixed sentence embedding size to 512.
-        # TODO do this in a smarter way (figure it out from data? or make it an arg.)
-        if isinstance(self.embedder, SentenceTransformer):
+        if use_frozen_embeddings_as_input:
+            # temp hack to set fixed sentence embedding size to 512.
+            # TODO do this in a smarter way (figure it out from data? or make it an arg.)
+            self.embedder_dim = 512
+        elif isinstance(self.embedder, SentenceTransformer):
             self.embedder_dim = self.embedder.get_sentence_embedding_dimension()
         else:
             self.embedder_dim = self.embedder.config.hidden_size
@@ -678,7 +677,7 @@ class PrefixReranker(nn.Module):
 
     embedder: nn.Module  # embeds a prefix
     encoder: nn.Module  # encodes prefix, outputs encoding
-    mlp: nn.Module  # maps encoding to
+    embedding_mlp: nn.Module  # maps encoding to another vector
 
     # def __init__(self, embedder, encoder):
     #     self.embedder = embedder
