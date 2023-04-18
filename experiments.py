@@ -1,22 +1,139 @@
+from typing import Optional, Tuple
+
 import abc
+import hashlib
+import functools
+import json
+import logging
 import os
 
+import datasets
+import torch
 import transformers
+from transformers import AutoTokenizer, set_seed
+
+from collator import CustomCollator
+from data_helpers import load_dpr_corpus, load_luar_reddit, NQ_DEV, NQ_TRAIN
+from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
+from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
+from tokenize_data import tokenize_function, whiten_embedded_dataset, embed_dataset_batch
+from trainer import InversionTrainer
+
+
+os.environ["WANDB__SERVICE_WAIT"] = "300"
+os.environ["_WANDB_STARTUP_DEBUG"] = "true"
+
+device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+logger = logging.getLogger(__name__)
+
+
+def md5_hash_kwargs(**kwargs) -> str:
+    # We ignore special hf args that start with _ like '__cached__setup_devices'.
+    safe_kwargs = {k: str(v) for k,v in kwargs.items() if not k.startswith('_')}
+    s = json.dumps(safe_kwargs, sort_keys=True)
+    return hashlib.md5(s.encode()).hexdigest()
 
 
 class Experiment(abc.ABC):
-    def __init__(training_args, model_args, data_args):
+    def __init__(model_args, data_args, training_args):
         set_seed(training_args.seed)
         # Add hash to output path.
         training_args.output_dir = os.path.join(
             training_args.output_dir, kwargs_hash        
         )
         # Save all args.
-        self.training_args = training_args
         self.model_args = model_args
         self.data_args = data_args
+        self.training_args = training_args
         # Set up output_dir and wandb.
+        self._setup_logging()
         self._consider_init_wandb()
+    
+    def _setup_logging() -> None:
+        logging.basicConfig(
+            format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
+            datefmt="%m/%d/%Y %H:%M:%S",
+            handlers=[logging.StreamHandler(sys.stdout)],
+        )
+
+        if self.training_args.should_log:
+            # The default of training_args.log_level is passive, so we set log level at info here to have that default.
+            transformers.utils.logging.set_verbosity_info()
+        log_level = self.training_args.get_process_log_level()
+        logger.setLevel(log_level)
+        datasets.utils.logging.set_verbosity(log_level)
+        transformers.utils.logging.set_verbosity(log_level)
+        transformers.utils.logging.enable_default_handler()
+        transformers.utils.logging.enable_explicit_format()
+    
+    def run():
+        if training_args.do_eval:
+            self.evaluate()
+        else:
+            self.train()
+
+    
+    def train() -> Dict:
+        # *** Training ***
+        logger.info("*** Training ***")
+        
+        # Log on each process a small summary of training.
+        logger.warning(
+            f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
+            + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+        )
+        logger.info(f"Training/evaluation parameters {training_args}")
+
+        # Checkpointing logic
+        checkpoint = self._get_checkpoint()
+
+        # Save model_args and data_args before training. Trainer will save training_args.
+        torch.save(data_args, os.path.join(training_args.output_dir, 'data_args.bin'))
+        torch.save(model_args, os.path.join(training_args.output_dir, 'model_args.bin'))
+
+        # train.
+        train_result = trainer.train(resume_from_checkpoint=checkpoint)
+        trainer.save_model()  # Saves the tokenizer too for easy upload
+
+        metrics = train_result.metrics
+
+        trainer.log_metrics("train", metrics)
+        trainer.save_metrics("train", metrics)
+        trainer.save_state()
+
+        return metrics
+    
+    def evaluate() -> Dict:
+        # *** Evaluation ***
+        logger.info("*** Evaluate ***")
+        metrics = trainer.evaluate()
+        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
+        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        trainer.log_metrics("eval", metrics)
+        trainer.save_metrics("eval", metrics)
+        return metrics
+    
+    def _get_checkpoint() -> Optional[str]:
+        training_args = self.training_args
+        last_checkpoint = None
+        if os.path.isdir(training_args.output_dir) and not training_args.overwrite_output_dir:
+            last_checkpoint = get_last_checkpoint(training_args.output_dir)
+            if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+                raise ValueError(
+                    f"Output directory ({training_args.output_dir}) already exists and is not empty. "
+                    "Use --overwrite_output_dir to overcome."
+                )
+            elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+                logger.info(
+                    f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
+                    "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
+                )
+        checkpoint = None
+        if training_args.resume_from_checkpoint is not None:
+            checkpoint = training_args.resume_from_checkpoint
+        elif last_checkpoint is not None:
+            checkpoint = last_checkpoint
+        return checkpoint
     
     @property
     def kwargs_hash(self) -> str:
@@ -131,6 +248,7 @@ class InversionExperiment(Experiment):
     
     @property
     def load_model(self) -> nn.Module:
+        model_args = self.model_args
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             padding=True,
@@ -164,13 +282,16 @@ class InversionExperiment(Experiment):
     @property
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
+        train_dataset, eval_dataset = self.load_train_and_val_datasets()
+        n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
+        logger.info(f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
         raise InversionTrainer(
             model=model,
-            args=training_args,
+            args=self.training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            tokenizer=tokenizer,
-            data_collator=CustomCollator(tokenizer=tokenizer),
+            # tokenizer=model.tokenizer,
+            data_collator=CustomCollator(tokenizer=model.tokenizer),
         )
 
 
@@ -187,3 +308,15 @@ class RerankingExperiment(Experiment):
     @property
     def load_model(self) -> nn.Module:
         return ?
+
+
+EXPERIMENT_CLS_MAP = {
+    'inversion': InversionExperiment,
+    'reranking': RerankingExperiment,
+}
+def setup_experiment(model_args, data_args, training_args) -> Experiment
+    if training_args.experiment in EXPERIMENT_CLS_MAP:
+        experiment_cls = EXPERIMENT_CLS_MAP[training_args.experiment]
+    else:
+        raise ValueError(f'Unknown experiment {training_args.experiment}')
+    return experiment_cls(model_args, data_args, training_args)

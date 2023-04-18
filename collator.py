@@ -46,7 +46,7 @@ class CustomCollator(transformers.DataCollatorWithPadding):
         #
         for ex in features:
             for k,v in ex.items():
-                stacked_features[k].append(v) # tokenize documents.
+                stacked_features[k].append(v) 
         #
         #
         # stack other features
@@ -57,5 +57,4 @@ class CustomCollator(transformers.DataCollatorWithPadding):
             ex[k] = torch.tensor(v) 
         
         # TODO: call cut_padding and test if it speeds up the code
-        
         return ex
