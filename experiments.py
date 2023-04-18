@@ -6,14 +6,14 @@ import functools
 import json
 import logging
 import os
+import sys
 
 import datasets
 import torch
 import transformers
-from transformers import AutoTokenizer, set_seed
 
 from collator import CustomCollator
-from data_helpers import load_dpr_corpus, load_luar_reddit, NQ_DEV, NQ_TRAIN
+from data_helpers import dataset_from_args
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from tokenize_data import tokenize_function, whiten_embedded_dataset, embed_dataset_batch
@@ -35,21 +35,21 @@ def md5_hash_kwargs(**kwargs) -> str:
 
 
 class Experiment(abc.ABC):
-    def __init__(model_args, data_args, training_args):
-        set_seed(training_args.seed)
-        # Add hash to output path.
-        training_args.output_dir = os.path.join(
-            training_args.output_dir, kwargs_hash        
-        )
+    def __init__(self, model_args, data_args, training_args):
         # Save all args.
         self.model_args = model_args
         self.data_args = data_args
         self.training_args = training_args
+        # Add hash to output path.
+        transformers.set_seed(training_args.seed)
+        training_args.output_dir = os.path.join(
+            training_args.output_dir, self.kwargs_hash        
+        )
         # Set up output_dir and wandb.
         self._setup_logging()
         self._consider_init_wandb()
     
-    def _setup_logging() -> None:
+    def _setup_logging(self) -> None:
         logging.basicConfig(
             format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
             datefmt="%m/%d/%Y %H:%M:%S",
@@ -66,14 +66,14 @@ class Experiment(abc.ABC):
         transformers.utils.logging.enable_default_handler()
         transformers.utils.logging.enable_explicit_format()
     
-    def run():
-        if training_args.do_eval:
+    def run(self):
+        if self.training_args.do_eval:
             self.evaluate()
         else:
             self.train()
 
     
-    def train() -> Dict:
+    def train(self) -> Dict:
         # *** Training ***
         logger.info("*** Training ***")
         
@@ -103,7 +103,7 @@ class Experiment(abc.ABC):
 
         return metrics
     
-    def evaluate() -> Dict:
+    def evaluate(self) -> Dict:
         # *** Evaluation ***
         logger.info("*** Evaluate ***")
         metrics = trainer.evaluate()
@@ -113,7 +113,7 @@ class Experiment(abc.ABC):
         trainer.save_metrics("eval", metrics)
         return metrics
     
-    def _get_checkpoint() -> Optional[str]:
+    def _get_checkpoint(self) -> Optional[str]:
         training_args = self.training_args
         last_checkpoint = None
         if os.path.isdir(training_args.output_dir) and not training_args.overwrite_output_dir:
@@ -137,19 +137,23 @@ class Experiment(abc.ABC):
     
     @property
     def kwargs_hash(self) -> str:
-        return md5_hash_kwargs(**vars(model_args), **vars(data_args), **vars(training_args))
+        return md5_hash_kwargs(
+            **vars(self.model_args), 
+            **vars(self.data_args), 
+            **vars(self.training_args)
+        )
     
     @property
-    def _is_main_worker() -> bool:
+    def _is_main_worker(self) -> bool:
         return (self.training_args.local_rank <= 0) and (int(os.environ.get("LOCAL_RANK", 0)) <= 0)
     
     @property
     @abc.abstractmethod
-    def _wandb_project_name() -> str:
+    def _wandb_project_name(self) -> str:
         raise NotImplementedError()
     
     @property
-    def _wandb_exp_name() -> str:
+    def _wandb_exp_name(self) -> str:
         name_args = (
             self.training_args.exp_group_name, 
             self.training_args.exp_name, 
@@ -160,8 +164,8 @@ class Experiment(abc.ABC):
         return '__'.join(name_args)
         
     
-    def _consider_init_wandb() -> None:
-        if training_args.use_wandb and self._is_main_worker:
+    def _consider_init_wandb(self) -> None:
+        if self.training_args.use_wandb and self._is_main_worker:
             import wandb
             wandb.init(
                 project=self._wandb_project_name,
@@ -170,7 +174,11 @@ class Experiment(abc.ABC):
                 resume=True,
             )
             wandb.config.update(
-                {**vars(self.model_args), **vars(self.data_args), **vars(self.training_args)},
+                {
+                    **vars(self.model_args), 
+                    **vars(self.data_args), 
+                    **vars(self.training_args)
+                },
                 allow_val_change=True,
             )
         else:
@@ -188,7 +196,11 @@ class Experiment(abc.ABC):
     def load_model(self) -> torch.nn.Module:
         raise NotImplementedError()
 
-    def load_train_and_val_datasets(self) -> Tuple[datasets.Dataset, datasets.Dataset]:
+    def load_train_and_val_datasets(
+            self, 
+            tokenizer: transformers.AutoTokenizer, 
+            embedder_tokenizer: transformers.AutoTokenizer
+        ) -> Tuple[datasets.Dataset, datasets.Dataset]:
         data_args = self.data_args
         ###########################################################################
         # Load datasets
@@ -203,7 +215,7 @@ class Experiment(abc.ABC):
         column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
         
         tokenized_datasets = raw_datasets.map(
-            tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
+            tokenize_function(tokenizer, embedder_tokenizer, text_column_name, self.model_args.max_seq_length),
             batched=True,
             # num_proc=training_args.dataloader_num_workers,
             remove_columns=column_names,
@@ -212,7 +224,7 @@ class Experiment(abc.ABC):
 
         ###########################################################################
         # Preprocess embeddings
-        if model_args.use_frozen_embeddings_as_input:
+        if self.model_args.use_frozen_embeddings_as_input:
             # files are just too big to cache :( 5 million 768-dim embeddings is 15gb 
             # datasets.disable_caching()
             # model = model.to(device)
@@ -243,13 +255,12 @@ class Experiment(abc.ABC):
 class InversionExperiment(Experiment):
 
     @property
-    def _wandb_project_name() -> str:
+    def _wandb_project_name(self) -> str:
         return "emb-inv-1"
     
-    @property
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
-        tokenizer = AutoTokenizer.from_pretrained(
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             padding=True,
             truncation='max_length',
@@ -278,11 +289,13 @@ class InversionExperiment(Experiment):
             token_decode_alpha=model_args.token_decode_alpha,
             embeddings_from_layer_n=model_args.embeddings_from_layer_n,
         )
-        
-    @property
+
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
-        train_dataset, eval_dataset = self.load_train_and_val_datasets()
+        train_dataset, eval_dataset = self.load_train_and_val_datasets(
+            tokenizer=model.tokenizer,
+            embedder_tokenizer=model.embedder_tokenizer,
+        )
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
         logger.info(f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
         raise InversionTrainer(
@@ -298,14 +311,12 @@ class InversionExperiment(Experiment):
 class RerankingExperiment(Experiment):
 
     @property
-    def _wandb_project_name() -> str:
+    def _wandb_project_name(self) -> str:
         return "emb-rerank-1"
 
-    @property
     def load_trainer(self) -> transformers.Trainer:
         raise InversionTrainer()
     
-    @property
     def load_model(self) -> torch.nn.Module:
         return PrefixReranker()
 
