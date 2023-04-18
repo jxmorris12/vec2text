@@ -229,4 +229,5 @@ class InversionTrainer(transformers.Trainer):
         return output
     
 
-        
+
+class RerankingTrainer(transformers.Trainer):

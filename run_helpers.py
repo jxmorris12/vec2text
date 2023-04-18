@@ -34,117 +34,12 @@ def trainer_from_args(model_args, data_args, training_args) -> InversionTrainer:
     name_args = [n for n in name_args if len(n)]
     exp_name = '__'.join(name_args)
     
-    # Set up output_dir and wandb.
-    kwargs_hash = md5_hash_kwargs(**vars(model_args), **vars(data_args), **vars(training_args))
-    training_args.output_dir = os.path.join(
-        training_args.output_dir, kwargs_hash        
-    )
-
-    if training_args.use_wandb and (training_args.local_rank <= 0) and (int(os.environ.get("LOCAL_RANK", 0)) <= 0):
-        import wandb
-
-        wandb.init(
-            project="emb-inv-1",
-            name=exp_name,
-            id=kwargs_hash,
-            resume=True,
-        )
-        wandb.config.update(
-            {**vars(model_args), **vars(data_args), **vars(training_args)},
-            allow_val_change=True,
-        )
-    else:
-        # Disable W&B
-        os.environ["WANDB_MODE"] = "disabled"
-        os.environ["WANDB_DISABLED"] = "true"
-
     ###########################################################################
-    tokenizer = AutoTokenizer.from_pretrained(
-        model_args.model_name_or_path,
-        padding=True,
-        truncation='max_length',
-        max_length=model_args.max_seq_length,
-    )
-    embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-        name=model_args.embedder_model_name
-    )
-    model = InversionModel(
-        embedder=embedder,
-        embedder_tokenizer=embedder_tokenizer,
-        tokenizer=tokenizer,
-        encoder_decoder=load_encoder_decoder(
-            model_name=model_args.model_name_or_path,
-            lora=model_args.use_lora,
-        ),
-        num_repeat_tokens=model_args.num_repeat_tokens,
-        embedder_no_grad=model_args.embedder_no_grad,
-        embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
-        use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
-        whiten_embeddings=model_args.whiten_embeddings,
-        encoder_dropout_disabled=model_args.encoder_dropout_disabled,
-        decoder_dropout_disabled=model_args.decoder_dropout_disabled,
-        freeze_strategy=model_args.freeze_strategy,
-        encoder_decoder_lora=model_args.use_lora,
-        token_decode_alpha=model_args.token_decode_alpha,
-        embeddings_from_layer_n=model_args.embeddings_from_layer_n,
-    )
-
-    logger.info("Loading datasets...")
-
-    if data_args.dataset_name == "nq":
-        raw_datasets = datasets.DatasetDict({
-            "train": load_dpr_corpus(NQ_TRAIN),
-            "validation": load_dpr_corpus(NQ_DEV),
-        })
-    elif data_args.dataset_name == "luar_reddit":
-        all_luar_datasets = load_luar_reddit()
-        raw_datasets = datasets.DatasetDict({
-            "train": all_luar_datasets["candidates"],
-            "validation": all_luar_datasets["queries"],
-        })
-    else:
-        raise ValueError(f'unsupported dataset {data_args.dataset_name}')
-
-    text_column_name = "text"
-    column_names = list(raw_datasets["train"].features)
-    ALLOWED_COLUMN_NAMES = { "frozen_embeddings" } # "document_id"}
-    column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
-    
-    tokenized_datasets = raw_datasets.map(
-        tokenize_function(tokenizer, embedder_tokenizer, text_column_name, model_args.max_seq_length),
-        batched=True,
-        # num_proc=training_args.dataloader_num_workers,
-        remove_columns=column_names,
-        desc="Running tokenizer on dataset",
-    )
-    ###########################################################################
-    # Preprocess embeddings
-    if model_args.use_frozen_embeddings_as_input:
-        # files are just too big to cache :( 5 million 768-dim embeddings is 15gb 
-        # datasets.disable_caching()
-        model = model.to(device)
-        tokenized_datasets = tokenized_datasets.map(
-            functools.partial(embed_dataset_batch, model),
-            batched=True,
-            batch_size=training_args.per_device_train_batch_size,
-        )
-
-    if data_args.use_less_data:
-        for key in tokenized_datasets:
-            d = tokenized_datasets[key]
-            new_length = max(256, int(len(d) * .1))
-            tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
-    
-    ###########################################################################
-    train_dataset = tokenized_datasets["train"]
-    eval_dataset = tokenized_datasets["validation"]
+    model = inversion_model_from_args(model_args)
+    train_dataset, eval_dataset = experiment.load_train_and_val_datasets()
 
     n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
     logger.info(f"Training model from checkpoint `{model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
-    
-    if data_args.max_eval_samples is not None:
-        max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-        eval_dataset = eval_dataset.select(range(max_eval_samples))
 
     return InversionTrainer(
         model=model,

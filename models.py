@@ -571,3 +571,4 @@ def load_encoder_decoder(model_name: str, lora: bool = False) -> transformers.Au
             "device_map": "auto",
         })
     return transformers.AutoModelForSeq2SeqLM.from_pretrained(model_name, **model_kwargs)
+

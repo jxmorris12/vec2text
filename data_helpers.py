@@ -75,3 +75,19 @@ def load_luar_reddit() -> datasets.Dataset:
     d = d.rename_column('embedding', 'frozen_embeddings')
     return d
 
+
+def dataset_from_args(data_args) -> datasets.DatasetDict:
+    if data_args.dataset_name == "nq":
+        raw_datasets = datasets.DatasetDict({
+            "train": load_dpr_corpus(NQ_TRAIN),
+            "validation": load_dpr_corpus(NQ_DEV),
+        })
+    elif data_args.dataset_name == "luar_reddit":
+        all_luar_datasets = load_luar_reddit()
+        raw_datasets = datasets.DatasetDict({
+            "train": all_luar_datasets["candidates"],
+            "validation": all_luar_datasets["queries"],
+        })
+    else:
+        raise ValueError(f'unsupported dataset {data_args.dataset_name}')
+    return raw_datasets
