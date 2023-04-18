@@ -92,5 +92,5 @@ def test_inversion_model_frozen_embeddings_input(fake_data):
     with pytest.raises(AssertionError):
         __test_embedding_model(fake_data, "gtr_base", True, "none", False, True, False)
     
-    fake_data["frozen_embeddings"] = torch.randn((1, 768), dtype=torch.float32)
+    fake_data["frozen_embeddings"] = torch.randn((2, 768), dtype=torch.float32)
     __test_embedding_model(fake_data, "gtr_base", True, "none", False, True, False)

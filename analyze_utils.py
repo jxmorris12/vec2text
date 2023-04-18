@@ -12,10 +12,11 @@ from transformers.trainer_utils import get_last_checkpoint
 
 from collator import CustomCollator
 from data_helpers import load_dpr_corpus, NQ_DEV, NQ_TRAIN
+from experiments import experiment_from_args
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from tokenize_data import embed_dataset_batch, tokenize_function, whiten_embedded_dataset
-from trainer import InversionTrainer
+from trainers import InversionTrainer
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -42,7 +43,7 @@ def load_trainer(
     training_args.use_wandb = False
     training_args.report_to = []
     
-    experiment = setup_experiment(model_args, data_args, training_args)
+    experiment = experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.get_trainer()
     trainer._load_from_checkpoint(checkpoint)
     return trainer

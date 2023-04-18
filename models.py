@@ -152,8 +152,7 @@ class EmbedderScoringLogitsProcessor(LogitsProcessor):
                     input_ids=potential_next_input_ids,
                     attention_mask=attention_mask
                 )
-            model_output = self.process_embedder_output(model_output)
-            potential_next_embeddings = mean_pool(model_output, attention_mask)
+            potential_next_embeddings = self.process_embedder_output(model_output, attention_mask)
             # emb_scores = potential_next_embeddings @ self.true_embeddings[i].T
             emb_scores = torch.nn.CosineSimilarity(dim=1)(potential_next_embeddings, self.true_embeddings[i])
             token_scores[i, top_idxs] = emb_scores
@@ -334,13 +333,21 @@ class InversionModel(nn.Module):
     def embedder_device(self) -> torch.device:
         return next(self.embedder.parameters()).device
     
-    def _process_embedder_output(self, outputs: transformers.modeling_outputs.BaseModelOutput) -> torch.Tensor:
-        if self.embeddings_from_layer_n is not None:
-            assert hasattr(outputs, 'hidden_states'), f'output missing hidden states - did you remember to initialize the model with output_hidden_states=True?'
-            return outputs.hidden_states[self.embeddings_from_layer_n]
-        elif hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
+    def _process_embedder_output(self, outputs: transformers.modeling_outputs.BaseModelOutput,
+        attention_mask: torch.Tensor) -> torch.Tensor:
+        if hasattr(outputs, 'pooler_output') and (outputs.pooler_output is not None):
             return outputs.pooler_output
-        return outputs.last_hidden_state
+        else:
+            if self.embeddings_from_layer_n is not None:
+                assert hasattr(outputs, 'hidden_states'), f'output missing hidden states - did you remember to initialize the model with output_hidden_states=True?'
+                hidden_state = outputs.hidden_states[self.embeddings_from_layer_n]
+            else:
+                hidden_state = outputs.last_hidden_state
+            # embeddings = model_output
+            embeddings = mean_pool(hidden_state, attention_mask)
+            # embeddings = max_pool(model_output, attention_mask)
+            # embeddings = stack_pool(model_output, attention_mask)
+            return embeddings
     
     def call_embedding_model(
             self,
@@ -361,12 +368,7 @@ class InversionModel(nn.Module):
             embeddings = model_output['sentence_embedding']
         else:
             model_output = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
-            model_output = self._process_embedder_output(model_output)
-
-            # embeddings = model_output
-            embeddings = mean_pool(model_output, attention_mask)
-            # embeddings = max_pool(model_output, attention_mask)
-            # embeddings = stack_pool(model_output, attention_mask)
+            embeddings = self._process_embedder_output(model_output, attention_mask)
         return embeddings
 
     def embed_and_project(
@@ -376,8 +378,10 @@ class InversionModel(nn.Module):
             frozen_embeddings: Optional[torch.Tensor] = None,
         ) -> Tuple[torch.Tensor, torch.Tensor]:
 
+        print("embed_and_project // self.use_frozen_embeddings_as_input:", self.use_frozen_embeddings_as_input)
         if self.use_frozen_embeddings_as_input:
             assert frozen_embeddings is not None, "specified to train on frozen embeddings but none were provided"
+            assert len(embedder_input_ids) == len(frozen_embeddings)
             embeddings = frozen_embeddings
             assert len(embeddings.shape) == 2 # batch by d
         elif self.embedder_no_grad:
@@ -520,7 +524,7 @@ def load_embedder_and_tokenizer(name: str):
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
     elif name == "gtr_base__random_init":
         config = transformers.AutoConfig.from_pretrained("sentence-transformers/gtr-t5-base")
-        model = transformers.AutoModel.from_config(config, **model_kwargs).encoder
+        model = transformers.AutoModel.from_config(config).encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
     elif name == "gtr_base_st":
         # TODO figure out why model w/ sentence transformers gives different results.
@@ -542,23 +546,23 @@ def load_embedder_and_tokenizer(name: str):
     return model, tokenizer
 
 
-# class FutureEmbeddingPredictor(nn.Module):
-#     """Given an embedding prefix, predicts the final embedding of the completion
-#     of that prefix.
-#     """
-#     embedder: nn.Module # embeds a prefix
-#     encoder: nn.Module # encodes prefix, outputs encoding
-#     mlp: nn.Module # maps encoding to 
-#     def __init__(self, embedder, encoder):
-#         self.embedder = embedder
-#         self.encoder = encdoer
-#         embedder_hidden_size = self.embedder.config.hidden_size
-#         encoder_hidden_size = self.encoder.config.hidden_size
-#         self.mlp = nn.Sequential(
-#             nn.Linear(encoder_hidden_size, encoder_hidden_size),
-#             nn.GELU(),
-#             nn.Linear(encoder_hidden_size, embedder_hidden_size)
-#         )
+class PrefixReranker(nn.Module):
+    """Given an embedding prefix, predicts the final embedding of the completion
+    of that prefix.
+    """
+    embedder: nn.Module # embeds a prefix
+    encoder: nn.Module # encodes prefix, outputs encoding
+    mlp: nn.Module # maps encoding to 
+    def __init__(self, embedder, encoder):
+        self.embedder = embedder
+        self.encoder = encdoer
+        embedder_hidden_size = self.embedder.config.hidden_size
+        encoder_hidden_size = self.encoder.config.hidden_size
+        self.mlp = nn.Sequential(
+            nn.Linear(encoder_hidden_size, encoder_hidden_size),
+            nn.GELU(),
+            nn.Linear(encoder_hidden_size, embedder_hidden_size)
+        )
 
 
 def load_encoder_decoder(model_name: str, lora: bool = False) -> transformers.AutoModelForSeq2SeqLM:

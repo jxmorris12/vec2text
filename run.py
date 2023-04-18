@@ -1,6 +1,6 @@
 import transformers
 
-from experiments import setup_experiment
+from experiments import experiment_from_args
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 
 
@@ -9,7 +9,7 @@ def main():
         (ModelArguments, DataTrainingArguments, TrainingArguments)
     )
     model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    experiment = setup_experiment(model_args, data_args, training_args)
+    experiment = experiment_from_args(model_args, data_args, training_args)
     experiment.run()
 
 

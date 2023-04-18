@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import abc
 import hashlib
@@ -17,7 +17,7 @@ from data_helpers import load_dpr_corpus, load_luar_reddit, NQ_DEV, NQ_TRAIN
 from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
 from tokenize_data import tokenize_function, whiten_embedded_dataset, embed_dataset_batch
-from trainer import InversionTrainer
+from trainers import InversionTrainer
 
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -185,10 +185,11 @@ class Experiment(abc.ABC):
     
     @property
     @abc.abstractmethod
-    def load_model(self) -> nn.Module:
+    def load_model(self) -> torch.nn.Module:
         raise NotImplementedError()
 
     def load_train_and_val_datasets(self) -> Tuple[datasets.Dataset, datasets.Dataset]:
+        data_args = self.data_args
         ###########################################################################
         # Load datasets
         logger.info(f"Loading dataset '%s'...", self.data_args.dataset_name)
@@ -232,12 +233,11 @@ class Experiment(abc.ABC):
         train_dataset = tokenized_datasets["train"]
         eval_dataset = tokenized_datasets["validation"]
 
-    
-    if data_args.max_eval_samples is not None:
-        max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-        eval_dataset = eval_dataset.select(range(max_eval_samples))
+        if data_args.max_eval_samples is not None:
+            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
+            eval_dataset = eval_dataset.select(range(max_eval_samples))
 
-    return train_dataset, eval_dataset
+        return train_dataset, eval_dataset
 
 
 class InversionExperiment(Experiment):
@@ -247,7 +247,7 @@ class InversionExperiment(Experiment):
         return "emb-inv-1"
     
     @property
-    def load_model(self) -> nn.Module:
+    def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
         tokenizer = AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
@@ -306,15 +306,15 @@ class RerankingExperiment(Experiment):
         raise InversionTrainer()
     
     @property
-    def load_model(self) -> nn.Module:
-        return ?
+    def load_model(self) -> torch.nn.Module:
+        return PrefixReranker()
 
 
 EXPERIMENT_CLS_MAP = {
     'inversion': InversionExperiment,
     'reranking': RerankingExperiment,
 }
-def setup_experiment(model_args, data_args, training_args) -> Experiment
+def experiment_from_args(model_args, data_args, training_args) -> Experiment:
     if training_args.experiment in EXPERIMENT_CLS_MAP:
         experiment_cls = EXPERIMENT_CLS_MAP[training_args.experiment]
     else:

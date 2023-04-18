@@ -231,3 +231,6 @@ class InversionTrainer(transformers.Trainer):
 
 
 class RerankingTrainer(transformers.Trainer):
+    def __init__(
+            self, *args, **kwargs):
+        super().__init__(*args, **kwargs)

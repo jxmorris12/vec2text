@@ -236,11 +236,19 @@ class TrainingArguments(transformers.TrainingArguments):
     # torch_compile: bool = True # for torch 2
 
     ##################### Experimental Settings ####################
+    experiment: str = field(
+        default="inversion",
+        metadata={
+            "required": False,
+            "help": "Which experiment to run (defines model, loss func, dataset...) ",
+            "choices": ["inversion", "reranking"],
+        }
+    )
     exp_name: str = field(
         default="",
         metadata={
             "required": False,
-            "help": "Name to identify this specific experiment",
+            "help": "Name to identify this specific run of an experiment",
         }
     )
     exp_group_name: str = field(
