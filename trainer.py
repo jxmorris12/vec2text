@@ -1,5 +1,6 @@
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+import copy
 import math
 import random
 
@@ -28,10 +29,7 @@ class InversionTrainer(transformers.Trainer):
         self.compute_metrics = self.compute_metrics_func
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
         self.model.precompute_whitening_params(self.get_train_dataloader())
-    
-    @property
-    def gen_kwargs(self) -> Dict[str, Any]:
-        return {
+        self.gen_kwargs = {
             "early_stopping": True,
             # "no_repeat_ngram_size": 3,
             # From CtRL paper: We find that using a greedy sampling 
@@ -80,7 +78,7 @@ class InversionTrainer(transformers.Trainer):
             with torch.no_grad():
                 generated_text = self.model.generate(
                     inputs=inputs_cuda,
-                    generation_kwargs=self.gen_kwargs
+                    generation_kwargs=copy.copy(self.gen_kwargs)
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs['input_ids'].cpu().tolist())
@@ -109,7 +107,7 @@ class InversionTrainer(transformers.Trainer):
             with torch.no_grad():
                 generated_text = self.model.generate(
                     inputs=inputs_cuda,
-                    generation_kwargs=self.gen_kwargs
+                    generation_kwargs=copy.copy(self.gen_kwargs)
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs['input_ids'].cpu().tolist())
@@ -160,7 +158,7 @@ class InversionTrainer(transformers.Trainer):
         
         assert torch.tensor(preds).shape == torch.tensor(labels).shape
         
-        # Get decoded text (note that this is *different*) than 'preds', which
+        # Get decoded text –note that this is different than `preds`, which
         # is used to compute the loss.
         preds_sample, preds_sample_labels = self._get_eval_preds(n=1000)
 
@@ -180,6 +178,25 @@ class InversionTrainer(transformers.Trainer):
         print(decoded_preds[2])
         print(decoded_labels[2])
 
+        # Compute sims of eval data using embedder.
+        preds_sample = torch.tensor(preds_sample, device=self.args.device)[:128]
+        preds_sample_labels = torch.tensor(preds_sample_labels, device=self.args.device)[:128]
+        # Fix eos token on generated text.
+        eos_token_id = self.model.embedder_tokenizer.eos_token_id
+        eos_tokens = torch.ones((len(preds_sample), 1), dtype=preds_sample.dtype, device=self.args.device) * eos_token_id
+        preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
+        with torch.no_grad():
+            preds_emb = self.model.call_embedding_model(
+                input_ids=preds_sample,
+                attention_mask=torch.ones_like(preds_sample, device=self.args.device)
+            )
+            labels_emb = self.model.call_embedding_model(
+                input_ids=preds_sample_labels,
+                attention_mask=torch.ones_like(preds_sample_labels, device=self.args.device)
+            )
+            emb_cos_sim = torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()
+            sim_result = {"emb_cos_sim": emb_cos_sim}
+
         # Log table for train data.
         train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=50)
         decoded_train_preds = self.model.tokenizer.batch_decode(train_preds_sample, skip_special_tokens=True)
@@ -193,7 +210,7 @@ class InversionTrainer(transformers.Trainer):
         preds = preds.reshape(-1)
         accuracy_result = self.metric_accuracy.compute(predictions=preds, references=labels)
 
-        return { **bleu_result, **accuracy_result }
+        return { **bleu_result, **accuracy_result, **sim_result }
 
     def evaluation_loop(self, *args, **kwargs) -> transformers.trainer_utils.EvalLoopOutput:
         """

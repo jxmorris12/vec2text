@@ -346,7 +346,7 @@ class InversionModel(nn.Module):
             self,
             input_ids: torch.Tensor,
             attention_mask: torch.Tensor,
-            token_type_ids: Optional[torch.Tensor] = None, # not used
+            # token_type_ids: Optional[torch.Tensor] = None, # not used
         ) -> torch.Tensor:
 
         if self.embedder_fake_with_zeros:
@@ -415,7 +415,7 @@ class InversionModel(nn.Module):
         ) -> torch.Tensor:
 
         generation_kwargs['max_length'] = inputs.get('input_ids', inputs['embedder_input_ids']).shape[1]
-        print("generate() -- embedder_decode_score", self.embedder_decode_score)
+        # print("generate() -- embedder_decode_score", self.embedder_decode_score)
 
         if self.token_decode_alpha is not None:
             ########################################################################
