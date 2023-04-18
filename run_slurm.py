@@ -1,8 +1,7 @@
-from datetime import datetime
 import itertools
+from datetime import datetime
 
 from slurmpy import Slurm
-
 
 BASE_PYTHON_CMD = """
 python run.py --per_device_train_batch_size {batch_size} \
@@ -35,7 +34,7 @@ models = [
     # 't5-base',
     # 't5-large',
     # 't5-3b',
-    't5-11b',
+    "t5-11b",
 ]
 
 # emb_models = ['dpr', 'ance_tele']
@@ -57,7 +56,7 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar17-baselines'
 # exp_group_name = 'mar19-random'
 # exp_group_name = 'mar21-bn-drop'
-exp_group_name = 'apr16-huge'
+exp_group_name = "apr16-huge"
 ##########################################
 
 # batch_size = 128
@@ -80,9 +79,10 @@ num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 # freeze_strategies = ["decoder", "encoder_and_decoder", "encoder", "none"]
 
-fake_embedding_with_zeros = [False] # embedder_fake_with_zeros
+fake_embedding_with_zeros = [False]  # embedder_fake_with_zeros
 
 ACTUALLY_RUN_COMMAND = True
+
 
 def run_cmd(cmd: str, job_desc: str):
     now = datetime.now()
@@ -95,7 +95,7 @@ def run_cmd(cmd: str, job_desc: str):
 
     if ACTUALLY_RUN_COMMAND:
         slurm = Slurm(
-            job_name, 
+            job_name,
             slurm_kwargs={
                 "partition": "rush",
                 "gres": "gpu:a6000:1",
@@ -107,37 +107,46 @@ def run_cmd(cmd: str, job_desc: str):
                 # "time": "72:00:00",
                 "time": "336:00:00",
             },
-            slurm_flags=["requeue",],
+            slurm_flags=[
+                "requeue",
+            ],
         )
-        slurm.run(f"""
+        slurm.run(
+            f"""
         {cmd}
-        """)
+        """
+        )
     ##
     print("\n\n")
 
 
 total = 0
 for args in itertools.product(
-        models, emb_models, learning_rates,
-        num_repeat_tokens, max_seq_length, embedder_no_grad,
-        freeze_strategies, fake_embedding_with_zeros
-    ):
+    models,
+    emb_models,
+    learning_rates,
+    num_repeat_tokens,
+    max_seq_length,
+    embedder_no_grad,
+    freeze_strategies,
+    fake_embedding_with_zeros,
+):
     m, e, lr, n, msl, eng, frs, emb_fake = args
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
         max_seq_length=msl,
-        # 
-        model_name=m, 
+        #
+        model_name=m,
         emb_model_name=e,
         num_repeat_tokens=n,
         learning_rate=lr,
-        # 
+        #
         embedder_no_grad=eng,
         embedder_fake_with_zeros=emb_fake,
-        # 
+        #
         exp_group_name=exp_group_name,
-        freeze_strategy=frs
+        freeze_strategy=frs,
     )
     job_desc = ".".join(map(str, args))
     run_cmd(cmd, job_desc=job_desc)
@@ -147,4 +156,3 @@ if ACTUALLY_RUN_COMMAND:
     print(f"successfully queued {total} jobs.")
 else:
     print(f"successfully queued {total} jobs. (pretend)")
-

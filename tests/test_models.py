@@ -1,11 +1,15 @@
 from typing import Dict
 
+import pytest
 import torch
 import transformers
-import pytest
 
 from models import (
-    load_encoder_decoder, load_embedder_and_tokenizer, InversionModel, FREEZE_STRATEGIES, MODEL_NAMES
+    FREEZE_STRATEGIES,
+    MODEL_NAMES,
+    InversionModel,
+    load_embedder_and_tokenizer,
+    load_encoder_decoder,
 )
 
 
@@ -14,31 +18,30 @@ def fake_data() -> Dict[str, torch.Tensor]:
     input_ids = torch.tensor([[1, 2, 3, 4], [5, 6, 7, 8]], dtype=torch.long)
     attention_mask = torch.ones_like(input_ids)
     return {
-        'embedder_input_ids': input_ids,
-        'embedder_attention_mask': attention_mask,
-        # 
-        'labels': input_ids,
+        "embedder_input_ids": input_ids,
+        "embedder_attention_mask": attention_mask,
+        #
+        "labels": input_ids,
     }
 
+
 def __test_embedding_model(
-        fake_data: Dict[str, torch.Tensor],
-        embedder_model_name: str,
-        no_grad: bool,
-        freeze_strategy: str,
-        embedder_fake_with_zeros: bool,
-        use_frozen_embeddings_as_input: bool,
-        dropout_disabled: bool,
-    ):
+    fake_data: Dict[str, torch.Tensor],
+    embedder_model_name: str,
+    no_grad: bool,
+    freeze_strategy: str,
+    embedder_fake_with_zeros: bool,
+    use_frozen_embeddings_as_input: bool,
+    dropout_disabled: bool,
+):
     encoder_decoder_model_name = "t5-small"
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         encoder_decoder_model_name,
         padding=True,
-        truncation='max_length',
+        truncation="max_length",
         max_length=16,
     )
-    embedder, embedder_tokenizer = (
-        load_embedder_and_tokenizer(name=embedder_model_name)
-    )
+    embedder, embedder_tokenizer = load_embedder_and_tokenizer(name=embedder_model_name)
     model = InversionModel(
         embedder=embedder,
         embedder_tokenizer=embedder_tokenizer,
@@ -60,13 +63,11 @@ def __test_embedding_model(
 
     # test generate.
     generation_kwargs = {
-        'max_length': 4,
-        'num_beams': 1,
-        'do_sample': False,
+        "max_length": 4,
+        "num_beams": 1,
+        "do_sample": False,
     }
-    model.generate(
-        inputs=fake_data, generation_kwargs=generation_kwargs
-    )
+    model.generate(inputs=fake_data, generation_kwargs=generation_kwargs)
 
 
 @pytest.mark.parametrize("model_name", MODEL_NAMES)
@@ -91,6 +92,6 @@ def test_inversion_model_zeros(fake_data):
 def test_inversion_model_frozen_embeddings_input(fake_data):
     with pytest.raises(AssertionError):
         __test_embedding_model(fake_data, "gtr_base", True, "none", False, True, False)
-    
+
     fake_data["frozen_embeddings"] = torch.randn((2, 768), dtype=torch.float32)
     __test_embedding_model(fake_data, "gtr_base", True, "none", False, True, False)

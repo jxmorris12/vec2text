@@ -1,12 +1,10 @@
-from typing import Dict, Optional, Tuple
-
 import abc
 import hashlib
-import functools
 import json
 import logging
 import os
 import sys
+from typing import Dict, Optional, Tuple
 
 import datasets
 import torch
@@ -14,11 +12,15 @@ import transformers
 
 from collator import CustomCollator
 from data_helpers import dataset_from_args
-from models import load_encoder_decoder, load_embedder_and_tokenizer, InversionModel
-from run_args import ModelArguments, DataTrainingArguments, TrainingArguments
-from tokenize_data import tokenize_function, whiten_embedded_dataset, embed_dataset_batch
+from models import (
+    InversionModel,
+    PrefixReranker,
+    load_embedder_and_tokenizer,
+    load_encoder_decoder,
+)
+from run_args import DataArguments, ModelArguments, TrainingArguments
+from tokenize_data import tokenize_function
 from trainers import InversionTrainer
-
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
@@ -29,13 +31,18 @@ logger = logging.getLogger(__name__)
 
 def md5_hash_kwargs(**kwargs) -> str:
     # We ignore special hf args that start with _ like '__cached__setup_devices'.
-    safe_kwargs = {k: str(v) for k,v in kwargs.items() if not k.startswith('_')}
+    safe_kwargs = {k: str(v) for k, v in kwargs.items() if not k.startswith("_")}
     s = json.dumps(safe_kwargs, sort_keys=True)
     return hashlib.md5(s.encode()).hexdigest()
 
 
 class Experiment(abc.ABC):
-    def __init__(self, model_args, data_args, training_args):
+    def __init__(
+        self,
+        model_args: ModelArguments,
+        data_args: DataArguments,
+        training_args: TrainingArguments,
+    ):
         # Save all args.
         self.model_args = model_args
         self.data_args = data_args
@@ -43,12 +50,12 @@ class Experiment(abc.ABC):
         # Add hash to output path.
         transformers.set_seed(training_args.seed)
         training_args.output_dir = os.path.join(
-            training_args.output_dir, self.kwargs_hash        
+            training_args.output_dir, self.kwargs_hash
         )
         # Set up output_dir and wandb.
         self._setup_logging()
         self._consider_init_wandb()
-    
+
     def _setup_logging(self) -> None:
         logging.basicConfig(
             format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -65,18 +72,18 @@ class Experiment(abc.ABC):
         transformers.utils.logging.set_verbosity(log_level)
         transformers.utils.logging.enable_default_handler()
         transformers.utils.logging.enable_explicit_format()
-    
+
     def run(self):
         if self.training_args.do_eval:
             self.evaluate()
         else:
             self.train()
 
-    
     def train(self) -> Dict:
         # *** Training ***
+        training_args = self.training_args
         logger.info("*** Training ***")
-        
+
         # Log on each process a small summary of training.
         logger.warning(
             f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
@@ -86,10 +93,15 @@ class Experiment(abc.ABC):
 
         # Checkpointing logic
         checkpoint = self._get_checkpoint()
+        trainer = self.load_trainer()
 
         # Save model_args and data_args before training. Trainer will save training_args.
-        torch.save(data_args, os.path.join(training_args.output_dir, 'data_args.bin'))
-        torch.save(model_args, os.path.join(training_args.output_dir, 'model_args.bin'))
+        torch.save(
+            self.data_args, os.path.join(training_args.output_dir, "data_args.bin")
+        )
+        torch.save(
+            self.model_args, os.path.join(training_args.output_dir, "model_args.bin")
+        )
 
         # train.
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
@@ -102,28 +114,45 @@ class Experiment(abc.ABC):
         trainer.save_state()
 
         return metrics
-    
+
     def evaluate(self) -> Dict:
         # *** Evaluation ***
         logger.info("*** Evaluate ***")
+        trainer = self.load_trainer()
+        num_eval_samples = len(trainer.eval_dataset)
         metrics = trainer.evaluate()
-        max_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples is not None else len(eval_dataset)
-        metrics["eval_samples"] = min(max_eval_samples, len(eval_dataset))
+        max_eval_samples = (
+            self.data_args.max_eval_samples
+            if self.data_args.max_eval_samples is not None
+            else num_eval_samples
+        )
+        metrics["eval_samples"] = min(max_eval_samples, num_eval_samples)
         trainer.log_metrics("eval", metrics)
         trainer.save_metrics("eval", metrics)
         return metrics
-    
+
     def _get_checkpoint(self) -> Optional[str]:
         training_args = self.training_args
         last_checkpoint = None
-        if os.path.isdir(training_args.output_dir) and not training_args.overwrite_output_dir:
-            last_checkpoint = get_last_checkpoint(training_args.output_dir)
-            if last_checkpoint is None and len(os.listdir(training_args.output_dir)) > 0:
+        if (
+            os.path.isdir(training_args.output_dir)
+            and not training_args.overwrite_output_dir
+        ):
+            last_checkpoint = transformers.training_utils.get_last_checkpoint(
+                training_args.output_dir
+            )
+            if (
+                last_checkpoint is None
+                and len(os.listdir(training_args.output_dir)) > 0
+            ):
                 raise ValueError(
                     f"Output directory ({training_args.output_dir}) already exists and is not empty. "
                     "Use --overwrite_output_dir to overcome."
                 )
-            elif last_checkpoint is not None and training_args.resume_from_checkpoint is None:
+            elif (
+                last_checkpoint is not None
+                and training_args.resume_from_checkpoint is None
+            ):
                 logger.info(
                     f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
                     "the `--output_dir` or add `--overwrite_output_dir` to train from scratch."
@@ -134,50 +163,50 @@ class Experiment(abc.ABC):
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
         return checkpoint
-    
+
     @property
     def kwargs_hash(self) -> str:
         return md5_hash_kwargs(
-            **vars(self.model_args), 
-            **vars(self.data_args), 
-            **vars(self.training_args)
+            **vars(self.model_args), **vars(self.data_args), **vars(self.training_args)
         )
-    
+
     @property
     def _is_main_worker(self) -> bool:
-        return (self.training_args.local_rank <= 0) and (int(os.environ.get("LOCAL_RANK", 0)) <= 0)
-    
+        return (self.training_args.local_rank <= 0) and (
+            int(os.environ.get("LOCAL_RANK", 0)) <= 0
+        )
+
     @property
     @abc.abstractmethod
     def _wandb_project_name(self) -> str:
         raise NotImplementedError()
-    
+
     @property
     def _wandb_exp_name(self) -> str:
-        name_args = (
-            self.training_args.exp_group_name, 
-            self.training_args.exp_name, 
-            self.model_args.model_name_or_path, 
-            self.model_args.embedder_model_name
-        )
-        name_args = [n for n in name_args if len(n)]
-        return '__'.join(name_args)
-        
-    
+        name_args = [
+            self.training_args.exp_group_name,
+            self.training_args.exp_name,
+            self.model_args.model_name_or_path,
+            self.model_args.embedder_model_name,
+        ]
+        name_args = [n for n in name_args if ((n is not None) and len(n))]
+        return "__".join(name_args)
+
     def _consider_init_wandb(self) -> None:
         if self.training_args.use_wandb and self._is_main_worker:
             import wandb
+
             wandb.init(
                 project=self._wandb_project_name,
                 name=self._wandb_exp_name,
-                id=kwargs_hash,
+                id=self.kwargs_hash,
                 resume=True,
             )
             wandb.config.update(
                 {
-                    **vars(self.model_args), 
-                    **vars(self.data_args), 
-                    **vars(self.training_args)
+                    **vars(self.model_args),
+                    **vars(self.data_args),
+                    **vars(self.training_args),
                 },
                 allow_val_change=True,
             )
@@ -190,32 +219,37 @@ class Experiment(abc.ABC):
     @abc.abstractmethod
     def load_trainer(self) -> transformers.Trainer:
         raise NotImplementedError()
-    
+
     @property
     @abc.abstractmethod
     def load_model(self) -> torch.nn.Module:
         raise NotImplementedError()
 
     def load_train_and_val_datasets(
-            self, 
-            tokenizer: transformers.AutoTokenizer, 
-            embedder_tokenizer: transformers.AutoTokenizer
-        ) -> Tuple[datasets.Dataset, datasets.Dataset]:
+        self,
+        tokenizer: transformers.AutoTokenizer,
+        embedder_tokenizer: transformers.AutoTokenizer,
+    ) -> Tuple[datasets.Dataset, datasets.Dataset]:
         data_args = self.data_args
         ###########################################################################
         # Load datasets
-        logger.info(f"Loading dataset '%s'...", self.data_args.dataset_name)
+        logger.info("Loading dataset '%s'...", self.data_args.dataset_name)
         raw_datasets = dataset_from_args(self.data_args)
 
         # Remove extra features except for 'frozen_embeddings' which could be embeddings
         # saved to disk.
         text_column_name = "text"
         column_names = list(raw_datasets["train"].features)
-        ALLOWED_COLUMN_NAMES = { "frozen_embeddings" } # "document_id"}
+        ALLOWED_COLUMN_NAMES = {"frozen_embeddings"}  # "document_id"}
         column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
-        
+
         tokenized_datasets = raw_datasets.map(
-            tokenize_function(tokenizer, embedder_tokenizer, text_column_name, self.model_args.max_seq_length),
+            tokenize_function(
+                tokenizer,
+                embedder_tokenizer,
+                text_column_name,
+                self.model_args.max_seq_length,
+            ),
             batched=True,
             # num_proc=training_args.dataloader_num_workers,
             remove_columns=column_names,
@@ -225,7 +259,7 @@ class Experiment(abc.ABC):
         ###########################################################################
         # Preprocess embeddings
         if self.model_args.use_frozen_embeddings_as_input:
-            # files are just too big to cache :( 5 million 768-dim embeddings is 15gb 
+            # files are just too big to cache :( 5 million 768-dim embeddings is 15gb
             # datasets.disable_caching()
             # model = model.to(device)
             # tokenized_datasets = tokenized_datasets.map(
@@ -233,14 +267,18 @@ class Experiment(abc.ABC):
             #     batched=True,
             #     batch_size=training_args.per_device_train_batch_size,
             # )
-            raise ValueError(f'broken feature - this breaks caching. fix caching to use.')
+            raise ValueError(
+                "broken feature - this breaks caching. fix caching to use."
+            )
 
         if data_args.use_less_data:
             for key in tokenized_datasets:
                 d = tokenized_datasets[key]
-                new_length = max(256, int(len(d) * .1))
-                tokenized_datasets[key] = tokenized_datasets[key].select(range(new_length))
-        
+                new_length = max(256, int(len(d) * 0.1))
+                tokenized_datasets[key] = tokenized_datasets[key].select(
+                    range(new_length)
+                )
+
         ###########################################################################
         train_dataset = tokenized_datasets["train"]
         eval_dataset = tokenized_datasets["validation"]
@@ -253,17 +291,16 @@ class Experiment(abc.ABC):
 
 
 class InversionExperiment(Experiment):
-
     @property
     def _wandb_project_name(self) -> str:
         return "emb-inv-1"
-    
+
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             model_args.model_name_or_path,
             padding=True,
-            truncation='max_length',
+            truncation="max_length",
             max_length=model_args.max_seq_length,
         )
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
@@ -297,7 +334,9 @@ class InversionExperiment(Experiment):
             embedder_tokenizer=model.embedder_tokenizer,
         )
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
-        logger.info(f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
+        logger.info(
+            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
+        )
         return InversionTrainer(
             model=model,
             args=self.training_args,
@@ -309,25 +348,26 @@ class InversionExperiment(Experiment):
 
 
 class RerankingExperiment(Experiment):
-
     @property
     def _wandb_project_name(self) -> str:
         return "emb-rerank-1"
 
     def load_trainer(self) -> transformers.Trainer:
         raise InversionTrainer()
-    
+
     def load_model(self) -> torch.nn.Module:
         return PrefixReranker()
 
 
 EXPERIMENT_CLS_MAP = {
-    'inversion': InversionExperiment,
-    'reranking': RerankingExperiment,
+    "inversion": InversionExperiment,
+    "reranking": RerankingExperiment,
 }
+
+
 def experiment_from_args(model_args, data_args, training_args) -> Experiment:
     if training_args.experiment in EXPERIMENT_CLS_MAP:
         experiment_cls = EXPERIMENT_CLS_MAP[training_args.experiment]
     else:
-        raise ValueError(f'Unknown experiment {training_args.experiment}')
+        raise ValueError(f"Unknown experiment {training_args.experiment}")
     return experiment_cls(model_args, data_args, training_args)
