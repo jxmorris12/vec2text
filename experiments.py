@@ -298,7 +298,7 @@ class InversionExperiment(Experiment):
         )
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
         logger.info(f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params")
-        raise InversionTrainer(
+        return InversionTrainer(
             model=model,
             args=self.training_args,
             train_dataset=train_dataset,

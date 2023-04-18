@@ -1,5 +1,6 @@
 datasets
 evaluate
+pre-commit
 sacrebleu
 sentence_transformers
 tokenizers

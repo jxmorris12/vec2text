@@ -554,14 +554,17 @@ class PrefixReranker(nn.Module):
     mlp: nn.Module # maps encoding to 
     def __init__(self, embedder, encoder):
         self.embedder = embedder
-        self.encoder = encdoer
+        self.encoder = encoder
         embedder_hidden_size = self.embedder.config.hidden_size
         encoder_hidden_size = self.encoder.config.hidden_size
-        self.mlp = nn.Sequential(
+        self.embedding_mlp = nn.Sequential(
             nn.Linear(encoder_hidden_size, encoder_hidden_size),
             nn.GELU(),
             nn.Linear(encoder_hidden_size, embedder_hidden_size)
         )
+    
+    def embed_prefix(self, prefix: torch.Tensor) -> torch.Tensor:
+        return self.prefix_embedder(prefix)
 
 
 def load_encoder_decoder(model_name: str, lora: bool = False) -> transformers.AutoModelForSeq2SeqLM:

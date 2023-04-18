@@ -1,4 +1,4 @@
-from typing import Optional, Tuple
+from typing import Optional
 
 import functools
 import os
@@ -28,7 +28,7 @@ def load_trainer(
         checkpoint_folder: str,
         args_str: str,
         checkpoint: Optional[str] = None
-    ) -> Tuple[InversionModel, InversionTrainer]:
+    ) -> InversionTrainer:
     print("Setting --do_eval=1")
     args_str += " --do_eval 1"
     args = shlex.split(args_str)

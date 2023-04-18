@@ -10,6 +10,8 @@ import torch.nn as nn
 import tqdm
 import transformers
 
+from models import PrefixReranker
+
 
 def preprocess_logits_for_metrics(logits, labels):
     if isinstance(logits, tuple):
@@ -30,7 +32,7 @@ class InversionTrainer(transformers.Trainer):
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
         self.model.precompute_whitening_params(self.get_train_dataloader())
         self.gen_kwargs = {
-            "early_stopping": True,
+            "early_stopping": False,
             # "no_repeat_ngram_size": 3,
             # From CtRL paper: We find that using a greedy sampling 
             # and θ ≈ 1.2 yields a good balance between truthful generation
@@ -70,15 +72,19 @@ class InversionTrainer(transformers.Trainer):
         assert not self.model.training
         eval_dataloader = self.get_eval_dataloader()
 
+        gen_kwargs = copy.copy(self.gen_kwargs)
+
         all_preds = []
         all_labels = []
         for step, inputs in enumerate(tqdm.tqdm(eval_dataloader, desc='generating from val', leave=False)):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k,v in inputs.items()}
+            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs["input_ids"].shape[1]
+            print("gen_kwargs:", gen_kwargs)
             with torch.no_grad():
                 generated_text = self.model.generate(
                     inputs=inputs_cuda,
-                    generation_kwargs=copy.copy(self.gen_kwargs)
+                    generation_kwargs=gen_kwargs
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs['input_ids'].cpu().tolist())
@@ -99,15 +105,18 @@ class InversionTrainer(transformers.Trainer):
         assert not self.model.training
         train_dataloader = self.get_train_dataloader()
 
+        gen_kwargs = copy.copy(self.gen_kwargs)
+
         all_preds = []
         all_labels = []
         for step, inputs in enumerate(tqdm.tqdm(train_dataloader, desc='generating from train', leave=False)):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k,v in inputs.items()}
+            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs["input_ids"].shape[1]
             with torch.no_grad():
                 generated_text = self.model.generate(
                     inputs=inputs_cuda,
-                    generation_kwargs=copy.copy(self.gen_kwargs)
+                    generation_kwargs=gen_kwargs,
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs['input_ids'].cpu().tolist())
@@ -183,8 +192,9 @@ class InversionTrainer(transformers.Trainer):
         preds_sample_labels = torch.tensor(preds_sample_labels, device=self.args.device)[:128]
         # Fix eos token on generated text.
         eos_token_id = self.model.embedder_tokenizer.eos_token_id
-        eos_tokens = torch.ones((len(preds_sample), 1), dtype=preds_sample.dtype, device=self.args.device) * eos_token_id
-        preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
+        if eos_token_id is not None:
+            eos_tokens = torch.ones((len(preds_sample), 1), dtype=preds_sample.dtype, device=self.args.device) * eos_token_id
+            preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
         with torch.no_grad():
             preds_emb = self.model.call_embedding_model(
                 input_ids=preds_sample,
@@ -234,3 +244,80 @@ class RerankingTrainer(transformers.Trainer):
     def __init__(
             self, *args, **kwargs):
         super().__init__(*args, **kwargs)
+        # TODO support gc?
+        
+    def _contrastive_loss(self, e1: torch.Tensor, e2: torch.Tensor) -> torch.Tensor:
+        batch_size = len(e1)
+
+        # Normalize vectors, so loss is cosine similarity (not raw
+        # dot product!)
+        e1 = e1 / e1.norm(p=2, dim=1, keepdim=True)
+        e2 = e2 / e2.norm(p=2, dim=1, keepdim=True)
+
+        similarity = (e1 @ e2.T)
+
+        # This multiply-by-20 trick is used in BeIR and LaPRador:
+        # "When calculating the loss, we apply a re-scaling trick
+        # of multiplying the cosine similarity score by 20 for
+        # better optimization (Thakur et al., 2021)."
+        # 
+        similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
+        diagonal_idxs = torch.arange(batch_size, device=e1.device)
+        loss = torch.nn.functional.cross_entropy(
+            similarity, diagonal_idxs, 
+            label_smoothing=0.0
+        )
+        if (loss.isnan()):
+            raise RuntimeError("Loss is nan!")
+
+        # outputs = {
+        #     "query_embedding": e1.detach().cpu(),
+        #     "document_embedding": e2.detach().cpu(),
+        # }
+        # accuracy = (similarity.argmax(dim=1) == diagonal_idxs).float().mean()
+        # if self.args.use_wandb:
+        #     # Log model-internal
+        #     # todo: use self.log() instead?
+        #     import wandb
+        #     wandb.log({**metrics_q, **metrics_d, "accuracy": accuracy})
+                
+        return loss
+    
+    
+    def generate_continuations(
+        self,
+        input_ids: torch.Tensor,
+        continuation_length: int,
+        ) -> torch.Tensor:
+        raise NotImplementedError()
+
+    def compute_loss(
+            self,
+            model: PrefixReranker,
+            inputs: Dict[str, torch.Tensor],
+            return_outputs: bool = False,
+        ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
+        assert BIENCODER_DATA_KEYS <= set(inputs.keys()), f"invalid keys {inputs.keys()}"
+
+        batch_size, seq_length = inputs['input_ids'].shape
+        prefix_length = random.randint(1, seq_length)
+        max_continuation_length = seq_length - prefix_length
+        # The 10 here comes from rankgen (arxiv.org/pdf/2205.09726.pdf)
+        # where they generate continuations of a random length
+        # from 10 to msl.
+        continuation_length = random.randint(10, max_continuation_length)
+
+        prefixes = inputs['input_ids'][:, :prefix_length]
+        true_continuations = inputs['input_ids'][:, :prefix_length+continuation_length]
+
+        # TODO: Should we use beam search or nucleus sampling here?
+        fake_continuations = self.generate_continuations(prefixes, continuation_length)
+
+        true_prefix_embeds = self.model.embed_prefix(true_continuations)
+        fake_prefix_embeds = self.model.embed_prefix(fake_continuations)
+        # TODO is subsequent concat() correct?
+        all_prefix_embeds = torch.stack((true_prefix_embeds, fake_prefix_embeds), dim=1)
+
+        embedding_embeds = self.model.embedding_projection(inputs['frozen_embeddings'])
+
+        return self._contrastive_loss(query_inputs, doc_inputs, no_sync_except_last=False)

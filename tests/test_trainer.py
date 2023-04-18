@@ -8,7 +8,7 @@ from experiments import experiment_from_args
 from run_args import ModelArguments, DataTrainingArguments, TrainingArguments, DATASET_NAMES
 from trainers import InversionTrainer
 
-DEFAULT_ARGS_STR = '--per_device_train_batch_size 32 --max_seq_length 128 --model_name_or_path t5-small --embedder_model_name dpr --num_repeat_tokens 32 --exp_name test-exp-123'
+DEFAULT_ARGS_STR = '--per_device_train_batch_size 32 --max_seq_length 128 --model_name_or_path t5-small --embedder_model_name gtr_base --num_repeat_tokens 32 --exp_name test-exp-123'
 DEFAULT_ARGS = shlex.split(DEFAULT_ARGS_STR)
 
 DEFAULT_ARGS += ['--use_wandb', '0']
