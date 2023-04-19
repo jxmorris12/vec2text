@@ -30,12 +30,10 @@ def load_trainer(
     if do_eval:
         print("Loading trainer for analysis – setting --do_eval=1")
         training_args.do_eval = do_eval
-
-    training_args.dataloader_num_workers = 0  # no multiprocessing :)
+        training_args.dataloader_num_workers = 0  # no multiprocessing :)
+        training_args.use_wandb = False
+        training_args.report_to = []
     training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
-    training_args.use_wandb = False
-    training_args.report_to = []
-
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
     trainer._load_from_checkpoint(checkpoint)

@@ -570,9 +570,6 @@ class InversionModel(nn.Module):
             frozen_embeddings=inputs.get("frozen_embeddings"),
         )
 
-        print("generating:", inputs_embeds.shape, attention_mask.shape)
-        print("generating generation_kwargs:", generation_kwargs)
-
         if "decoder_input_ids" in inputs:
             return self.encoder_decoder.generate(
                 # required: input embeddings

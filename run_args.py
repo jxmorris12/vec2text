@@ -248,6 +248,10 @@ class TrainingArguments(transformers.TrainingArguments):
     per_device_train_batch_size: int = field(
         default=128, metadata={"help": "Batch size per GPU/TPU core/CPU for training."}
     )
+    bf16: bool = field(
+        default=True,
+        metadata={"help": ("Whether to use bf16 (mixed) precision instead of 32-bit.")},
+    )
     # torch_compile: bool = True # for torch 2
 
     ##################### Experimental Settings ####################

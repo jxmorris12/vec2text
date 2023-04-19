@@ -1,6 +1,5 @@
 import copy
 import math
-import os
 import random
 from typing import Dict, List, Tuple, Union
 
@@ -34,32 +33,27 @@ class InversionTrainer(transformers.Trainer):
         self.model.precompute_whitening_params(self.get_train_dataloader())
         self.gen_kwargs = {
             "early_stopping": False,
-            # "no_repeat_ngram_size": 3,
-            # From CtRL paper: We find that using a greedy sampling
-            # and θ ≈ 1.2 yields a good balance between truthful generation
-            # and lack of repetition (arxiv.org/abs/1909.05858)
-            # "repetition_penalty": 1.2,
             "num_beams": 1,
             "do_sample": False,
         }
-    
+
     def sanity_decode(self):
         """Encodes and decodes a string as a sanity check."""
-        print("=" * 16, "Begin trainer sanity check", "="*16)
-        input_string = "’Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."""
+        print("=" * 16, "Begin trainer sanity check", "=" * 16)
+        input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
         print("\Input to encode ->", input_string)
-        inputs = self.model.embedder_tokenizer(input_string, return_tensors='pt')
+        inputs = self.model.embedder_tokenizer(input_string, return_tensors="pt")
         inputs = inputs.to(self.args.device)
         regenerated = self.model.generate(
             inputs={
-                "embedder_input_ids": inputs['input_ids'],
-                "embedder_attention_mask": inputs['attention_mask'],
+                "embedder_input_ids": inputs["input_ids"],
+                "embedder_attention_mask": inputs["attention_mask"],
             },
             generation_kwargs=self.gen_kwargs,
         )
         output_string = self.model.embedder_tokenizer.decode(regenerated.flatten())
         print("\tDecoded output ->", output_string)
-        print("=" * 16, "End trainer sanity check", "="*16)
+        print("=" * 16, "End trainer sanity check", "=" * 16)
 
     def _log_preds_table(
         self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]
@@ -331,7 +325,6 @@ class RerankingTrainer(transformers.Trainer):
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
-
     def generate_continuations(
         self,
         prefix_input_ids: torch.Tensor,
@@ -361,15 +354,18 @@ class RerankingTrainer(transformers.Trainer):
                     "max_length": full_length,
                     "num_beams": 1,
                     "do_sample": False,
+                    "no_repeat_ngram_size": 3,
                 },
             )
-        import pdb; pdb.set_trace()
-        # TODO: Validate output is not NANs and has correct format for t5.
-        # should have extra eos token.
         assert generated_text_ids.shape == (batch_size, full_length)
         return generated_text_ids
 
     def _contrastive_loss(self, e1: torch.Tensor, e2: torch.Tensor) -> torch.Tensor:
+        """Computes contrastive loss between two lists of vectors, e1 and e2
+        -- float torch.Tensors.
+
+        e1 may contain extra 'hard negative' tensors.
+        """
         batch_size = len(e1)
 
         # Normalize vectors, so loss is cosine similarity (not raw
@@ -383,7 +379,7 @@ class RerankingTrainer(transformers.Trainer):
         # "When calculating the loss, we apply a re-scaling trick
         # of multiplying the cosine similarity score by 20 for
         # better optimization (Thakur et al., 2021)."
-        similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
+        # similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
         diagonal_idxs = torch.arange(batch_size, device=e1.device)
         loss = torch.nn.functional.cross_entropy(
             similarity, diagonal_idxs, label_smoothing=0.0
@@ -450,6 +446,17 @@ class RerankingTrainer(transformers.Trainer):
         )
         assert true_continuations.shape == fake_continuations.shape
 
+        # Add EOS tokens and generate attention masks.
+        eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
+        eos_tokens = (
+            torch.ones(
+                (batch_size, 1), dtype=true_continuations.dtype, device=self.args.device
+            )
+            * eos_token_id
+        )
+        true_continuations = torch.cat((true_continuations, eos_tokens), dim=1)
+        fake_continuations = torch.cat((fake_continuations, eos_tokens), dim=1)
+
         continuations_attention_mask = torch.ones_like(
             true_continuations, device=self.args.device
         )
@@ -459,12 +466,11 @@ class RerankingTrainer(transformers.Trainer):
         fake_prefix_embeds = self.model.embed_prefix(
             prefix_ids=fake_continuations, attention_mask=continuations_attention_mask
         )
-        # TODO is subsequent concat() correct?
-        all_prefix_embeds = torch.stack((true_prefix_embeds, fake_prefix_embeds), dim=1)
+        all_prefix_embeds = torch.cat((true_prefix_embeds, fake_prefix_embeds), dim=0)
 
-        import pdb
-
-        pdb.set_trace()
         embedding_embeds = self.model.embedding_projection(frozen_embeddings)
 
-        return self._contrastive_loss(all_prefix_embeds, embedding_embeds)
+        assert embedding_embeds.shape == (batch_size, 768)
+        assert all_prefix_embeds.shape == (batch_size * 2, 768)
+
+        return self._contrastive_loss(embedding_embeds, all_prefix_embeds)

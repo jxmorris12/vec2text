@@ -24,7 +24,9 @@ from tokenize_data import tokenize_function
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
-os.environ["TOKENIZERS_PARALLELISM"] = "True" # For batch decoding outputs during evaluation.
+os.environ[
+    "TOKENIZERS_PARALLELISM"
+] = "True"  # For batch decoding outputs during evaluation.
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
@@ -64,9 +66,9 @@ class Experiment(abc.ABC):
             handlers=[logging.StreamHandler(sys.stdout)],
         )
 
-        if self.training_args.should_log:
-            # The default of training_args.log_level is passive, so we set log level at info here to have that default.
-            transformers.utils.logging.set_verbosity_info()
+        # if self.training_args.should_log:
+        # The default of training_args.log_level is passive, so we set log level at info here to have that default.
+        # transformers.utils.logging.set_verbosity_info()
         log_level = self.training_args.get_process_log_level()
         logger.setLevel(log_level)
         datasets.utils.logging.set_verbosity(log_level)
@@ -139,7 +141,7 @@ class Experiment(abc.ABC):
             os.path.isdir(training_args.output_dir)
             and not training_args.overwrite_output_dir
         ):
-            last_checkpoint = transformers.training_utils.get_last_checkpoint(
+            last_checkpoint = transformers.trainer_utils.get_last_checkpoint(
                 training_args.output_dir
             )
             if (
