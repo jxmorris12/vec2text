@@ -1,7 +1,7 @@
 import copy
 import math
 import random
-from typing import Dict, List, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import evaluate
 import torch
@@ -28,7 +28,6 @@ class InversionTrainer(transformers.Trainer):
         ######################################################
         self.metric_accuracy = evaluate.load("accuracy")
         self.metric_bleu = evaluate.load("sacrebleu")
-        self.compute_metrics = self.compute_metrics_func
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
         self.model.precompute_whitening_params(self.get_train_dataloader())
         self.gen_kwargs = {
@@ -41,7 +40,7 @@ class InversionTrainer(transformers.Trainer):
         """Encodes and decodes a string as a sanity check."""
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
         input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
-        print("\Input to encode ->", input_string)
+        print("\tInput to encode ->", input_string)
         inputs = self.model.embedder_tokenizer(input_string, return_tensors="pt")
         inputs = inputs.to(self.args.device)
         regenerated = self.model.generate(
@@ -320,6 +319,7 @@ class RerankingTrainer(transformers.Trainer):
             eval_dataset=self.inversion_trainer.eval_dataset,
             data_collator=self.inversion_trainer.data_collator,
         )
+        self.compute_metrics = self.compute_metrics_func
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
@@ -474,3 +474,19 @@ class RerankingTrainer(transformers.Trainer):
         assert all_prefix_embeds.shape == (batch_size * 2, 768)
 
         return self._contrastive_loss(embedding_embeds, all_prefix_embeds)
+
+    def prediction_step(
+        self,
+        model: nn.Module,
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """
+        Perform an evaluation step on `model` using `inputs`. Called during self.evalaute()
+        """
+        with torch.no_grad():
+            loss = self.compute_loss(model=model, inputs=inputs)
+
+        logits, labels = None, None
+        return loss, logits, labels
