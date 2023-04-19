@@ -1,17 +1,16 @@
 import shlex
 
-import pytest
 import transformers
 
 import experiments
-from run_args import DATASET_NAMES, DataArguments, ModelArguments, TrainingArguments
+from run_args import DataArguments, ModelArguments, TrainingArguments
 from trainers import RerankingTrainer
 
 DEFAULT_ARGS_STR = "--per_device_train_batch_size 128 --per_device_eval_batch_size 128 --max_seq_length 32 --model_name_or_path t5-base --embedder_model_name gtr_base --num_repeat_tokens 16 --embedder_no_grad True --exp_group_name mar17-baselines --learning_rate 0.0003 --freeze_strategy none --embedder_fake_with_zeros False --use_frozen_embeddings_as_input False --num_train_epochs 24 --max_eval_samples 500 --eval_steps 25000 --warmup_steps 100000 --bf16=1 --use_wandb=0"
 DEFAULT_ARGS = shlex.split(DEFAULT_ARGS_STR)
 
 DEFAULT_ARGS += ["--use_wandb", "0"]
-DEFAULT_ARGS += ["--fp16", "1"]
+DEFAULT_ARGS += ["--bf16", "1"]
 
 
 def load_trainer(model_args, data_args, training_args) -> RerankingTrainer:

@@ -24,6 +24,7 @@ from tokenize_data import tokenize_function
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
+os.environ["TOKENIZERS_PARALLELISM"] = "True" # For batch decoding outputs during evaluation.
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)

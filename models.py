@@ -507,7 +507,6 @@ class InversionModel(nn.Module):
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
 
-
         if "max_length" not in generation_kwargs:
             generation_kwargs["max_length"] = inputs.get(
                 "input_ids", inputs["embedder_input_ids"]
@@ -573,17 +572,29 @@ class InversionModel(nn.Module):
 
         print("generating:", inputs_embeds.shape, attention_mask.shape)
         print("generating generation_kwargs:", generation_kwargs)
-        return self.encoder_decoder.generate(
-            # required: input embeddings
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-            # optional: input IDs (for starting generation).
-            # typically not set unless generating prefixes for
-            # reranking.
-            # decoder_input_ids=inputs.get("decoder_input_ids"),
-            # decoder_attention_mask=inputs.get("decoder_attention_mask"),
-            **generation_kwargs,
-        )
+
+        if "decoder_input_ids" in inputs:
+            return self.encoder_decoder.generate(
+                # required: input embeddings
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                # optional: input IDs (for starting generation).
+                # typically not set unless generating prefixes for
+                # reranking.
+                decoder_input_ids=inputs["decoder_input_ids"],
+                decoder_attention_mask=inputs["decoder_attention_mask"],
+                **generation_kwargs,
+            )
+        else:
+            return self.encoder_decoder.generate(
+                # required: input embeddings
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                # optional: input IDs (for starting generation).
+                # typically not set unless generating prefixes for
+                # reranking.
+                **generation_kwargs,
+            )
 
     def forward(
         self,
@@ -688,7 +699,7 @@ class PrefixReranker(nn.Module):
 
     prefix_embedder: nn.Module  # embeds a prefix
     embedding_projection: nn.Module  # projects sentence embedding to same
-                                     # space as a prefix embedding
+    # space as a prefix embedding
 
     def __init__(
         self,

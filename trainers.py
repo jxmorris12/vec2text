@@ -1,5 +1,6 @@
 import copy
 import math
+import os
 import random
 from typing import Dict, List, Tuple, Union
 
@@ -41,6 +42,24 @@ class InversionTrainer(transformers.Trainer):
             "num_beams": 1,
             "do_sample": False,
         }
+    
+    def sanity_decode(self):
+        """Encodes and decodes a string as a sanity check."""
+        print("=" * 16, "Begin trainer sanity check", "="*16)
+        input_string = "’Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."""
+        print("\Input to encode ->", input_string)
+        inputs = self.model.embedder_tokenizer(input_string, return_tensors='pt')
+        inputs = inputs.to(self.args.device)
+        regenerated = self.model.generate(
+            inputs={
+                "embedder_input_ids": inputs['input_ids'],
+                "embedder_attention_mask": inputs['attention_mask'],
+            },
+            generation_kwargs=self.gen_kwargs,
+        )
+        output_string = self.model.embedder_tokenizer.decode(regenerated.flatten())
+        print("\tDecoded output ->", output_string)
+        print("=" * 16, "End trainer sanity check", "="*16)
 
     def _log_preds_table(
         self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]
@@ -308,6 +327,10 @@ class RerankingTrainer(transformers.Trainer):
             data_collator=self.inversion_trainer.data_collator,
         )
         # TODO support gc
+        # Need to train with same device as the inversion model to avoid weird errors.
+        assert self.args.fp16 == self.inversion_trainer.args.fp16
+        assert self.args.bf16 == self.inversion_trainer.args.bf16
+
 
     def generate_continuations(
         self,
@@ -325,8 +348,8 @@ class RerankingTrainer(transformers.Trainer):
         with torch.no_grad():
             generated_text_ids = self.inversion_trainer.model.generate(
                 inputs={
-                    # "decoder_input_ids": prefix_input_ids,
-                    # "decoder_attention_mask": prefix_attention_mask,
+                    "decoder_input_ids": prefix_input_ids,
+                    "decoder_attention_mask": prefix_attention_mask,
                     "embedder_input_ids": embedder_input_ids,
                     "embedder_attention_mask": embedder_attention_mask,
                     "frozen_embeddings": frozen_embeddings,
@@ -340,11 +363,11 @@ class RerankingTrainer(transformers.Trainer):
                     "do_sample": False,
                 },
             )
+        import pdb; pdb.set_trace()
         # TODO: Validate output is not NANs and has correct format for t5.
         # should have extra eos token.
         assert generated_text_ids.shape == (batch_size, full_length)
         return generated_text_ids
-
 
     def _contrastive_loss(self, e1: torch.Tensor, e2: torch.Tensor) -> torch.Tensor:
         batch_size = len(e1)
@@ -392,15 +415,17 @@ class RerankingTrainer(transformers.Trainer):
 
         min_continuation_length = 10
         assert min_continuation_length < seq_length
-        prefix_length = random.randint(1, seq_length-min_continuation_length)
+        prefix_length = random.randint(1, seq_length - min_continuation_length)
         max_continuation_length = seq_length - prefix_length
 
-        inputs = { key: value.to(self.args.device) for key, value in inputs.items() }
+        inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
 
         # The 10 here comes from rankgen (arxiv.org/pdf/2205.09726.pdf)
         # where they generate continuations of a random length
         # from 10 to msl.
-        continuation_length = random.randint(min_continuation_length, max_continuation_length)
+        continuation_length = random.randint(
+            min_continuation_length, max_continuation_length
+        )
 
         prefixes = inputs["input_ids"][:, :prefix_length]
         prefix_attention_mask = inputs["attention_mask"][:, :prefix_length]
@@ -423,16 +448,23 @@ class RerankingTrainer(transformers.Trainer):
             frozen_embeddings=frozen_embeddings,
             continuation_length=continuation_length,
         )
+        assert true_continuations.shape == fake_continuations.shape
 
-        continuations_attention_mask = torch.ones_like(true_continuations, device=self.args.device)
+        continuations_attention_mask = torch.ones_like(
+            true_continuations, device=self.args.device
+        )
         true_prefix_embeds = self.model.embed_prefix(
-            true_continuations, attention_mask=continuations_attention_mask)
+            true_continuations, attention_mask=continuations_attention_mask
+        )
         fake_prefix_embeds = self.model.embed_prefix(
-            prefix_ids=fake_continuations, attention_mask=continuations_attention_mask)
+            prefix_ids=fake_continuations, attention_mask=continuations_attention_mask
+        )
         # TODO is subsequent concat() correct?
         all_prefix_embeds = torch.stack((true_prefix_embeds, fake_prefix_embeds), dim=1)
 
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         embedding_embeds = self.model.embedding_projection(frozen_embeddings)
 
         return self._contrastive_loss(all_prefix_embeds, embedding_embeds)
