@@ -30,6 +30,7 @@ class InversionTrainer(transformers.Trainer):
         self.metric_bleu = evaluate.load("sacrebleu")
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
         self.model.precompute_whitening_params(self.get_train_dataloader())
+        self.compute_metrics = self.compute_metrics_func
         self.gen_kwargs = {
             "early_stopping": False,
             "num_beams": 1,
@@ -319,7 +320,6 @@ class RerankingTrainer(transformers.Trainer):
             eval_dataset=self.inversion_trainer.eval_dataset,
             data_collator=self.inversion_trainer.data_collator,
         )
-        self.compute_metrics = self.compute_metrics_func
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16

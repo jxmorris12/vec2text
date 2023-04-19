@@ -215,8 +215,9 @@ class Experiment(abc.ABC):
             )
         else:
             # Disable W&B
-            os.environ["WANDB_MODE"] = "disabled"
-            os.environ["WANDB_DISABLED"] = "true"
+            pass
+            # os.environ["WANDB_MODE"] = "disabled"
+            # os.environ["WANDB_DISABLED"] = "true"
 
     @property
     @abc.abstractmethod
