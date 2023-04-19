@@ -675,23 +675,29 @@ class PrefixReranker(nn.Module):
     of that prefix.
     """
 
-    embedder: nn.Module  # embeds a prefix
-    encoder: nn.Module  # encodes prefix, outputs encoding
-    embedding_mlp: nn.Module  # maps encoding to another vector
+    prefix_embedder: nn.Module  # embeds a prefix
+    embedding_projection: nn.Module  # projects embedding to same
+    # space as a prefix embedding
 
-    # def __init__(self, embedder, encoder):
-    #     self.embedder = embedder
-    #     self.encoder = encoder
-    #     embedder_hidden_size = self.embedder.config.hidden_size
-    #     encoder_hidden_size = self.encoder.config.hidden_size
-    #     self.embedding_mlp = nn.Sequential(
-    #         nn.Linear(encoder_hidden_size, encoder_hidden_size),
-    #         nn.GELU(),
-    #         nn.Linear(encoder_hidden_size, embedder_hidden_size),
-    #     )
+    def __init__(
+        self,
+        prefix_embedder: nn.Module,
+    ):
+        self.prefix_embedder = prefix_embedder
+        self.embedding_projection = nn.Sequential(
+            nn.Linear(768, 2048),
+            nn.GELU(),
+            nn.Linear(2048, 768),
+        )
 
-    def embed_prefix(self, prefix: torch.Tensor) -> torch.Tensor:
-        return self.prefix_embedder(prefix)
+    def embed_prefix(
+        self, prefix_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        outputs = self.prefix_embedder(
+            input_ids=prefix_ids, attention_mask=attention_mask
+        )
+        hidden_state = outputs.last_hidden_state
+        return mean_pool(hidden_state, attention_mask)
 
 
 def load_encoder_decoder(

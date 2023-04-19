@@ -9,7 +9,9 @@ import torch.nn as nn
 import tqdm
 import transformers
 
+import aliases
 from models import PrefixReranker
+from run_args import TrainingArguments
 
 
 def preprocess_logits_for_metrics(logits, labels):
@@ -291,9 +293,21 @@ class InversionTrainer(transformers.Trainer):
 
 
 class RerankingTrainer(transformers.Trainer):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        # TODO support gc?
+    def __init__(self, model: PrefixReranker, args: TrainingArguments):
+        # We're training this reranking model to rerank outputs from
+        # a model trained via the inversion trainer.
+        # TODO argparse for alias.
+        self.inversion_trainer = aliases.load_inversion_trainer_from_alias(
+            alias="dpr_corpus_msl32_beta"
+        )
+        super().__init__(
+            model=model,
+            args=args,
+            train_dataset=self.inversion_trainer.train_dataset,
+            eval_dataset=self.inversion_trainer.eval_dataset,
+            data_collator=self.inversion_trainer.data_collator,
+        )
+        # TODO support gc
 
     def _contrastive_loss(self, e1: torch.Tensor, e2: torch.Tensor) -> torch.Tensor:
         batch_size = len(e1)
