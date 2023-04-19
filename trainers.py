@@ -37,7 +37,7 @@ class InversionTrainer(transformers.Trainer):
             # From CtRL paper: We find that using a greedy sampling
             # and θ ≈ 1.2 yields a good balance between truthful generation
             # and lack of repetition (arxiv.org/abs/1909.05858)
-            "repetition_penalty": 1.2,
+            # "repetition_penalty": 1.2,
             "num_beams": 1,
             "do_sample": False,
         }
@@ -309,6 +309,43 @@ class RerankingTrainer(transformers.Trainer):
         )
         # TODO support gc
 
+    def generate_continuations(
+        self,
+        prefix_input_ids: torch.Tensor,
+        prefix_attention_mask: torch.Tensor,
+        embedder_input_ids: torch.Tensor,
+        embedder_attention_mask: torch.Tensor,
+        frozen_embeddings: torch.Tensor,
+        continuation_length: int,
+    ) -> torch.Tensor:
+        """Generates continuations for a prefix."""
+        batch_size, prefix_length = prefix_input_ids.shape
+        full_length = prefix_length + continuation_length
+        # TODO properly handle decoder_attention_mask everywhere.
+        with torch.no_grad():
+            generated_text_ids = self.inversion_trainer.model.generate(
+                inputs={
+                    # "decoder_input_ids": prefix_input_ids,
+                    # "decoder_attention_mask": prefix_attention_mask,
+                    "embedder_input_ids": embedder_input_ids,
+                    "embedder_attention_mask": embedder_attention_mask,
+                    "frozen_embeddings": frozen_embeddings,
+                },
+                # TODO consider other gen_kwargs,
+                # such as no_ngram_repeat or repetition penalty.
+                generation_kwargs={
+                    "min_length": full_length,
+                    "max_length": full_length,
+                    "num_beams": 1,
+                    "do_sample": False,
+                },
+            )
+        # TODO: Validate output is not NANs and has correct format for t5.
+        # should have extra eos token.
+        assert generated_text_ids.shape == (batch_size, full_length)
+        return generated_text_ids
+
+
     def _contrastive_loss(self, e1: torch.Tensor, e2: torch.Tensor) -> torch.Tensor:
         batch_size = len(e1)
 
@@ -344,13 +381,6 @@ class RerankingTrainer(transformers.Trainer):
 
         return loss
 
-    def generate_continuations(
-        self,
-        input_ids: torch.Tensor,
-        continuation_length: int,
-    ) -> torch.Tensor:
-        raise NotImplementedError()
-
     def compute_loss(
         self,
         model: PrefixReranker,
@@ -359,26 +389,50 @@ class RerankingTrainer(transformers.Trainer):
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
-        prefix_length = random.randint(1, seq_length)
+
+        min_continuation_length = 10
+        assert min_continuation_length < seq_length
+        prefix_length = random.randint(1, seq_length-min_continuation_length)
         max_continuation_length = seq_length - prefix_length
+
+        inputs = { key: value.to(self.args.device) for key, value in inputs.items() }
+
         # The 10 here comes from rankgen (arxiv.org/pdf/2205.09726.pdf)
         # where they generate continuations of a random length
         # from 10 to msl.
-        continuation_length = random.randint(10, max_continuation_length)
+        continuation_length = random.randint(min_continuation_length, max_continuation_length)
 
         prefixes = inputs["input_ids"][:, :prefix_length]
+        prefix_attention_mask = inputs["attention_mask"][:, :prefix_length]
         true_continuations = inputs["input_ids"][
             :, : prefix_length + continuation_length
         ]
 
-        # TODO: Should we use beam search or nucleus sampling here?
-        fake_continuations = self.generate_continuations(prefixes, continuation_length)
+        with torch.no_grad():
+            frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
+                input_ids=inputs["embedder_input_ids"],
+                attention_mask=inputs["embedder_attention_mask"],
+            )
 
-        true_prefix_embeds = self.model.embed_prefix(true_continuations)
-        fake_prefix_embeds = self.model.embed_prefix(fake_continuations)
+        # TODO: Should we use beam search or nucleus sampling here?
+        fake_continuations = self.generate_continuations(
+            prefix_input_ids=prefixes,
+            prefix_attention_mask=prefix_attention_mask,
+            embedder_input_ids=inputs["embedder_input_ids"],
+            embedder_attention_mask=inputs["embedder_attention_mask"],
+            frozen_embeddings=frozen_embeddings,
+            continuation_length=continuation_length,
+        )
+
+        continuations_attention_mask = torch.ones_like(true_continuations, device=self.args.device)
+        true_prefix_embeds = self.model.embed_prefix(
+            true_continuations, attention_mask=continuations_attention_mask)
+        fake_prefix_embeds = self.model.embed_prefix(
+            prefix_ids=fake_continuations, attention_mask=continuations_attention_mask)
         # TODO is subsequent concat() correct?
         all_prefix_embeds = torch.stack((true_prefix_embeds, fake_prefix_embeds), dim=1)
 
-        embedding_embeds = self.model.embedding_projection(inputs["frozen_embeddings"])
+        import pdb; pdb.set_trace()
+        embedding_embeds = self.model.embedding_projection(frozen_embeddings)
 
         return self._contrastive_loss(all_prefix_embeds, embedding_embeds)

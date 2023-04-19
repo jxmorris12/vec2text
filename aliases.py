@@ -16,6 +16,7 @@ def load_inversion_trainer_from_alias(alias: str):  # -> trainers.InversionTrain
 
     args_str = ARGS_DICT[alias]
     checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
+    print(f"loading alias {alias} from {checkpoint_folder}...")
     trainer = analyze_utils.load_trainer(checkpoint_folder, args_str, do_eval=False)
     assert isinstance(trainer, trainers.InversionTrainer)
     return trainer

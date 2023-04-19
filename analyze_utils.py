@@ -22,14 +22,14 @@ def load_trainer(
     checkpoint: Optional[str] = None,
     do_eval: bool = True,
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
-    print("Loading trainer for analysis – setting --do_eval=1")
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
-    print("[0] Loading model from checkpoint:", checkpoint)
     args = shlex.split(args_str)
     parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=args)
-    training_args.do_eval = do_eval
+    if do_eval:
+        print("Loading trainer for analysis – setting --do_eval=1")
+        training_args.do_eval = do_eval
 
     training_args.dataloader_num_workers = 0  # no multiprocessing :)
     training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))

@@ -507,9 +507,11 @@ class InversionModel(nn.Module):
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
 
-        generation_kwargs["max_length"] = inputs.get(
-            "input_ids", inputs["embedder_input_ids"]
-        ).shape[1]
+
+        if "max_length" not in generation_kwargs:
+            generation_kwargs["max_length"] = inputs.get(
+                "input_ids", inputs["embedder_input_ids"]
+            ).shape[1]
         # print("generate() -- embedder_decode_score", self.embedder_decode_score)
 
         if self.token_decode_alpha is not None:
@@ -568,9 +570,18 @@ class InversionModel(nn.Module):
             embedder_attention_mask=inputs["embedder_attention_mask"],
             frozen_embeddings=inputs.get("frozen_embeddings"),
         )
+
+        print("generating:", inputs_embeds.shape, attention_mask.shape)
+        print("generating generation_kwargs:", generation_kwargs)
         return self.encoder_decoder.generate(
+            # required: input embeddings
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
+            # optional: input IDs (for starting generation).
+            # typically not set unless generating prefixes for
+            # reranking.
+            # decoder_input_ids=inputs.get("decoder_input_ids"),
+            # decoder_attention_mask=inputs.get("decoder_attention_mask"),
             **generation_kwargs,
         )
 
