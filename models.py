@@ -676,13 +676,14 @@ class PrefixReranker(nn.Module):
     """
 
     prefix_embedder: nn.Module  # embeds a prefix
-    embedding_projection: nn.Module  # projects embedding to same
-    # space as a prefix embedding
+    embedding_projection: nn.Module  # projects sentence embedding to same
+                                     # space as a prefix embedding
 
     def __init__(
         self,
         prefix_embedder: nn.Module,
     ):
+        super().__init__()
         self.prefix_embedder = prefix_embedder
         self.embedding_projection = nn.Sequential(
             nn.Linear(768, 2048),

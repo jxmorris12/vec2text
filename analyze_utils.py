@@ -7,9 +7,8 @@ import transformers
 from transformers import HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 
-from experiments import experiment_from_args
+import experiments
 from run_args import DataArguments, ModelArguments, TrainingArguments
-from trainers import InversionTrainer
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 transformers.logging.set_verbosity_error()
@@ -22,7 +21,7 @@ def load_trainer(
     args_str: str,
     checkpoint: Optional[str] = None,
     do_eval: bool = True,
-) -> InversionTrainer:
+):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     print("Loading trainer for analysis – setting --do_eval=1")
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
@@ -37,7 +36,7 @@ def load_trainer(
     training_args.use_wandb = False
     training_args.report_to = []
 
-    experiment = experiment_from_args(model_args, data_args, training_args)
+    experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
     trainer._load_from_checkpoint(checkpoint)
     return trainer

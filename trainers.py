@@ -298,7 +298,7 @@ class RerankingTrainer(transformers.Trainer):
         # a model trained via the inversion trainer.
         # TODO argparse for alias.
         self.inversion_trainer = aliases.load_inversion_trainer_from_alias(
-            alias="dpr_corpus_msl32_beta"
+            alias="dpr_nq__msl32_beta"
         )
         super().__init__(
             model=model,
@@ -323,7 +323,6 @@ class RerankingTrainer(transformers.Trainer):
         # "When calculating the loss, we apply a re-scaling trick
         # of multiplying the cosine similarity score by 20 for
         # better optimization (Thakur et al., 2021)."
-        #
         similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
         diagonal_idxs = torch.arange(batch_size, device=e1.device)
         loss = torch.nn.functional.cross_entropy(

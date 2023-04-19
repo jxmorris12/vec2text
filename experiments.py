@@ -10,6 +10,7 @@ import datasets
 import torch
 import transformers
 
+import trainers
 from collator import CustomCollator
 from data_helpers import dataset_from_args
 from models import (
@@ -20,7 +21,6 @@ from models import (
 )
 from run_args import DataArguments, ModelArguments, TrainingArguments
 from tokenize_data import tokenize_function
-from trainers import InversionTrainer, RerankingTrainer
 
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
@@ -342,7 +342,7 @@ class InversionExperiment(Experiment):
         logger.info(
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
-        return InversionTrainer(
+        return trainers.InversionTrainer(
             model=model,
             args=self.training_args,
             train_dataset=train_dataset,
@@ -358,12 +358,13 @@ class RerankingExperiment(Experiment):
         return "emb-rerank-1"
 
     def load_trainer(self) -> transformers.Trainer:
-        raise RerankingTrainer(
+        return trainers.RerankingTrainer(
             model=self.load_model(),
             args=self.training_args,
         )
 
     def load_model(self) -> torch.nn.Module:
+        transformers.T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
         prefix_embedder = transformers.T5EncoderModel.from_pretrained("t5-base")
         return PrefixReranker(prefix_embedder=prefix_embedder)
 
