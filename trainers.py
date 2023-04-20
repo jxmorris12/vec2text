@@ -382,7 +382,9 @@ class RerankingTrainer(transformers.Trainer):
         assert generated_text_ids.shape == (batch_size * B, full_length)
         return generated_text_ids
 
-    def _contrastive_loss(self, e1: torch.Tensor, e2: torch.Tensor) -> torch.Tensor:
+    def _contrastive_loss(
+        self, e1: torch.Tensor, e2: torch.Tensor, labels: torch.Tensor
+    ) -> torch.Tensor:
         """Computes contrastive loss between two lists of vectors, e1 and e2
         -- float torch.Tensors.
 
@@ -404,7 +406,7 @@ class RerankingTrainer(transformers.Trainer):
         similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
         diagonal_idxs = torch.arange(batch_size, device=e1.device)
         loss = torch.nn.functional.cross_entropy(
-            similarity, diagonal_idxs, label_smoothing=0.0
+            similarity, labels, label_smoothing=0.0
         )
         if loss.isnan():
             raise RuntimeError("Loss is nan!")
@@ -540,6 +542,8 @@ class RerankingTrainer(transformers.Trainer):
         # from 10 to msl.
         min_continuation_length = 1
         assert min_continuation_length < seq_length
+
+        # TODO consider sampling this from zipf distribution (shorter prefixes are more common?).
         prefix_length = random.randint(0, seq_length - min_continuation_length)
         max_continuation_length = seq_length - prefix_length
 
@@ -619,10 +623,18 @@ class RerankingTrainer(transformers.Trainer):
         assert embedding_embeds.shape == (batch_size, 768)
         assert all_prefix_embeds.shape == (batch_size * (1 + beam_width), 768)
 
-        # TODO don't penalize the model when one of the fake continuations is equal
+        # This is so we don't penalize the model when one of the fake continuations is equal
         # to one of the true continuations. check for this and compute labels, then
         # pass those labels to contrastive loss.
-        return self._contrastive_loss(embedding_embeds, all_prefix_embeds)
+        all_continuations = torch.cat((true_continuations, fake_continuations), dim=0)
+        labels = (
+            (true_continuations[:, None] == all_continuations[None, :])
+            .all(dim=2)
+            .float()
+        )
+        labels = labels / labels.sum(dim=1, keepdim=True)
+
+        return self._contrastive_loss(embedding_embeds, all_prefix_embeds, labels)
 
     def prediction_step(
         self,
