@@ -508,9 +508,9 @@ class InversionModel(nn.Module):
     ) -> torch.Tensor:
 
         if "max_length" not in generation_kwargs:
-            generation_kwargs["max_length"] = inputs.get(
-                "input_ids", inputs["embedder_input_ids"]
-            ).shape[1] + 1
+            generation_kwargs["max_length"] = (
+                inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1] + 1
+            )
         # print("generate() -- embedder_decode_score", self.embedder_decode_score)
 
         if self.token_decode_alpha is not None:

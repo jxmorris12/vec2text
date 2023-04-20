@@ -24,10 +24,12 @@ def load_trainer(
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
-    args = shlex.split(args_str)
     if args_str is not None:
+        args = shlex.split(args_str)
         parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=args)
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses(
+            args=args
+        )
     else:
         data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
         model_args = torch.load(os.path.join(checkpoint, os.pardir, "model_args.bin"))
