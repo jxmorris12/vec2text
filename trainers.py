@@ -324,6 +324,10 @@ class RerankingTrainer(transformers.Trainer):
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
+    
+    @property
+    def embedder_tokenizer(self) -> transformers.PreTrainedTokenizer:
+        return self.inversion_trainer.model.embedder_tokenizer
 
     def generate_continuations(
         self,
@@ -337,6 +341,21 @@ class RerankingTrainer(transformers.Trainer):
         """Generates continuations for a prefix."""
         batch_size, prefix_length = prefix_input_ids.shape
         full_length = prefix_length + continuation_length
+
+        bos_token_id = (
+            self.inversion_trainer.model.embedder_tokenizer.bos_token_id
+            or
+            self.embedder_tokenizer.pad_token_id
+        )
+        bos_tokens = (
+            torch.ones(
+                (batch_size, 1), dtype=prefix_input_ids.dtype, device=self.args.device
+            )
+            * bos_token_id
+        )
+        prefix_input_ids = torch.cat((bos_tokens, prefix_input_ids), dim=1)
+        ones = torch.ones((batch_size, 1), dtype=prefix_attention_mask.dtype, device=self.args.device)
+        prefix_attention_mask = torch.cat((ones, prefix_attention_mask), dim=1)
         # TODO properly handle decoder_attention_mask everywhere.
         with torch.no_grad():
             generated_text_ids = self.inversion_trainer.model.generate(
@@ -350,13 +369,14 @@ class RerankingTrainer(transformers.Trainer):
                 # TODO consider other gen_kwargs,
                 # such as no_ngram_repeat or repetition penalty.
                 generation_kwargs={
-                    "min_length": full_length,
-                    "max_length": full_length,
+                    "min_length": full_length+1,
+                    "max_length": full_length+1,
                     "num_beams": 1,
                     "do_sample": False,
                     "no_repeat_ngram_size": 3,
                 },
             )
+        generated_text_ids = generated_text_ids[:, 1:] # trim bos
         assert generated_text_ids.shape == (batch_size, full_length)
         return generated_text_ids
 
@@ -379,7 +399,7 @@ class RerankingTrainer(transformers.Trainer):
         # "When calculating the loss, we apply a re-scaling trick
         # of multiplying the cosine similarity score by 20 for
         # better optimization (Thakur et al., 2021)."
-        # similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
+        similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
         diagonal_idxs = torch.arange(batch_size, device=e1.device)
         loss = torch.nn.functional.cross_entropy(
             similarity, diagonal_idxs, label_smoothing=0.0
@@ -399,6 +419,99 @@ class RerankingTrainer(transformers.Trainer):
         #     wandb.log({**metrics_q, **metrics_d, "accuracy": accuracy})
 
         return loss
+    
+    def sanity_decode(self):
+        pass # TODO implement with reranking :-)
+    
+    def generate_with_reranking(self, inputs: Dict[str, torch.Tensor], L: int, B: int) -> torch.Tensor:
+        """Generates using inversion model and reranks using reranking model.
+        
+        Parameters (from rankgen):
+            L - rerank length L,
+            B - beam size B 
+            (N - number of samples per beam - not applicable with greedy)
+        """
+        batch_size, max_length = inputs["input_ids"].shape
+        with torch.no_grad():
+            frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
+                input_ids=inputs["embedder_input_ids"],
+                attention_mask=inputs["embedder_attention_mask"],
+            )
+            embedding_embeds = self.model.embedding_projection(frozen_embeddings)
+        embedding_embeds /= embedding_embeds.norm(p=2, dim=1, keepdim=True)
+        # first step
+        bos_token_id = (
+            self.inversion_trainer.model.embedder_tokenizer.bos_token_id
+            or
+            self.embedder_tokenizer.pad_token_id
+        )
+        eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
+        all_inputs = (
+            torch.ones((batch_size, 1), dtype=inputs["input_ids"].dtype, device=self.args.device)
+                 * bos_token_id
+        )
+        # TMP: remove next line after debugging. this is cheating.
+        all_inputs = torch.cat((all_inputs, inputs["embedder_input_ids"][:, 0:1]), dim=1)
+        # next steps
+        while all_inputs.shape[1] < max_length:
+            # add L to length
+            hypothesis_length =  min(max_length, all_inputs.shape[1] + L)
+            gen_kwargs = {
+                "min_length": hypothesis_length,
+                "max_length": hypothesis_length,
+                "num_beams": B,
+                "num_return_sequences": B,
+                "do_sample": False,
+                "no_repeat_ngram_size": 3,
+            }
+            # generate hypotheses
+            attention_mask = torch.ones_like(all_inputs, device=self.args.device)
+            hypotheses = self.inversion_trainer.model.generate(
+                inputs={
+                    "embedder_input_ids": inputs["embedder_input_ids"],
+                    "embedder_attention_mask": inputs["embedder_attention_mask"],
+                    # "frozen_embeddings": frozen_embeddings,
+                    "decoder_input_ids": all_inputs,
+                    "decoder_attention_mask": attention_mask,
+                },
+                generation_kwargs=gen_kwargs
+            )
+            assert hypotheses.shape == (batch_size * B, hypothesis_length)
+            hypothesis_attention_mask = torch.ones_like(hypotheses, device=hypotheses.device)
+            # embed hypotheses
+            eos_tokens = (
+                torch.ones(
+                    (batch_size * B, 1), dtype=torch.long, device=self.args.device
+                )
+                * eos_token_id
+            )
+            hypotheses_with_eos = torch.cat((hypotheses[:, 1:], eos_tokens), dim=1)
+            hypothesis_embeddings = self.model.embed_prefix(
+                prefix_ids=hypotheses_with_eos, attention_mask=hypothesis_attention_mask
+            )
+            hypothesis_embeddings /= hypothesis_embeddings.norm(p=2, dim=1, keepdim=True)
+            assert hypothesis_embeddings.shape == (batch_size * B, 768)
+            hypothesis_embeddings = hypothesis_embeddings.reshape(batch_size, B, 768)
+            # compute scores
+            scores = torch.einsum('bwd,bd->bw', hypothesis_embeddings, embedding_embeds)
+            assert scores.shape == (batch_size, B)
+            # truncate beams
+            hypotheses = hypotheses.reshape((batch_size, B, hypothesis_length))
+            # all_inputs = hypotheses[:, 0, :]
+            print(scores.argmax(1).tolist())
+            all_inputs = hypotheses[torch.arange(len(hypotheses)), scores.argmax(1)]
+            
+        # trim bos
+        assert (all_inputs[:, 0] == bos_token_id).all()
+        all_inputs = all_inputs[:, 1:]
+        eos_tokens = (
+            torch.ones(
+                (batch_size, 1), dtype=torch.long, device=self.args.device
+            )
+            * eos_token_id
+        )
+        all_inputs = torch.cat((all_inputs, eos_tokens), dim=1)
+        return all_inputs
 
     def compute_loss(
         self,
@@ -409,16 +522,18 @@ class RerankingTrainer(transformers.Trainer):
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
 
-        min_continuation_length = 10
+        # TODO include empty prefix with possible condinuations
+
+        # The 10 here comes from rankgen (arxiv.org/pdf/2205.09726.pdf)
+        # where they generate continuations of a random length
+        # from 10 to msl.
+        min_continuation_length = 1
         assert min_continuation_length < seq_length
         prefix_length = random.randint(1, seq_length - min_continuation_length)
         max_continuation_length = seq_length - prefix_length
 
         inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
 
-        # The 10 here comes from rankgen (arxiv.org/pdf/2205.09726.pdf)
-        # where they generate continuations of a random length
-        # from 10 to msl.
         continuation_length = random.randint(
             min_continuation_length, max_continuation_length
         )
@@ -444,7 +559,7 @@ class RerankingTrainer(transformers.Trainer):
             frozen_embeddings=frozen_embeddings,
             continuation_length=continuation_length,
         )
-        assert true_continuations.shape == fake_continuations.shape
+        assert fake_continuations.shape == true_continuations.shape
 
         # Add EOS tokens and generate attention masks.
         eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
@@ -461,7 +576,7 @@ class RerankingTrainer(transformers.Trainer):
             true_continuations, device=self.args.device
         )
         true_prefix_embeds = self.model.embed_prefix(
-            true_continuations, attention_mask=continuations_attention_mask
+            prefix_ids=true_continuations, attention_mask=continuations_attention_mask
         )
         fake_prefix_embeds = self.model.embed_prefix(
             prefix_ids=fake_continuations, attention_mask=continuations_attention_mask

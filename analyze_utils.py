@@ -18,15 +18,20 @@ transformers.logging.set_verbosity_error()
 
 def load_trainer(
     checkpoint_folder: str,
-    args_str: str,
+    args_str: Optional[str] = None,
     checkpoint: Optional[str] = None,
     do_eval: bool = True,
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
     args = shlex.split(args_str)
-    parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
-    model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=args)
+    if args_str is not None:
+        parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses(args=args)
+    else:
+        data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
+        model_args = torch.load(os.path.join(checkpoint, os.pardir, "model_args.bin"))
+
     training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
     if do_eval:
         print("Loading trainer for analysis – setting --do_eval=1")
