@@ -730,15 +730,7 @@ class PrefixReranker(nn.Module):
         output_embeddings = mean_pool(hidden_state, attention_mask)
         scores = self.score(output_embeddings)
         scores = scores.flatten()  # (batch_size, 1) -> (batch_size,)
-
-        # todo: should we really sigmoid here?
         return scores
-        # This multiply-by-20 trick is used in BeIR and LaPRador:
-        # "When calculating the loss, we apply a re-scaling trick
-        # of multiplying the cosine similarity score by 20 for
-        # better optimization (Thakur et al., 2021)."
-        #            TODO argparse: self.args.contrastive_temperature.exp()
-        # return torch.sigmoid(scores) * 20
 
 
 def load_encoder_decoder(

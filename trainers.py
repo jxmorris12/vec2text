@@ -599,6 +599,14 @@ class RerankingTrainer(BaseTrainer):
         )
 
         # Add EOS tokens and generate attention masks.
+        pad_token_id = self.inversion_trainer.model.embedder_tokenizer.pad_token_id
+        num_pad_tokens = seq_length - (prefix_length + continuation_length)
+        pad_tokens = (
+            torch.ones(
+                (batch_size, num_pad_tokens), dtype=true_continuations.dtype, device=self.args.device
+            )
+            * pad_token_id
+        )
         eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
         eos_tokens = (
             torch.ones(
@@ -606,16 +614,10 @@ class RerankingTrainer(BaseTrainer):
             )
             * eos_token_id
         )
-        true_continuations = torch.cat((true_continuations, eos_tokens), dim=1)
-        eos_tokens = (
-            torch.ones(
-                (batch_size * beam_width, 1),
-                dtype=true_continuations.dtype,
-                device=self.args.device,
-            )
-            * eos_token_id
-        )
-        fake_continuations = torch.cat((fake_continuations, eos_tokens), dim=1)
+        true_continuations = torch.cat((true_continuations, pad_tokens, eos_tokens), dim=1)
+        pad_tokens = eos_tokens.repeat((beam_width, 1))
+        eos_tokens = eos_tokens.repeat((beam_width, 1))
+        fake_continuations = torch.cat((fake_continuations, pad_tokens, eos_tokens), dim=1)
 
         continuations_attention_mask = torch.ones_like(
             true_continuations,
