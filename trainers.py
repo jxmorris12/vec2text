@@ -23,7 +23,6 @@ def preprocess_logits_for_metrics(logits, labels):
 
 
 class BaseTrainer(transformers.Trainer):
-
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
@@ -41,7 +40,7 @@ class BaseTrainer(transformers.Trainer):
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
         input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
         print("\tInput to encode ->", input_string)
-        inputs = self.model.embedder_tokenizer(input_string, return_tensors="pt")
+        inputs = self.embedder_tokenizer(input_string, return_tensors="pt")
         inputs = inputs.to(self.args.device)
         regenerated = self.generate(
             inputs={
@@ -50,7 +49,7 @@ class BaseTrainer(transformers.Trainer):
             },
             generation_kwargs=self.gen_kwargs,
         )
-        output_string = self.model.embedder_tokenizer.decode(regenerated.flatten())
+        output_string = self.embedder_tokenizer.decode(regenerated.flatten())
         print("\tDecoded output ->", output_string)
         print("=" * 16, "End trainer sanity check", "=" * 16)
 
@@ -98,7 +97,6 @@ class BaseTrainer(transformers.Trainer):
             gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
                 "input_ids"
             ].shape[1]
-            print("gen_kwargs:", gen_kwargs)
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda, generation_kwargs=gen_kwargs
@@ -151,14 +149,14 @@ class BaseTrainer(transformers.Trainer):
         self, inputs: Dict[str, torch.Tensor]
     ) -> Dict[str, float]:
         inputs_pad_tokens = (
-            (inputs["input_ids"] == self.model.tokenizer.pad_token_id)
+            (inputs["input_ids"] == self.tokenizer.pad_token_id)
             .sum(dim=1)
             .float()
             .mean()
             .item()
         )
         embedder_inputs_pad_tokens = (
-            (inputs["embedder_input_ids"] == self.model.embedder_tokenizer.pad_token_id)
+            (inputs["embedder_input_ids"] == self.embedder_tokenizer.pad_token_id)
             .sum(dim=1)
             .float()
             .mean()
@@ -176,7 +174,7 @@ class BaseTrainer(transformers.Trainer):
             "embedder_inputs_pad_tokens": embedder_inputs_pad_tokens,
             "embedder_inputs_non_pad_tokens": embedder_inputs_non_pad_tokens,
         }
-    
+
     def compute_metrics_func(self, eval_preds):
         preds = eval_preds.predictions
         labels = eval_preds.label_ids
@@ -197,17 +195,17 @@ class BaseTrainer(transformers.Trainer):
         )
 
         return {**accuracy_result}
-    
+
     def eval_generation_metrics(self) -> Dict:
-         # Get decoded text. Note that this is different than `preds`, which
+        # Get decoded text. Note that this is different than `preds`, which
         # is used to compute the loss.
         preds_sample, preds_sample_labels = self._get_eval_preds(n=1000)
 
         # Log BLEU, log table of text.
-        decoded_preds = self.model.tokenizer.batch_decode(
+        decoded_preds = self.tokenizer.batch_decode(
             preds_sample, skip_special_tokens=True
         )
-        decoded_labels = self.model.tokenizer.batch_decode(
+        decoded_labels = self.tokenizer.batch_decode(
             preds_sample_labels, skip_special_tokens=True
         )
         raw_bleu_result = self.metric_bleu.compute(
@@ -235,7 +233,7 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_labels, device=self.args.device
         )[:128]
         # Fix eos token on generated text.
-        eos_token_id = self.model.embedder_tokenizer.eos_token_id
+        eos_token_id = self.embedder_tokenizer.eos_token_id
         if eos_token_id is not None:
             eos_tokens = (
                 torch.ones(
@@ -247,11 +245,11 @@ class BaseTrainer(transformers.Trainer):
             )
             preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
         with torch.no_grad():
-            preds_emb = self.model.call_embedding_model(
+            preds_emb = self.call_embedding_model(
                 input_ids=preds_sample,
                 attention_mask=torch.ones_like(preds_sample, device=self.args.device),
             )
-            labels_emb = self.model.call_embedding_model(
+            labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels,
                 attention_mask=torch.ones_like(
                     preds_sample_labels, device=self.args.device
@@ -264,10 +262,10 @@ class BaseTrainer(transformers.Trainer):
 
         # Log table for train data.
         train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=50)
-        decoded_train_preds = self.model.tokenizer.batch_decode(
+        decoded_train_preds = self.tokenizer.batch_decode(
             train_preds_sample, skip_special_tokens=True
         )
-        decoded_train_labels = self.model.tokenizer.batch_decode(
+        decoded_train_labels = self.tokenizer.batch_decode(
             train_preds_sample_labels, skip_special_tokens=True
         )
         self._log_preds_table(
@@ -306,11 +304,12 @@ class InversionTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
         ######################################################
         self.model.precompute_whitening_params(self.get_train_dataloader())
-    
+        self.tokenizer = self.model.tokenizer
+        self.embedder_tokenizer = self.model.embedder_tokenizer
+        self.call_embedding_model = self.model.call_embedding_model
+
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        return self.model.generate(
-            inputs=inputs, generation_kwargs=generation_kwargs
-        )
+        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
     def training_step(
         self, model: nn.Module, inputs: Dict[str, torch.Tensor]
@@ -339,20 +338,21 @@ class RerankingTrainer(BaseTrainer):
             eval_dataset=self.inversion_trainer.eval_dataset,
             data_collator=self.inversion_trainer.data_collator,
         )
-        self.rerank_length = 4 # TODO argparse & ablate
-        self.beam_width = 4 # TODO argparse & ablate.
+        self.tokenizer = self.inversion_trainer.model.tokenizer
+        self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
+        self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
+        self.rerank_length = 4  # TODO argparse & ablate
+        self.beam_width = 4  # TODO argparse & ablate.
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
-    @property
-    def embedder_tokenizer(self) -> transformers.PreTrainedTokenizer:
-        return self.inversion_trainer.model.embedder_tokenizer
-
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         return self.generate_with_reranking(
-            inputs=inputs, L=self.rerank_length, B=self.beam_width,
+            inputs=inputs,
+            L=self.rerank_length,
+            B=self.beam_width,
         )
 
     def generate_continuations(
@@ -441,6 +441,8 @@ class RerankingTrainer(BaseTrainer):
     ) -> torch.Tensor:
         """Generates using inversion model and reranks using reranking model.
 
+        (TODO rename L to rerank_length and B to beam width everywhere)
+
         Parameters (from rankgen):
             L - rerank length L,
             B - beam size B
@@ -452,8 +454,12 @@ class RerankingTrainer(BaseTrainer):
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
             )
-            embedding_embeds = self.model.embedding_projection(frozen_embeddings)
-        embedding_embeds /= embedding_embeds.norm(p=2, dim=1, keepdim=True)
+
+        # store copies for each thing in the beam so we can feed to cross-encoder
+        frozen_embeddings = frozen_embeddings[:, None, :]
+        frozen_embeddings = frozen_embeddings.repeat((1, B, 1))
+        frozen_embeddings = frozen_embeddings.reshape((batch_size * B, 768))
+
         # first step
         bos_token_id = (
             self.inversion_trainer.model.embedder_tokenizer.bos_token_id
@@ -508,17 +514,15 @@ class RerankingTrainer(BaseTrainer):
                 * eos_token_id
             )
             hypotheses_with_eos = torch.cat((hypotheses[:, 1:], eos_tokens), dim=1)
-            hypothesis_embeddings = self.model.embed_prefix(
-                prefix_ids=hypotheses_with_eos, attention_mask=hypothesis_attention_mask
+
+            scores = self.model.score_prefix_and_embedding(
+                prefix_ids=hypotheses_with_eos,
+                attention_mask=hypothesis_attention_mask,
+                embeddings=frozen_embeddings,
             )
-            hypothesis_embeddings /= hypothesis_embeddings.norm(
-                p=2, dim=1, keepdim=True
-            )
-            assert hypothesis_embeddings.shape == (batch_size * B, 768)
-            hypothesis_embeddings = hypothesis_embeddings.reshape(batch_size, B, 768)
-            # compute scores
-            scores = torch.einsum("bwd,bd->bw", hypothesis_embeddings, embedding_embeds)
-            assert scores.shape == (batch_size, B)
+            assert scores.shape == (batch_size * B,)
+            scores = scores.reshape((batch_size, B))
+
             # truncate beams
             hypotheses = hypotheses.reshape((batch_size, B, hypothesis_length))
             # all_inputs = hypotheses[:, 0, :]
