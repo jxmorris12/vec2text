@@ -22,15 +22,14 @@ def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
 
-class InversionTrainer(transformers.Trainer):
+class BaseTrainer(transformers.Trainer):
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        ######################################################
+        self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
+        self.compute_metrics = self.compute_metrics_func
         self.metric_accuracy = evaluate.load("accuracy")
         self.metric_bleu = evaluate.load("sacrebleu")
-        self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
-        self.model.precompute_whitening_params(self.get_train_dataloader())
-        self.compute_metrics = self.compute_metrics_func
         self.gen_kwargs = {
             "early_stopping": False,
             "num_beams": 1,
@@ -44,7 +43,7 @@ class InversionTrainer(transformers.Trainer):
         print("\tInput to encode ->", input_string)
         inputs = self.model.embedder_tokenizer(input_string, return_tensors="pt")
         inputs = inputs.to(self.args.device)
-        regenerated = self.model.generate(
+        regenerated = self.generate(
             inputs={
                 "embedder_input_ids": inputs["input_ids"],
                 "embedder_attention_mask": inputs["attention_mask"],
@@ -101,7 +100,7 @@ class InversionTrainer(transformers.Trainer):
             ].shape[1]
             print("gen_kwargs:", gen_kwargs)
             with torch.no_grad():
-                generated_text = self.model.generate(
+                generated_text = self.generate(
                     inputs=inputs_cuda, generation_kwargs=gen_kwargs
                 )
             all_preds.extend(generated_text.cpu().tolist())
@@ -136,7 +135,7 @@ class InversionTrainer(transformers.Trainer):
                 "input_ids"
             ].shape[1]
             with torch.no_grad():
-                generated_text = self.model.generate(
+                generated_text = self.generate(
                     inputs=inputs_cuda,
                     generation_kwargs=gen_kwargs,
                 )
@@ -177,17 +176,7 @@ class InversionTrainer(transformers.Trainer):
             "embedder_inputs_pad_tokens": embedder_inputs_pad_tokens,
             "embedder_inputs_non_pad_tokens": embedder_inputs_non_pad_tokens,
         }
-
-    def training_step(
-        self, model: nn.Module, inputs: Dict[str, torch.Tensor]
-    ) -> torch.Tensor:
-        """
-        Performs a training step. we override to compute data-specific metrics.
-        """
-        self._compute_data_metrics(inputs=inputs)
-        # self.log({ f"train/{k}": v for k,v in metrics.items() })
-        return super().training_step(model, inputs)
-
+    
     def compute_metrics_func(self, eval_preds):
         preds = eval_preds.predictions
         labels = eval_preds.label_ids
@@ -195,8 +184,22 @@ class InversionTrainer(transformers.Trainer):
         assert len(labels), "got empty labels for eval"
 
         assert torch.tensor(preds).shape == torch.tensor(labels).shape
+        # train_raw_bleu_result = self.metric_bleu.compute(
+        #     predictions=decoded_train_preds, references=decoded_train_labels
+        # )
+        # train_bleu_result = { "bleu_score": train_raw_bleu_result["score"]}
 
-        # Get decoded text –note that this is different than `preds`, which
+        # preds have the same shape as the labels.
+        labels = labels.reshape(-1)
+        preds = preds.reshape(-1)
+        accuracy_result = self.metric_accuracy.compute(
+            predictions=preds, references=labels
+        )
+
+        return {**accuracy_result}
+    
+    def eval_generation_metrics(self) -> Dict:
+         # Get decoded text. Note that this is different than `preds`, which
         # is used to compute the loss.
         preds_sample, preds_sample_labels = self._get_eval_preds(n=1000)
 
@@ -272,19 +275,7 @@ class InversionTrainer(transformers.Trainer):
             decoded_preds=decoded_train_preds,
             decoded_labels=decoded_train_labels,
         )
-        # train_raw_bleu_result = self.metric_bleu.compute(
-        #     predictions=decoded_train_preds, references=decoded_train_labels
-        # )
-        # train_bleu_result = { "bleu_score": train_raw_bleu_result["score"]}
-
-        # preds have the same shape as the labels.
-        labels = labels.reshape(-1)
-        preds = preds.reshape(-1)
-        accuracy_result = self.metric_accuracy.compute(
-            predictions=preds, references=labels
-        )
-
-        return {**bleu_result, **accuracy_result, **sim_result}
+        return {**bleu_result, **sim_result}
 
     def evaluation_loop(
         self, *args, **kwargs
@@ -296,16 +287,44 @@ class InversionTrainer(transformers.Trainer):
         """
         output = super().evaluation_loop(*args, **kwargs)
 
+        generation_metrics = self.eval_generation_metrics()
+        output.metrics.update(generation_metrics)
+
         try:
             perplexity = math.exp(output.metrics["eval_loss"])
         except OverflowError:
             perplexity = float("inf")
         output.metrics["eval_perplexity"] = perplexity
 
+        print("evaluation_loop")
+
         return output
 
 
-class RerankingTrainer(transformers.Trainer):
+class InversionTrainer(BaseTrainer):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        ######################################################
+        self.model.precompute_whitening_params(self.get_train_dataloader())
+    
+    def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
+        return self.model.generate(
+            inputs=inputs, generation_kwargs=generation_kwargs
+        )
+
+    def training_step(
+        self, model: nn.Module, inputs: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        """
+        Performs a training step. we override to compute data-specific metrics.
+        """
+        # TODO: Log training metrics from below... (How to do with huggingface?)
+        self._compute_data_metrics(inputs=inputs)
+        # self.log({ f"train/{k}": v for k,v in metrics.items() })
+        return super().training_step(model, inputs)
+
+
+class RerankingTrainer(BaseTrainer):
     def __init__(self, model: PrefixReranker, args: TrainingArguments):
         # We're training this reranking model to rerank outputs from
         # a model trained via the inversion trainer.
@@ -320,6 +339,8 @@ class RerankingTrainer(transformers.Trainer):
             eval_dataset=self.inversion_trainer.eval_dataset,
             data_collator=self.inversion_trainer.data_collator,
         )
+        self.rerank_length = 4 # TODO argparse & ablate
+        self.beam_width = 4 # TODO argparse & ablate.
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
@@ -328,6 +349,11 @@ class RerankingTrainer(transformers.Trainer):
     @property
     def embedder_tokenizer(self) -> transformers.PreTrainedTokenizer:
         return self.inversion_trainer.model.embedder_tokenizer
+
+    def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
+        return self.generate_with_reranking(
+            inputs=inputs, L=self.rerank_length, B=self.beam_width,
+        )
 
     def generate_continuations(
         self,
@@ -383,31 +409,14 @@ class RerankingTrainer(transformers.Trainer):
         return generated_text_ids
 
     def _contrastive_loss(
-        self, e1: torch.Tensor, e2: torch.Tensor, labels: torch.Tensor
+        self, scores: torch.Tensor, labels: torch.Tensor
     ) -> torch.Tensor:
         """Computes contrastive loss between two lists of vectors, e1 and e2
         -- float torch.Tensors.
 
         e1 may contain extra 'hard negative' tensors.
         """
-        batch_size = len(e1)
-
-        # Normalize vectors, so loss is cosine similarity (not raw
-        # dot product!)
-        e1 = e1 / e1.norm(p=2, dim=1, keepdim=True)
-        e2 = e2 / e2.norm(p=2, dim=1, keepdim=True)
-
-        similarity = e1 @ e2.T
-
-        # This multiply-by-20 trick is used in BeIR and LaPRador:
-        # "When calculating the loss, we apply a re-scaling trick
-        # of multiplying the cosine similarity score by 20 for
-        # better optimization (Thakur et al., 2021)."
-        similarity *= 20  # TODO argparse: self.args.contrastive_temperature.exp()
-        diagonal_idxs = torch.arange(batch_size, device=e1.device)
-        loss = torch.nn.functional.cross_entropy(
-            similarity, labels, label_smoothing=0.0
-        )
+        loss = torch.nn.functional.cross_entropy(scores, labels, label_smoothing=0.0)
         if loss.isnan():
             raise RuntimeError("Loss is nan!")
 
@@ -415,7 +424,7 @@ class RerankingTrainer(transformers.Trainer):
         #     "query_embedding": e1.detach().cpu(),
         #     "document_embedding": e2.detach().cpu(),
         # }
-        # accuracy = (similarity.argmax(dim=1) == diagonal_idxs).float().mean()
+        # accuracy = (scores.argmax(dim=1) == diagonal_idxs).float().mean()
         # if self.args.use_wandb:
         #     # Log model-internal
         #     # todo: use self.log() instead?
@@ -513,7 +522,7 @@ class RerankingTrainer(transformers.Trainer):
             # truncate beams
             hypotheses = hypotheses.reshape((batch_size, B, hypothesis_length))
             # all_inputs = hypotheses[:, 0, :]
-            print(scores.argmax(1).tolist())
+            # print(scores.argmax(1).tolist())
             all_inputs = hypotheses[torch.arange(len(hypotheses)), scores.argmax(1)]
 
         # trim bos
@@ -535,7 +544,7 @@ class RerankingTrainer(transformers.Trainer):
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
 
-        beam_width = 4  # TODO argparse & ablate.
+        beam_width = self.beam_width
 
         # The 10 here comes from rankgen (arxiv.org/pdf/2205.09726.pdf)
         # where they generate continuations of a random length
@@ -605,36 +614,51 @@ class RerankingTrainer(transformers.Trainer):
         fake_continuations = torch.cat((fake_continuations, eos_tokens), dim=1)
 
         continuations_attention_mask = torch.ones_like(
-            true_continuations, device=self.args.device
+            true_continuations,
+            device=self.args.device,
         )
-        true_prefix_embeds = self.model.embed_prefix(
-            prefix_ids=true_continuations, attention_mask=continuations_attention_mask
+        true_prefix_scores = self.model.score_prefix_and_embedding(
+            prefix_ids=true_continuations,
+            attention_mask=continuations_attention_mask,
+            embeddings=frozen_embeddings,
         )
         continuations_attention_mask = torch.ones_like(
             fake_continuations, device=self.args.device
         )
-        fake_prefix_embeds = self.model.embed_prefix(
-            prefix_ids=fake_continuations, attention_mask=continuations_attention_mask
+        frozen_embeddings_repeated = (
+            frozen_embeddings[:, None]
+            .repeat((1, beam_width, 1))
+            .reshape((batch_size * beam_width, 768))
         )
-        all_prefix_embeds = torch.cat((true_prefix_embeds, fake_prefix_embeds), dim=0)
+        fake_prefix_scores = self.model.score_prefix_and_embedding(
+            prefix_ids=fake_continuations,
+            attention_mask=continuations_attention_mask,
+            embeddings=frozen_embeddings_repeated,
+        )
 
-        embedding_embeds = self.model.embedding_projection(frozen_embeddings)
+        # create score matrix.
+        true_prefix_scores = true_prefix_scores.reshape((batch_size, 1))
+        fake_prefix_scores = fake_prefix_scores.reshape((batch_size, beam_width))
+        scores = torch.cat((true_prefix_scores, fake_prefix_scores), dim=1)
+        assert scores.shape == (
+            batch_size,
+            (1 + beam_width),
+        )
 
-        assert embedding_embeds.shape == (batch_size, 768)
-        assert all_prefix_embeds.shape == (batch_size * (1 + beam_width), 768)
-
+        # TODO: fix.
         # This is so we don't penalize the model when one of the fake continuations is equal
         # to one of the true continuations. check for this and compute labels, then
         # pass those labels to contrastive loss.
-        all_continuations = torch.cat((true_continuations, fake_continuations), dim=0)
-        labels = (
-            (true_continuations[:, None] == all_continuations[None, :])
-            .all(dim=2)
-            .float()
-        )
-        labels = labels / labels.sum(dim=1, keepdim=True)
+        # all_continuations = torch.cat((true_continuations, fake_continuations), dim=0)
+        # labels = (
+        #     (true_continuations[:, None] == all_continuations[None, :])
+        #     .all(dim=2)
+        #     .float()
+        # )
+        # labels = labels / labels.sum(dim=1, keepdim=True)
+        labels = torch.zeros((batch_size,), dtype=torch.long, device=self.args.device)
 
-        return self._contrastive_loss(embedding_embeds, all_prefix_embeds, labels)
+        return self._contrastive_loss(scores, labels)
 
     def prediction_step(
         self,

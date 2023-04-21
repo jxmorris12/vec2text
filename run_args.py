@@ -285,7 +285,7 @@ class TrainingArguments(transformers.TrainingArguments):
     # Do evaluation and logging on certain num steps.
     evaluation_strategy: str = "steps"
     logging_strategy: str = "steps"
-    save_strategy: str = "epoch"
+    save_strategy: str = "steps"
 
     save_total_limit: int = 1  # Maximum number of checkpoints to save.
 
@@ -295,6 +295,7 @@ class TrainingArguments(transformers.TrainingArguments):
     logging_steps: int = field(
         default=400, metadata={"help": "Number of steps between logging metrics"}
     )
+    save_steps: int = 4000
     eval_steps: int = field(
         default=4000,
         metadata={

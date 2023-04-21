@@ -709,15 +709,36 @@ class PrefixReranker(nn.Module):
             nn.GELU(),
             nn.Linear(2048, 768),
         )
+        self.score = nn.Linear(768, 1)
 
-    def embed_prefix(
-        self, prefix_ids: torch.Tensor, attention_mask: torch.Tensor
+    def score_prefix_and_embedding(
+        self,
+        prefix_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
+        embeddings: torch.Tensor,
     ) -> torch.Tensor:
-        outputs = self.prefix_embedder(
-            input_ids=prefix_ids, attention_mask=attention_mask
+        batch_size, prefix_length = prefix_ids.shape
+        embeddings = self.embedding_projection(embeddings)
+        inputs_embeds = self.prefix_embedder.encoder.embed_tokens(prefix_ids)
+        all_embeddings = torch.cat((embeddings[:, None], inputs_embeds), dim=1)
+        ones = torch.ones((batch_size, 1), device=attention_mask.device)
+        attention_mask = torch.cat((ones, attention_mask), dim=1)
+        model_output = self.prefix_embedder(
+            inputs_embeds=all_embeddings, attention_mask=attention_mask
         )
-        hidden_state = outputs.last_hidden_state
-        return mean_pool(hidden_state, attention_mask)
+        hidden_state = model_output.last_hidden_state
+        output_embeddings = mean_pool(hidden_state, attention_mask)
+        scores = self.score(output_embeddings)
+        scores = scores.flatten()  # (batch_size, 1) -> (batch_size,)
+
+        # todo: should we really sigmoid here?
+        return scores
+        # This multiply-by-20 trick is used in BeIR and LaPRador:
+        # "When calculating the loss, we apply a re-scaling trick
+        # of multiplying the cosine similarity score by 20 for
+        # better optimization (Thakur et al., 2021)."
+        #            TODO argparse: self.args.contrastive_temperature.exp()
+        # return torch.sigmoid(scores) * 20
 
 
 def load_encoder_decoder(
