@@ -568,7 +568,6 @@ class InversionModel(nn.Module):
             embedder_attention_mask=inputs["embedder_attention_mask"],
             frozen_embeddings=inputs.get("frozen_embeddings"),
         )
-
         if "decoder_input_ids" in inputs:
             return self.encoder_decoder.generate(
                 # required: input embeddings

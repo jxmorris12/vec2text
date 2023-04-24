@@ -7,6 +7,7 @@ ARGS_DICT = {
 
 # Dictionary mapping model names
 CHECKPOINT_FOLDERS_DICT = {
+    #  https://wandb.ai/jack-morris/emb-inv-1/runs/ebb31d91810c4b62d2b55b5382e8c7ea/logs?workspace=user-jxmorris12
     "dpr_nq__msl32_beta": "/home/jxm3/research/retrieval/inversion/saves/db66b9c01b644541fedbdcc59c53a285/ebb31d91810c4b62d2b55b5382e8c7ea",
 }
 

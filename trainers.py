@@ -50,7 +50,9 @@ class BaseTrainer(transformers.Trainer):
             },
             generation_kwargs=self.gen_kwargs,
         )
-        output_string = self.embedder_tokenizer.decode(regenerated.flatten())
+        output_string = self.embedder_tokenizer.decode(
+            regenerated.flatten(), skip_special_tokens=True
+        )
         print("\tDecoded output ->", output_string)
         print("=" * 16, "End trainer sanity check", "=" * 16)
 
@@ -95,9 +97,9 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["max_length"] = inputs[
-                "input_ids"
-            ].shape[1]
+            gen_kwargs["min_length"] = gen_kwargs["max_length"] = (
+                inputs["input_ids"].shape[1]
+            )
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda, generation_kwargs=gen_kwargs
@@ -130,9 +132,9 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["max_length"] = inputs[
-                "input_ids"
-            ].shape[1]
+            gen_kwargs["min_length"] = gen_kwargs["max_length"] = (
+                inputs["input_ids"].shape[1]
+            )
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda,
@@ -245,6 +247,8 @@ class BaseTrainer(transformers.Trainer):
                 * eos_token_id
             )
             preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
+            assert preds_sample.shape == preds_sample_labels.shape
+            assert (preds_sample_labels[:, -1] == eos_tokens).all()
         with torch.no_grad():
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample,
@@ -262,7 +266,7 @@ class BaseTrainer(transformers.Trainer):
             sim_result = {"emb_cos_sim": emb_cos_sim}
 
         # Log table for train data.
-        train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=50)
+        train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=100)
         decoded_train_preds = self.tokenizer.batch_decode(
             train_preds_sample, skip_special_tokens=True
         )
@@ -274,7 +278,9 @@ class BaseTrainer(transformers.Trainer):
             decoded_preds=decoded_train_preds,
             decoded_labels=decoded_train_labels,
         )
-        return {**bleu_result, **sim_result}
+
+        metrics = {**bleu_result, **sim_result}
+        return metrics
 
     def evaluation_loop(
         self, *args, **kwargs
@@ -285,18 +291,7 @@ class BaseTrainer(transformers.Trainer):
         Override to compute ppl from eval loss.
         """
         output = super().evaluation_loop(*args, **kwargs)
-
-        generation_metrics = self.eval_generation_metrics()
-        output.metrics.update(generation_metrics)
-
-        try:
-            perplexity = math.exp(output.metrics["eval_loss"])
-        except OverflowError:
-            perplexity = float("inf")
-        output.metrics["eval_perplexity"] = perplexity
-
-        print("evaluation_loop")
-
+        output.metrics.update(self.eval_generation_metrics())
         return output
 
 
@@ -323,6 +318,24 @@ class InversionTrainer(BaseTrainer):
         # self.log({ f"train/{k}": v for k,v in metrics.items() })
         return super().training_step(model, inputs)
 
+    def evaluation_loop(
+        self, *args, **kwargs
+    ) -> transformers.trainer_utils.EvalLoopOutput:
+        """
+        Run evaluation and returns metrics.
+
+        Override to compute ppl from eval loss.
+        """
+        output = super().evaluation_loop(*args, **kwargs)
+
+        try:
+            perplexity = math.exp(output.metrics["eval_loss"])
+        except OverflowError:
+            perplexity = float("inf")
+        output.metrics["eval_perplexity"] = perplexity
+
+        return output
+
 
 class RerankingTrainer(BaseTrainer):
     def __init__(self, model: PrefixReranker, args: TrainingArguments):
@@ -344,6 +357,7 @@ class RerankingTrainer(BaseTrainer):
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
         self.rerank_length = 4  # TODO argparse & ablate
         self.beam_width = 4  # TODO argparse & ablate.
+        self.reranking_method == "model"  # reranking with model (self) or embedder
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
@@ -354,6 +368,7 @@ class RerankingTrainer(BaseTrainer):
             inputs=inputs,
             L=self.rerank_length,
             B=self.beam_width,
+            reranking_method=self.reranking_method,
         )
 
     def generate_continuations(
@@ -400,6 +415,7 @@ class RerankingTrainer(BaseTrainer):
                 generation_kwargs={
                     "min_length": full_length + 1,
                     "max_length": full_length + 1,
+                    "early_stopping": False,
                     "do_sample": False,
                     "no_repeat_ngram_size": 3,
                     "num_beams": B,
@@ -439,7 +455,11 @@ class RerankingTrainer(BaseTrainer):
         pass  # TODO implement with reranking :-)
 
     def generate_with_reranking(
-        self, inputs: Dict[str, torch.Tensor], L: int, B: int
+        self,
+        inputs: Dict[str, torch.Tensor],
+        L: int,
+        B: int,
+        reranking_method: str,
     ) -> torch.Tensor:
         """Generates using inversion model and reranks using reranking model.
 
@@ -477,9 +497,9 @@ class RerankingTrainer(BaseTrainer):
             * bos_token_id
         )
         # TMP: remove next line after debugging. this is cheating.
-        all_inputs = torch.cat(
-            (all_inputs, inputs["embedder_input_ids"][:, 0:1]), dim=1
-        )
+        # all_inputs = torch.cat(
+        #     (all_inputs, inputs["embedder_input_ids"][:, 0:1]), dim=1
+        # )
         # next steps
         while all_inputs.shape[1] < max_length:
             # add L to length
@@ -517,11 +537,25 @@ class RerankingTrainer(BaseTrainer):
             )
             hypotheses_with_eos = torch.cat((hypotheses[:, 1:], eos_tokens), dim=1)
 
-            scores = self.model.score_prefix_and_embedding(
-                prefix_ids=hypotheses_with_eos,
-                attention_mask=hypothesis_attention_mask,
-                embeddings=frozen_embeddings,
-            )
+            if reranking_method == "model":
+                scores = self.model.score_prefix_and_embedding(
+                    prefix_ids=hypotheses_with_eos,
+                    attention_mask=hypothesis_attention_mask,
+                    embeddings=frozen_embeddings,
+                )
+            elif reranking_method == "embedder":
+                new_embeddings = self.inversion_trainer.model.call_embedding_model(
+                    input_ids=hypotheses_with_eos,
+                    attention_mask=hypothesis_attention_mask,
+                )
+                new_embeddings = new_embeddings.reshape(((batch_size, B, -1)))
+                scores = torch.nn.CosineSimilarity(dim=2)(
+                    new_embeddings.reshape((batch_size, B, -1)),
+                    frozen_embeddings.reshape((batch_size, B, -1)),
+                )
+                scores = scores.reshape((batch_size * B,))
+            else:
+                raise ValueError(f"unknown reranking method {reranking_method}")
             assert scores.shape == (batch_size * B,)
             scores = scores.reshape((batch_size, B))
 
@@ -531,14 +565,6 @@ class RerankingTrainer(BaseTrainer):
             # print(scores.argmax(1).tolist())
             all_inputs = hypotheses[torch.arange(len(hypotheses)), scores.argmax(1)]
 
-        # trim bos
-        assert (all_inputs[:, 0] == bos_token_id).all()
-        all_inputs = all_inputs[:, 1:]
-        eos_tokens = (
-            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
-            * eos_token_id
-        )
-        all_inputs = torch.cat((all_inputs, eos_tokens), dim=1)
         return all_inputs
 
     def compute_loss(
@@ -605,7 +631,9 @@ class RerankingTrainer(BaseTrainer):
         num_pad_tokens = seq_length - (prefix_length + continuation_length)
         pad_tokens = (
             torch.ones(
-                (batch_size, num_pad_tokens), dtype=true_continuations.dtype, device=self.args.device
+                (batch_size, num_pad_tokens),
+                dtype=true_continuations.dtype,
+                device=self.args.device,
             )
             * pad_token_id
         )
@@ -616,7 +644,9 @@ class RerankingTrainer(BaseTrainer):
             )
             * eos_token_id
         )
-        true_continuations = torch.cat((true_continuations, pad_tokens, eos_tokens), dim=1)
+        true_continuations = torch.cat(
+            (true_continuations, pad_tokens, eos_tokens), dim=1
+        )
 
         continuations_attention_mask = torch.ones_like(
             true_continuations,
@@ -629,7 +659,9 @@ class RerankingTrainer(BaseTrainer):
         )
         pad_tokens = pad_tokens.repeat((beam_width, 1))
         eos_tokens = eos_tokens.repeat((beam_width, 1))
-        fake_continuations = torch.cat((fake_continuations, pad_tokens, eos_tokens), dim=1)
+        fake_continuations = torch.cat(
+            (fake_continuations, pad_tokens, eos_tokens), dim=1
+        )
         continuations_attention_mask = torch.ones_like(
             fake_continuations, device=self.args.device
         )
