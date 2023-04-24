@@ -33,6 +33,7 @@ class BaseTrainer(transformers.Trainer):
             "early_stopping": False,
             "num_beams": 1,
             "do_sample": False,
+            "no_repeat_ngram_size": 3,
         }
 
     def sanity_decode(self):
@@ -94,7 +95,7 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
+            gen_kwargs["max_length"] = inputs[
                 "input_ids"
             ].shape[1]
             with torch.no_grad():
@@ -129,7 +130,7 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
+            gen_kwargs["max_length"] = inputs[
                 "input_ids"
             ].shape[1]
             with torch.no_grad():
@@ -384,6 +385,7 @@ class RerankingTrainer(BaseTrainer):
         )
         prefix_attention_mask = torch.cat((ones, prefix_attention_mask), dim=1)
         # TODO properly handle decoder_attention_mask everywhere.
+        # TODO properly handle min_length (don't force max length).
         with torch.no_grad():
             generated_text_ids = self.inversion_trainer.model.generate(
                 inputs={
@@ -615,9 +617,6 @@ class RerankingTrainer(BaseTrainer):
             * eos_token_id
         )
         true_continuations = torch.cat((true_continuations, pad_tokens, eos_tokens), dim=1)
-        pad_tokens = eos_tokens.repeat((beam_width, 1))
-        eos_tokens = eos_tokens.repeat((beam_width, 1))
-        fake_continuations = torch.cat((fake_continuations, pad_tokens, eos_tokens), dim=1)
 
         continuations_attention_mask = torch.ones_like(
             true_continuations,
@@ -628,6 +627,9 @@ class RerankingTrainer(BaseTrainer):
             attention_mask=continuations_attention_mask,
             embeddings=frozen_embeddings,
         )
+        pad_tokens = pad_tokens.repeat((beam_width, 1))
+        eos_tokens = eos_tokens.repeat((beam_width, 1))
+        fake_continuations = torch.cat((fake_continuations, pad_tokens, eos_tokens), dim=1)
         continuations_attention_mask = torch.ones_like(
             fake_continuations, device=self.args.device
         )

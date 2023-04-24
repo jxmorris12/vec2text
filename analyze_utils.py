@@ -21,6 +21,7 @@ def load_trainer(
     args_str: Optional[str] = None,
     checkpoint: Optional[str] = None,
     do_eval: bool = True,
+    sanity_decode: bool = True,
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
@@ -44,5 +45,6 @@ def load_trainer(
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
     trainer._load_from_checkpoint(checkpoint)
-    trainer.sanity_decode()
+    if sanity_decode:
+        trainer.sanity_decode()
     return trainer

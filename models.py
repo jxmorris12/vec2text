@@ -461,7 +461,6 @@ class InversionModel(nn.Module):
         embedder_attention_mask: torch.Tensor,
         frozen_embeddings: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-
         if self.use_frozen_embeddings_as_input:
             assert (
                 frozen_embeddings is not None
@@ -727,7 +726,8 @@ class PrefixReranker(nn.Module):
             inputs_embeds=all_embeddings, attention_mask=attention_mask
         )
         hidden_state = model_output.last_hidden_state
-        output_embeddings = mean_pool(hidden_state, attention_mask)
+        output_embeddings = hidden_state[:, 0, :]
+        # output_embeddings = mean_pool(hidden_state, attention_mask)
         scores = self.score(output_embeddings)
         scores = scores.flatten()  # (batch_size, 1) -> (batch_size,)
         return scores
