@@ -12,7 +12,7 @@ import transformers
 
 import trainers
 from collator import CustomCollator
-from data_helpers import dataset_from_args
+from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     InversionModel,
     PrefixReranker,
@@ -233,7 +233,7 @@ class Experiment(abc.ABC):
         self,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
-    ) -> Tuple[datasets.Dataset, datasets.Dataset]:
+    ) -> Tuple[datasets.Dataset, Dict[str, datasets.Dataset]]:
         data_args = self.data_args
         ###########################################################################
         # Load datasets
@@ -280,6 +280,7 @@ class Experiment(abc.ABC):
                     "broken feature - this breaks caching. fix caching to use."
                 )
 
+        # this argument allows us to *train* on less data (10% of our training set).
         if data_args.use_less_data:
             for key in tokenized_datasets:
                 d = tokenized_datasets[key]
@@ -292,17 +293,38 @@ class Experiment(abc.ABC):
         train_dataset = tokenized_datasets["train"]
         eval_dataset = tokenized_datasets["validation"]
 
-        if data_args.max_eval_samples is not None:
-            max_eval_samples = min(len(eval_dataset), data_args.max_eval_samples)
-            eval_dataset = eval_dataset.select(range(max_eval_samples))
+        val_datasets_dict = load_standard_val_datasets()
+        logger.info(
+            "Loaded %d validation datasets: %s",
+            len(val_datasets_dict),
+            val_datasets_dict.keys(),
+        )
 
-        return train_dataset, eval_dataset
+        val_datasets_dict = val_datasets_dict.map(
+            tokenize_function(
+                tokenizer,
+                embedder_tokenizer,
+                text_column_name,
+                self.model_args.max_seq_length,
+            ),
+            batched=True,
+            desc="Running tokenizer on dataset",
+        )
+        val_datasets_dict[self.data_args.dataset_name] = eval_dataset
+
+        for name, dataset in val_datasets_dict.items():
+            max_eval_samples = min(len(dataset), data_args.max_eval_samples)
+            val_datasets_dict[name] = val_datasets_dict[name].select(
+                range(max_eval_samples)
+            )
+
+        return train_dataset, val_datasets_dict
 
 
 class InversionExperiment(Experiment):
     @property
     def _wandb_project_name(self) -> str:
-        return "emb-inv-1"
+        return "emb-inv-2"
 
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args

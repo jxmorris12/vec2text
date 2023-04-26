@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import List, Set
+from typing import Dict, List, Set
 
 import datasets
 import tqdm
@@ -98,3 +98,39 @@ def dataset_from_args(data_args) -> datasets.DatasetDict:
     else:
         raise ValueError(f"unsupported dataset {data_args.dataset_name}")
     return raw_datasets
+
+
+def load_ag_news_test() -> datasets.Dataset:
+    return datasets.load_dataset("ag_news")["test"]
+
+
+def load_xsum_val(col: str) -> datasets.Dataset:
+    d = datasets.load_dataset("xsum")["validation"]
+    d = d.rename_column(col, "text")
+    return d
+
+
+def load_wikibio_val() -> datasets.Dataset:
+    d = datasets.load_dataset("wiki_bio")["val"]
+    d = d.rename_column("target_text", "text")
+    return d
+
+
+def retain_dataset_columns(
+    d: datasets.Dataset, allowed_columns: List[str]
+) -> datasets.Dataset:
+    column_names_to_remove = [c for c in d.features if c not in allowed_columns]
+    return d.remove_columns(column_names_to_remove)
+
+
+def load_standard_val_datasets() -> datasets.DatasetDict:
+    """Loads a pre-defined set of standard val datasets."""
+    d = {
+        "ag_news": load_ag_news_test(),
+        "xsum_doc": load_xsum_val("document"),
+        "xsum_summ": load_xsum_val("summary"),
+        "wikibio": load_wikibio_val(),
+    }
+    d = {k: retain_dataset_columns(v, ["text"]) for k, v in d.items()}
+
+    return datasets.DatasetDict(d)
