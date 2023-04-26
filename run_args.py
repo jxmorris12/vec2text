@@ -241,6 +241,10 @@ class TrainingArguments(transformers.TrainingArguments):
         default=2e-5,
         metadata={"help": "The initial learning rate for AdamW on the backbone model."},
     )
+    randomly_truncate_train_inputs: bool = field(
+        default=False,
+        metadata={"help": "Whether to randomly truncate inputs during training"},
+    )
     use_wandb: Optional[bool] = field(
         default=None, metadata={"help": "Whether or not to log to Weights & Biases."}
     )

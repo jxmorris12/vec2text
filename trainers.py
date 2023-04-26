@@ -97,9 +97,9 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["min_length"] = gen_kwargs["max_length"] = (
-                inputs["input_ids"].shape[1]
-            )
+            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
+                "input_ids"
+            ].shape[1]
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda, generation_kwargs=gen_kwargs
@@ -132,9 +132,9 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["min_length"] = gen_kwargs["max_length"] = (
-                inputs["input_ids"].shape[1]
-            )
+            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
+                "input_ids"
+            ].shape[1]
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda,
@@ -307,6 +307,21 @@ class InversionTrainer(BaseTrainer):
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
+    def _randomly_truncate_inputs(
+        self, inputs: Dict[str, torch.Tensor]
+    ) -> Dict[str, torch.Tensor]:
+        # randomly truncates inputs. assumes last input is a pad token.
+        assert not self.model.use_frozen_embeddings_as_input  # need to re-embed
+        seq_length = inputs["input_ids"].shape[1]
+        new_length = random.randint(1, seq_length - 1)
+        pos = random.randint(0, seq_length - new_length)
+        truncated_inputs = {k: v[:, pos : pos + new_length] for k, v in inputs.items()}
+        truncated_inputs_with_pad = {
+            k: torch.cat((truncated_inputs[k], inputs[k][:, -1, None]), dim=1)
+            for k, v in inputs.items()
+        }
+        return truncated_inputs_with_pad
+
     def training_step(
         self, model: nn.Module, inputs: Dict[str, torch.Tensor]
     ) -> torch.Tensor:
@@ -315,6 +330,8 @@ class InversionTrainer(BaseTrainer):
         """
         # TODO: Log training metrics from below... (How to do with huggingface?)
         self._compute_data_metrics(inputs=inputs)
+        if self.args.randomly_truncate_train_inputs:
+            inputs = self._randomly_truncate_inputs(inputs=inputs)
         # self.log({ f"train/{k}": v for k,v in metrics.items() })
         return super().training_step(model, inputs)
 
@@ -357,7 +374,11 @@ class RerankingTrainer(BaseTrainer):
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
         self.rerank_length = 4  # TODO argparse & ablate
         self.beam_width = 4  # TODO argparse & ablate.
-        self.reranking_method == "model"  # reranking with model (self) or embedder
+        self.reranking_method = "model"  # reranking with model (self) or embedder, or generate_before_embedder
+        self.gen_kwargs = {
+            "do_sample": False,
+            "no_repeat_ngram_size": 3,
+        }
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
@@ -504,14 +525,15 @@ class RerankingTrainer(BaseTrainer):
         while all_inputs.shape[1] < max_length:
             # add L to length
             hypothesis_length = min(max_length, all_inputs.shape[1] + L)
-            gen_kwargs = {
-                "min_length": hypothesis_length,
-                "max_length": hypothesis_length,
-                "num_beams": B,
-                "num_return_sequences": B,
-                "do_sample": False,
-                "no_repeat_ngram_size": 3,
-            }
+            gen_kwargs = copy.copy(self.gen_kwargs)
+            gen_kwargs.update(
+                {
+                    "min_length": hypothesis_length,
+                    "max_length": hypothesis_length,
+                    "num_beams": B,
+                    "num_return_sequences": B,
+                }
+            )
             # generate hypotheses
             attention_mask = torch.ones_like(all_inputs, device=self.args.device)
             hypotheses = self.inversion_trainer.model.generate(
@@ -543,16 +565,63 @@ class RerankingTrainer(BaseTrainer):
                     attention_mask=hypothesis_attention_mask,
                     embeddings=frozen_embeddings,
                 )
-            elif reranking_method == "embedder":
-                new_embeddings = self.inversion_trainer.model.call_embedding_model(
-                    input_ids=hypotheses_with_eos,
-                    attention_mask=hypothesis_attention_mask,
+            elif reranking_method == "generate_before_embedder":
+                repeated_embedder_input_ids = (
+                    inputs["embedder_input_ids"][:, None, :]
+                    .repeat((1, B, 1))
+                    .reshape(batch_size * B, -1)
                 )
+                repeated_embedder_attention_mask = (
+                    inputs["embedder_attention_mask"][:, None, :]
+                    .repeat((1, B, 1))
+                    .reshape(batch_size * B, -1)
+                )
+                finished_hypotheses = self.inversion_trainer.model.generate(
+                    inputs={
+                        "embedder_input_ids": repeated_embedder_input_ids,
+                        "embedder_attention_mask": repeated_embedder_attention_mask,
+                        # "frozen_embeddings": frozen_embeddings,
+                        "decoder_input_ids": hypotheses,
+                        "decoder_attention_mask": hypothesis_attention_mask,
+                    },
+                    generation_kwargs={
+                        "early_stopping": False,
+                        "num_beams": 1,
+                        "do_sample": False,
+                        "no_repeat_ngram_size": 3,
+                    },
+                )
+                finished_hypothesis_attention_mask = torch.ones_like(
+                    finished_hypotheses, device=self.args.device
+                )
+                with torch.no_grad():
+                    new_embeddings = self.inversion_trainer.model.call_embedding_model(
+                        input_ids=finished_hypotheses,
+                        attention_mask=finished_hypothesis_attention_mask,
+                    )
                 new_embeddings = new_embeddings.reshape(((batch_size, B, -1)))
                 scores = torch.nn.CosineSimilarity(dim=2)(
                     new_embeddings.reshape((batch_size, B, -1)),
                     frozen_embeddings.reshape((batch_size, B, -1)),
                 )
+                scores = scores.reshape((batch_size * B,))
+            elif reranking_method == "embedder":
+                with torch.no_grad():
+                    new_embeddings = self.inversion_trainer.model.call_embedding_model(
+                        input_ids=hypotheses_with_eos,
+                        attention_mask=hypothesis_attention_mask,
+                    )
+                new_embeddings = new_embeddings.reshape(((batch_size, B, -1)))
+                scores = torch.nn.CosineSimilarity(dim=2)(
+                    new_embeddings.reshape((batch_size, B, -1)),
+                    frozen_embeddings.reshape((batch_size, B, -1)),
+                )
+                scores = scores.reshape((batch_size * B,))
+            elif reranking_method == "none":
+                scores = torch.zeros(
+                    (batch_size, B), dtype=torch.float32, device=self.args.device
+                )
+                scores[:, 0] += 1
                 scores = scores.reshape((batch_size * B,))
             else:
                 raise ValueError(f"unknown reranking method {reranking_method}")
