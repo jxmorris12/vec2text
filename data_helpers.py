@@ -1,7 +1,7 @@
 import json
 import logging
 import os
-from typing import Dict, List, Set
+from typing import List, Set
 
 import datasets
 import tqdm

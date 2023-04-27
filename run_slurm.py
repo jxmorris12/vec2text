@@ -24,7 +24,7 @@ python run.py --per_device_train_batch_size {batch_size} \
 --eval_steps 2500000000000 \
 --warmup_steps 100000 \
 --bf16=1 \
---use_lora=1 \
+--use_lora=0 \
 --use_wandb=1
 """
 

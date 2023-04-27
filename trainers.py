@@ -29,6 +29,9 @@ class BaseTrainer(transformers.Trainer):
         self.compute_metrics = self.compute_metrics_func
         self.metric_accuracy = evaluate.load("accuracy")
         self.metric_bleu = evaluate.load("sacrebleu")
+        self.metric_bertscore = evaluate.load("bertscore")
+        self.metric_rouge = evaluate.load("rouge")
+        self.metric_meteor = evaluate.load("meteor")
         self.gen_kwargs = {
             "early_stopping": False,
             "num_beams": 1,
@@ -76,7 +79,9 @@ class BaseTrainer(transformers.Trainer):
         table = wandb.Table(columns=["Original", "Decoded"], data=data)
         wandb.log({table_key: table})
 
-    def _get_eval_preds(self, n: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
+    def _get_decoded_sequences(
+        self, dataloader: torch.utils.data.DataLoader, n: int
+    ) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
         """Iterates through eval dataset and does decoding.
 
         TODO: do this better. We shouldn't need to iterate through eval set twice
@@ -86,14 +91,13 @@ class BaseTrainer(transformers.Trainer):
         in the same order which is annoying.
         """
         assert not self.model.training
-        eval_dataloader = self.get_eval_dataloader()
 
         gen_kwargs = copy.copy(self.gen_kwargs)
 
         all_preds = []
         all_labels = []
         for step, inputs in enumerate(
-            tqdm.tqdm(eval_dataloader, desc="generating from val", leave=False)
+            tqdm.tqdm(dataloader, desc="generating from val", leave=False)
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
@@ -106,43 +110,6 @@ class BaseTrainer(transformers.Trainer):
                 )
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs["input_ids"].cpu().tolist())
-            if len(all_preds) >= n:
-                break
-
-        return all_preds, all_labels
-
-    def _get_train_preds(self, n: int) -> Tuple[List[torch.Tensor], List[torch.Tensor]]:
-        """Iterates through eval dataset and does decoding.
-
-        TODO: do this better. We shouldn't need to iterate through eval set twice
-        but I don't want to copy 1000 lines of code to change their eval loop...
-
-        Probably want custom eval eventually. Also this depends on eval data being
-        in the same order which is annoying.
-        """
-        assert not self.model.training
-        train_dataloader = self.get_train_dataloader()
-
-        gen_kwargs = copy.copy(self.gen_kwargs)
-
-        all_preds = []
-        all_labels = []
-        for step, inputs in enumerate(
-            tqdm.tqdm(train_dataloader, desc="generating from train", leave=False)
-        ):
-            # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
-            inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
-                "input_ids"
-            ].shape[1]
-            with torch.no_grad():
-                generated_text = self.generate(
-                    inputs=inputs_cuda,
-                    generation_kwargs=gen_kwargs,
-                )
-            all_preds.extend(generated_text.cpu().tolist())
-            all_labels.extend(inputs["input_ids"].cpu().tolist())
-
             if len(all_preds) >= n:
                 break
 
@@ -199,10 +166,37 @@ class BaseTrainer(transformers.Trainer):
 
         return {**accuracy_result}
 
-    def eval_generation_metrics(self) -> Dict:
+    def _text_comparison_metrics(
+        self, predictions: List[str], references: List[str]
+    ) -> Dict[str, float]:
+        bleu_result = self.metric_bleu.compute(
+            predictions=predictions, references=references
+        )
+        meteor_result = self.metric_meteor.compute(
+            predictions=predictions, references=references
+        )
+        rouge_result = self.metric_rouge.compute(
+            predictions=predictions, references=references
+        )
+        bertscore_result = self.metric_bleu.compute(
+            predictions=predictions, references=references
+        )
+
+        return {
+            "bleu_score": bleu_result["score"],
+            "meteor_score": meteor_result["meteor"],
+            "rouge_score": rouge_result[
+                "rouge1"
+            ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
+            "bert_score": bertscore_result["score"],
+        }
+
+    def eval_generation_metrics(self, dataloader: torch.utils.data.DataLoader) -> Dict:
         # Get decoded text. Note that this is different than `preds`, which
         # is used to compute the loss.
-        preds_sample, preds_sample_labels = self._get_eval_preds(n=1000)
+        preds_sample, preds_sample_labels = self._get_decoded_sequences(
+            dataloader=dataloader, n=1000
+        )
 
         # Log BLEU, log table of text.
         decoded_preds = self.tokenizer.batch_decode(
@@ -211,10 +205,9 @@ class BaseTrainer(transformers.Trainer):
         decoded_labels = self.tokenizer.batch_decode(
             preds_sample_labels, skip_special_tokens=True
         )
-        raw_bleu_result = self.metric_bleu.compute(
+        bleu_result = self._text_comparison_metrics(
             predictions=decoded_preds, references=decoded_labels
         )
-        bleu_result = {"bleu_score": raw_bleu_result["score"]}
         self._log_preds_table(
             table_key="val_text_preds",
             decoded_preds=decoded_preds,
@@ -236,19 +229,22 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_labels, device=self.args.device
         )[:128]
         # Fix eos token on generated text.
+        pad_token_id = self.embedder_tokenizer.pad_token_id
         eos_token_id = self.embedder_tokenizer.eos_token_id
         if eos_token_id is not None:
             eos_tokens = (
                 torch.ones(
                     (len(preds_sample), 1),
-                    dtype=preds_sample.dtype,
+                    dtype=torch.long,
                     device=self.args.device,
                 )
                 * eos_token_id
             )
             preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
             assert preds_sample.shape == preds_sample_labels.shape
-            assert (preds_sample_labels[:, -1] == eos_tokens).all()
+            # not true anymore, could be pad too.
+            # assert (preds_sample_labels[:, -1] == eos_tokens).all()
+
         with torch.no_grad():
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample,
@@ -256,9 +252,7 @@ class BaseTrainer(transformers.Trainer):
             )
             labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels,
-                attention_mask=torch.ones_like(
-                    preds_sample_labels, device=self.args.device
-                ),
+                attention_mask=(preds_sample_labels != pad_token_id),
             )
             emb_cos_sim = (
                 torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()
@@ -266,32 +260,39 @@ class BaseTrainer(transformers.Trainer):
             sim_result = {"emb_cos_sim": emb_cos_sim}
 
         # Log table for train data.
-        train_preds_sample, train_preds_sample_labels = self._get_train_preds(n=100)
-        decoded_train_preds = self.tokenizer.batch_decode(
-            train_preds_sample, skip_special_tokens=True
-        )
-        decoded_train_labels = self.tokenizer.batch_decode(
-            train_preds_sample_labels, skip_special_tokens=True
-        )
-        self._log_preds_table(
-            table_key="train_text_preds",
-            decoded_preds=decoded_train_preds,
-            decoded_labels=decoded_train_labels,
-        )
+        # train_preds_sample, train_preds_sample_labels = self._get_decoded_sequences(
+        #   dataloader=dataloader, n=100)
+        # decoded_train_preds = self.tokenizer.batch_decode(
+        #     train_preds_sample, skip_special_tokens=True
+        # )
+        # decoded_train_labels = self.tokenizer.batch_decode(
+        #     train_preds_sample_labels, skip_special_tokens=True
+        # )
+        # self._log_preds_table(
+        #     table_key="train_text_preds",
+        #     decoded_preds=decoded_train_preds,
+        #     decoded_labels=decoded_train_labels,
+        # )
 
         metrics = {**bleu_result, **sim_result}
         return metrics
 
     def evaluation_loop(
-        self, *args, **kwargs
+        self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
     ) -> transformers.trainer_utils.EvalLoopOutput:
         """
         Run evaluation and returns metrics.
 
         Override to compute ppl from eval loss.
         """
-        output = super().evaluation_loop(*args, **kwargs)
-        output.metrics.update(self.eval_generation_metrics())
+        output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
+        metric_key_prefix = kwargs["metric_key_prefix"]
+        # TODO compute some data metrics here too.
+        generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
+        generation_metrics = {
+            f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
+        }
+        output.metrics.update(generation_metrics)
         return output
 
 
@@ -345,8 +346,9 @@ class InversionTrainer(BaseTrainer):
         """
         output = super().evaluation_loop(*args, **kwargs)
 
+        metric_key_prefix = kwargs["metric_key_prefix"]
         try:
-            perplexity = math.exp(output.metrics["eval_loss"])
+            perplexity = math.exp(output.metrics[f"{metric_key_prefix}_loss"])
         except OverflowError:
             perplexity = float("inf")
         output.metrics["eval_perplexity"] = perplexity

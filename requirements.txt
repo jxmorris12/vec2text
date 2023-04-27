@@ -1,6 +1,8 @@
+bert_score
 datasets
 evaluate
 pre-commit
+rouge_score
 sacrebleu
 sentence_transformers
 tokenizers

@@ -307,6 +307,7 @@ class Experiment(abc.ABC):
                 text_column_name,
                 self.model_args.max_seq_length,
             ),
+            remove_columns=["text"],
             batched=True,
             desc="Running tokenizer on dataset",
         )

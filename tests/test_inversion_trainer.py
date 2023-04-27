@@ -18,12 +18,12 @@ def load_trainer(model_args, data_args, training_args) -> InversionTrainer:
     ########################################################
     training_args.num_train_epochs = 1.0
     training_args.eval_steps = 4
+    data_args.max_eval_samples = 64
     trainer = experiment_from_args(
         model_args=model_args, data_args=data_args, training_args=training_args
     ).load_trainer()
     # make datasets smaller...
     trainer.train_dataset = trainer.train_dataset.select(range(256))
-    trainer.eval_dataset = trainer.eval_dataset.select(range(64))
     ########################################################
     return trainer
 
