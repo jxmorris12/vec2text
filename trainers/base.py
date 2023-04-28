@@ -163,6 +163,9 @@ class BaseTrainer(transformers.Trainer):
     def _text_comparison_metrics(
         self, predictions: List[str], references: List[str]
     ) -> Dict[str, float]:
+        assert len(predictions) == len(references)
+        if not len(predictions):
+            return {}
         bleu_result = self.metric_bleu.compute(
             predictions=predictions, references=references
         )

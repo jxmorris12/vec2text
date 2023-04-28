@@ -1,6 +1,7 @@
-from typing import Dict, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.nn as nn
 
 from models import JointEmbeddingTextEncoder
 from run_args import TrainingArguments
@@ -38,6 +39,21 @@ class CorrectorTrainer(BaseTrainer):
         
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
+    
+    def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
+        with torch.no_grad():
+            frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
+                input_ids=inputs["embedder_input_ids"],
+                attention_mask=inputs["embedder_attention_mask"],
+            )
+            new_embeddings = self.model(
+                embedding=frozen_embeddings,
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"],
+            )
+        inputs["frozen_embeddings"] = new_embeddings
+
+        return self.inversion_trainer.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
     def compute_loss(
         self,
@@ -60,11 +76,29 @@ class CorrectorTrainer(BaseTrainer):
         )
 
         # TODO: support passing embedder_input_ids/attention_mask as None.
-        fake_embedder_input_ids = torch.ones([1], device=self.args.device)
-        fake_embedder_attention_mask = torch.ones([1], device=self.args.device)
-        return inversion_trainer.model(
+        fake_embedder_input_ids = torch.ones((batch_size, 1), device=self.args.device)
+        fake_embedder_attention_mask = torch.ones((batch_size, 1), device=self.args.device)
+        outputs = self.inversion_trainer.model(
             embedder_input_ids=fake_embedder_input_ids,
-            embedder_attention_mask=fake_embedder_attention_msak,
+            embedder_attention_mask=fake_embedder_attention_mask,
             labels=inputs["labels"],
             frozen_embeddings=new_embeddings,
         )
+        return outputs.loss
+
+    def prediction_step(
+        self,
+        model: nn.Module,
+        inputs: Dict[str, Union[torch.Tensor, Any]],
+        prediction_loss_only: bool,
+        ignore_keys: Optional[List[str]] = None,
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], Optional[torch.Tensor]]:
+        """
+        Perform an evaluation step on `model` using `inputs`. Called during self.evalaute()
+        """
+        inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
+        with torch.no_grad():
+            loss = self.compute_loss(model=model, inputs=inputs)
+
+        logits, labels = None, None
+        return loss, logits, labels
