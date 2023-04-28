@@ -151,12 +151,6 @@ class ModelArguments:
             "choices": FREEZE_STRATEGIES,
         },
     )
-    token_decode_alpha: Optional[float] = field(
-        default=None,
-        metadata={
-            "help": "",
-        },
-    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (

@@ -5,21 +5,23 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-import aliases
 from models import PrefixReranker
 from run_args import TrainingArguments
 
 from .base import BaseTrainer
+from .inversion import InversionTrainer
 
 
 class RerankingTrainer(BaseTrainer):
-    def __init__(self, model: PrefixReranker, args: TrainingArguments):
+    def __init__(
+        self,
+        model: PrefixReranker,
+        inversion_trainer: InversionTrainer,
+        args: TrainingArguments,
+    ):
         # We're training this reranking model to rerank outputs from
-        # a model trained via the inversion trainer.
-        # TODO argparse for alias.
-        self.inversion_trainer = aliases.load_inversion_trainer_from_alias(
-            alias="dpr_nq__msl32_beta"
-        )
+        # a model trained & loaded via the inversion trainer.
+        self.inversion_trainer = inversion_trainer
         super().__init__(
             model=model,
             args=args,

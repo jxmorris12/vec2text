@@ -1,15 +1,25 @@
 import logging
-from typing import Callable, Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
 import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
-from transformers import LogitsProcessor, LogitsProcessorList
 
 from utils import embed_all_tokens
-from .model_utils import *
+
+from .model_utils import (
+    EMBEDDING_TRANSFORM_STRATEGIES,
+    FREEZE_STRATEGIES,
+    device,
+    disable_dropout,
+    freeze_params,
+    mean_pool,
+)
+
+logger = logging.getLogger(__name__)
+
 
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
@@ -347,5 +357,3 @@ class InversionModel(nn.Module):
             attention_mask=attention_mask,
             labels=labels,
         )
-
-

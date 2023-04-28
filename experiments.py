@@ -10,11 +10,13 @@ import datasets
 import torch
 import transformers
 
+import aliases
 import trainers
 from collator import CustomCollator
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     InversionModel,
+    JointEmbeddingTextEncoder,
     PrefixReranker,
     load_embedder_and_tokenizer,
     load_encoder_decoder,
@@ -355,7 +357,6 @@ class InversionExperiment(Experiment):
             decoder_dropout_disabled=model_args.decoder_dropout_disabled,
             freeze_strategy=model_args.freeze_strategy,
             encoder_decoder_lora=model_args.use_lora,
-            token_decode_alpha=model_args.token_decode_alpha,
             embeddings_from_layer_n=model_args.embeddings_from_layer_n,
         )
 
@@ -385,8 +386,13 @@ class RerankingExperiment(Experiment):
         return "emb-rerank-1"
 
     def load_trainer(self) -> transformers.Trainer:
+        # TODO: argparse for this
+        inversion_trainer = aliases.load_inversion_trainer_from_alias(
+            alias="dpr_nq__msl32_beta"
+        )
         return trainers.RerankingTrainer(
             model=self.load_model(),
+            inversion_trainer=inversion_trainer,
             args=self.training_args,
         )
 
@@ -394,6 +400,28 @@ class RerankingExperiment(Experiment):
         transformers.T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
         prefix_embedder = transformers.T5EncoderModel.from_pretrained("t5-base")
         return PrefixReranker(prefix_embedder=prefix_embedder)
+
+
+class CorrectorExperiment(Experiment):
+    @property
+    def _wandb_project_name(self) -> str:
+        return "emb-correct-1"
+
+    def load_trainer(self) -> transformers.Trainer:
+        # TODO: argparse for this
+        inversion_trainer = aliases.load_inversion_trainer_from_alias(
+            alias="dpr_nq__msl32_beta"
+        )
+        return trainers.CorrectorTrainer(
+            model=self.load_model(),
+            inversion_trainer=inversion_trainer,
+            args=self.training_args,
+        )
+
+    def load_model(self) -> torch.nn.Module:
+        transformers.T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
+        encoder = transformers.T5EncoderModel.from_pretrained("t5-base")
+        return JointEmbeddingTextEncoder(encoder=encoder)
 
 
 EXPERIMENT_CLS_MAP = {
