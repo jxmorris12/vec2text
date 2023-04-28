@@ -293,9 +293,9 @@ class TrainingArguments(transformers.TrainingArguments):
     logging_steps: int = field(
         default=400, metadata={"help": "Number of steps between logging metrics"}
     )
-    save_steps: int = 4000
+    save_steps: int = 8000
     eval_steps: int = field(
-        default=4000,
+        default=40000,
         metadata={
             "help": "Number of steps between eval (will be scaled as if batch size is 32)"
         },
