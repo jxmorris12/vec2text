@@ -1,19 +1,13 @@
-import copy
 import math
 import random
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict
 
-import evaluate
 import torch
 import torch.nn as nn
-import tqdm
 import transformers
 
-import aliases
-from models import PrefixReranker
-from run_args import TrainingArguments
-
 from .base import BaseTrainer
+
 
 class InversionTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
@@ -73,4 +67,3 @@ class InversionTrainer(BaseTrainer):
         output.metrics["eval_perplexity"] = perplexity
 
         return output
-

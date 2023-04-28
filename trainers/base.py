@@ -1,17 +1,11 @@
 import copy
-import math
 import random
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Dict, List, Tuple
 
 import evaluate
 import torch
-import torch.nn as nn
 import tqdm
 import transformers
-
-import aliases
-from models import PrefixReranker
-from run_args import TrainingArguments
 
 
 def preprocess_logits_for_metrics(logits, labels):
