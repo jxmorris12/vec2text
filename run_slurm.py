@@ -33,7 +33,7 @@ python run.py \
 
 models = [
     # 't5-small',
-    't5-base',
+    "t5-base",
     # 't5-large',
     # 't5-3b',
     # "t5-11b",

@@ -195,8 +195,8 @@ class DataArguments:
             )
         },
     )
-    max_eval_samples: Optional[int] = field(
-        default=200,
+    max_eval_samples: int = field(
+        default=1000,
         metadata={
             "help": (
                 "For debugging purposes or quicker training, truncate the number of evaluation examples to this "
