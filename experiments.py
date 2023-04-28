@@ -427,6 +427,7 @@ class CorrectorExperiment(Experiment):
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "reranking": RerankingExperiment,
+    "corrector": CorrectorExperiment,
 }
 
 

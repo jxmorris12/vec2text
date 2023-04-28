@@ -8,6 +8,8 @@ from run_args import TrainingArguments
 from .base import BaseTrainer
 from .inversion import InversionTrainer
 
+from models.model_utils import freeze_params
+
 
 class CorrectorTrainer(BaseTrainer):
     def __init__(
@@ -16,9 +18,12 @@ class CorrectorTrainer(BaseTrainer):
         inversion_trainer: InversionTrainer,
         args: TrainingArguments,
     ):
+        # Freeze other model params
+        freeze_params(inversion_trainer.model)
         # We're training this corrector model to correct outputs from
         # a model trained & loaded via the inversion trainer.
         self.inversion_trainer = inversion_trainer
+        self.inversion_trainer.model.use_frozen_embeddings_as_input = True
         super().__init__(
             model=model,
             args=args,
@@ -30,6 +35,7 @@ class CorrectorTrainer(BaseTrainer):
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
         # Need to train with same device as the inversion model to avoid weird errors.
+        
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
@@ -47,8 +53,18 @@ class CorrectorTrainer(BaseTrainer):
                 input_ids=inputs["embedder_input_ids"],
                 attention_mask=inputs["embedder_attention_mask"],
             )
-        return self.model(
+        new_embeddings = self.model(
             embedding=frozen_embeddings,
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"],
+        )
+
+        # TODO: support passing embedder_input_ids/attention_mask as None.
+        fake_embedder_input_ids = torch.ones([1], device=self.args.device)
+        fake_embedder_attention_mask = torch.ones([1], device=self.args.device)
+        return inversion_trainer.model(
+            embedder_input_ids=fake_embedder_input_ids,
+            embedder_attention_mask=fake_embedder_attention_msak,
+            labels=inputs["labels"],
+            frozen_embeddings=new_embeddings,
         )
