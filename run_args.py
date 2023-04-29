@@ -220,15 +220,8 @@ class TrainingArguments(transformers.TrainingArguments):
         default=500_000,
         metadata={"required": False, "help": "Size of pseudo-training set."},
     )
-    max_batch_size_fits_in_memory: int = field(
-        default=32,
-        metadata={
-            "required": False,
-            "help": "Sizes of minibatches used in gradient cache.",
-        },
-    )
     num_train_epochs: float = field(
-        default=3.0,
+        default=30.0,
         metadata={"required": False, "help": "Number of epochs for training"},
     )
     learning_rate: float = field(

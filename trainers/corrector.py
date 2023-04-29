@@ -4,12 +4,11 @@ import torch
 import torch.nn as nn
 
 from models import JointEmbeddingTextEncoder
+from models.model_utils import freeze_params
 from run_args import TrainingArguments
 
 from .base import BaseTrainer
 from .inversion import InversionTrainer
-
-from models.model_utils import freeze_params
 
 
 class CorrectorTrainer(BaseTrainer):
@@ -19,6 +18,7 @@ class CorrectorTrainer(BaseTrainer):
     TODO don't assume that the encoder has to have the same tokenizer as the encoder_decoder
     or embedder model.
     """
+
     def __init__(
         self,
         model: JointEmbeddingTextEncoder,
@@ -42,10 +42,10 @@ class CorrectorTrainer(BaseTrainer):
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
         # Need to train with same device as the inversion model to avoid weird errors.
-        
+
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
-    
+
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         with torch.no_grad():
             frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
@@ -59,7 +59,9 @@ class CorrectorTrainer(BaseTrainer):
             )
         inputs["frozen_embeddings"] = new_embeddings
 
-        return self.inversion_trainer.generate(inputs=inputs, generation_kwargs=generation_kwargs)
+        return self.inversion_trainer.generate(
+            inputs=inputs, generation_kwargs=generation_kwargs
+        )
 
     def compute_loss(
         self,
@@ -70,8 +72,12 @@ class CorrectorTrainer(BaseTrainer):
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
 
-        fake_embedder_input_ids = torch.ones((batch_size, 1), device=self.args.device)
-        fake_embedder_attention_mask = torch.ones((batch_size, 1), device=self.args.device)
+        fake_embedder_input_ids = torch.ones(
+            (batch_size, seq_length), device=self.args.device
+        )
+        fake_embedder_attention_mask = torch.ones(
+            (batch_size, seq_length), device=self.args.device
+        )
 
         with torch.no_grad():
             frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
@@ -86,22 +92,24 @@ class CorrectorTrainer(BaseTrainer):
                 "frozen_embeddings": frozen_embeddings,
             },
             generation_kwargs={
-                'early_stopping': False, 
-                'num_beams': 1, 
-                'do_sample': False, 
-                'no_repeat_ngram_size': 3,
+                "early_stopping": False,
+                "num_beams": 1,
+                "do_sample": False,
+                "no_repeat_ngram_size": 3,
             },
         )
         eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
         eos_tokens = (
-            torch.ones(
-                (batch_size, 1), dtype=torch.long, device=self.args.device
-            )
+            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
             * eos_token_id
         )
-        hypothesis_input_ids = torch.cat((hypothesis_input_ids[:, 1:], eos_tokens), dim=1)
+        hypothesis_input_ids = torch.cat(
+            (hypothesis_input_ids[:, 1:], eos_tokens), dim=1
+        )
         # get rid of EOS token, add BOS token.
-        hypothesis_attention_mask = (hypothesis_input_ids != self.embedder_tokenizer.pad_token_id)
+        hypothesis_attention_mask = (
+            hypothesis_input_ids != self.embedder_tokenizer.pad_token_id
+        )
 
         # NOTE TO SELF: can't put embedder_input_ids here, that's cheating.
         new_embeddings = self.model(
