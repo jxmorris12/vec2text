@@ -320,6 +320,12 @@ class Experiment(abc.ABC):
             val_datasets_dict[name] = val_datasets_dict[name].select(
                 range(max_eval_samples)
             )
+            val_datasets_dict[name] = val_datasets_dict[name].add_column(
+                "idx", range(len(val_datasets_dict[name]))
+            )
+
+        train_dataset = train_dataset.add_column("idx", range(len(train_dataset)))
+        ###########################################################################
 
         return train_dataset, val_datasets_dict
 
@@ -433,7 +439,7 @@ EXPERIMENT_CLS_MAP = {
 
 def experiment_from_args(model_args, data_args, training_args) -> Experiment:
     if training_args.experiment in EXPERIMENT_CLS_MAP:
-        experiment_cls = EXPERIMENT_CLS_MAP[training_args.experiment]
+        experiment_cls = EXPERIMENT_CLS_MAP[training_args.experiment]  # type: ignore
     else:
         raise ValueError(f"Unknown experiment {training_args.experiment}")
-    return experiment_cls(model_args, data_args, training_args)
+    return experiment_cls(model_args, data_args, training_args)  # type: ignore
