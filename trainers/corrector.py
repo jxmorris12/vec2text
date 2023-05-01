@@ -175,6 +175,7 @@ class CorrectorTrainer(BaseTrainer):
         self,
         model: JointEmbeddingTextEncoder,
         inputs: Dict[str, torch.Tensor],
+        training: bool = True,
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
         """Computes contrastive loss using model generations and real text."""
@@ -186,11 +187,19 @@ class CorrectorTrainer(BaseTrainer):
         fake_embedder_attention_mask = torch.ones(
             (batch_size, seq_length), device=self.args.device
         )
-        (
-            frozen_embeddings,
-            hypothesis_input_ids,
-            hypothesis_attention_mask,
-        ) = self.get_hypothesis_with_caching(inputs=inputs)
+
+        if training:
+            (
+                frozen_embeddings,
+                hypothesis_input_ids,
+                hypothesis_attention_mask,
+            ) = self.get_hypothesis_with_caching(inputs=inputs)
+        else:
+            (
+                frozen_embeddings,
+                hypothesis_input_ids,
+                hypothesis_attention_mask,
+            ) = self._get_hypothesis_uncached(inputs=inputs)
 
         # NOTE TO SELF: can't put embedder_input_ids here, that's cheating.
         new_embeddings = self.model(
@@ -220,7 +229,7 @@ class CorrectorTrainer(BaseTrainer):
         """
         inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
         with torch.no_grad():
-            loss = self.compute_loss(model=model, inputs=inputs)
+            loss = self.compute_loss(model=model, inputs=inputs, training=False)
 
         logits, labels = None, None
         return loss, logits, labels

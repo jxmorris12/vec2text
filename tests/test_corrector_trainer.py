@@ -16,7 +16,7 @@ DEFAULT_ARGS += ["--bf16", "1"]
 def load_trainer(model_args, data_args, training_args) -> CorrectorTrainer:
     ########################################################
     training_args.num_train_epochs = 2.0
-    training_args.eval_steps = 8900000  # 8
+    training_args.eval_steps = 64
     trainer = experiments.experiment_from_args(
         model_args=model_args, data_args=data_args, training_args=training_args
     ).load_trainer()

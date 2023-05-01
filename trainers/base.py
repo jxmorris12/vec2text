@@ -211,15 +211,16 @@ class BaseTrainer(transformers.Trainer):
             decoded_labels=decoded_labels,
         )
 
-        if len(decoded_preds):
-            print(decoded_preds[0])
-            print(decoded_labels[0])
-            print("\n\n")
-            print(decoded_preds[1])
-            print(decoded_labels[1])
-            print("\n\n")
-            print(decoded_preds[2])
-            print(decoded_labels[2])
+        if not len(decoded_preds):
+            return {}
+        print(decoded_preds[0])
+        print(decoded_labels[0])
+        print("\n\n")
+        print(decoded_preds[1])
+        print(decoded_labels[1])
+        print("\n\n")
+        print(decoded_preds[2])
+        print(decoded_labels[2])
 
         # Compute sims of eval data using embedder.
         preds_sample = torch.tensor(preds_sample_list, device=self.args.device)[:128]
