@@ -78,9 +78,7 @@ class CorrectorTrainer(BaseTrainer):
             )
         return frozen_embeddings
 
-    def _generate_hypothesis_uncached(
-        self, inputs: Dict[str, torch.Tensor]
-    ) -> torch.Tensor:
+    def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         batch_size, seq_length = inputs["input_ids"].shape
         fake_embedder_input_ids = torch.ones(
             (batch_size, seq_length), device=self.args.device
@@ -117,15 +115,17 @@ class CorrectorTrainer(BaseTrainer):
         )
         return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask
 
-    def _get_cached_hypothesis(
+    def _get_hypothesis_cached(
         self,
         idx: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         values = [
             self._hypothesis_cache[i.item()] for i in idx
         ]  # [(a1, b1, c1), (a2, b2, c2)]
-        restacked_values = list(zip(values))
-        restacked_values = [torch.cat(a, dim=1) for a in restacked_values]
+        restacked_values = list(zip(*values))
+        restacked_values = [
+            torch.stack(a).to(self.args.device) for a in restacked_values
+        ]
         (
             frozen_embeddings,
             hypothesis_input_ids,
@@ -147,7 +147,7 @@ class CorrectorTrainer(BaseTrainer):
             val = (a.cpu(), b.cpu(), c.cpu())
             self._hypothesis_cache[key] = val
 
-    def generate_hypothesis_with_caching(
+    def get_hypothesis_with_caching(
         self, inputs: Dict[str, torch.Tensor]
     ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         try:
@@ -155,13 +155,13 @@ class CorrectorTrainer(BaseTrainer):
                 frozen_embeddings,
                 hypothesis_input_ids,
                 hypothesis_attention_mask,
-            ) = self._get_cached_hypothesis(idx=inputs["idx"])
+            ) = self._get_hypothesis_cached(idx=inputs["idx"])
         except KeyError:
             (
                 frozen_embeddings,
                 hypothesis_input_ids,
                 hypothesis_attention_mask,
-            ) = self._generate_hypothesis_uncached(inputs=inputs)
+            ) = self._get_hypothesis_uncached(inputs=inputs)
             self._cache_hypothesis(
                 idx=inputs["idx"],
                 frozen_embeddings=frozen_embeddings,
@@ -190,7 +190,7 @@ class CorrectorTrainer(BaseTrainer):
             frozen_embeddings,
             hypothesis_input_ids,
             hypothesis_attention_mask,
-        ) = self.generate_hypothesis_with_caching(inputs=inputs)
+        ) = self.get_hypothesis_with_caching(inputs=inputs)
 
         # NOTE TO SELF: can't put embedder_input_ids here, that's cheating.
         new_embeddings = self.model(
