@@ -1,6 +1,8 @@
+import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
+import torch.multiprocessing as mp
 import torch.nn as nn
 
 from models import JointEmbeddingTextEncoder
@@ -9,6 +11,7 @@ from run_args import TrainingArguments
 
 from .base import BaseTrainer
 from .inversion import InversionTrainer
+logger = logging.getLogger(__name__)
 
 
 class CorrectorTrainer(BaseTrainer):
@@ -44,11 +47,42 @@ class CorrectorTrainer(BaseTrainer):
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
 
-        self._hypothesis_cache = {}
-
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
+    
+    def _precompute_hypothesis_and_embedding(self, ds_inputs: Dict[str, torch.Tensor]
+        ) -> Dict[str, torch.Tensor]:
+        inputs = {k: torch.tensor(v) for k,v in ds_inputs.items()}
+        inputs = {k: v.to(self.args.device) for k,v in inputs.items()}
+        frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask = self._get_hypothesis_uncached(
+            inputs=inputs
+        )
+        ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
+        ds_inputs["hypothesis_input_ids"] = hypothesis_input_ids.cpu()
+        ds_inputs["hypothesis_attention_mask"] = hypothesis_attention_mask.cpu()
+        return ds_inputs
+    
+    def _inner_training_loop(self, *args, **kwargs):
+        logger.info("Precomputing frozen embedding & hypotheses")
+
+        self.train_dataset = self.train_dataset.map(
+            self._precompute_hypothesis_and_embedding,
+            batched=True,
+            batch_size=self.args.train_batch_size,
+            desc="Precomputing hypotheses for training data",
+        )
+
+        for k, v in self.eval_dataset.items():
+            self.eval_dataset[k] = v.map(
+                self._precompute_hypothesis_and_embedding,
+                batched=True,
+                batch_size=self.args.train_batch_size,
+                desc=f"Precomputing hypotheses for val data ({k})",
+            )
+
+
+        super()._inner_training_loop(*args, **kwargs)
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         with torch.no_grad():
@@ -115,62 +149,6 @@ class CorrectorTrainer(BaseTrainer):
         )
         return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask
 
-    def _get_hypothesis_cached(
-        self,
-        idx: torch.Tensor,
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        values = [
-            self._hypothesis_cache[i.item()] for i in idx
-        ]  # [(a1, b1, c1), (a2, b2, c2)]
-        restacked_values = list(zip(*values))
-        restacked_values = [
-            torch.stack(a).to(self.args.device) for a in restacked_values
-        ]
-        (
-            frozen_embeddings,
-            hypothesis_input_ids,
-            hypothesis_attention_mask,
-        ) = restacked_values
-        return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask
-
-    def _cache_hypothesis(
-        self,
-        idx: torch.Tensor,
-        frozen_embeddings: torch.Tensor,
-        hypothesis_input_ids: torch.Tensor,
-        hypothesis_attention_mask: torch.Tensor,
-    ) -> None:
-        for idx, a, b, c in zip(
-            idx, frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask
-        ):
-            key = idx.cpu().item()
-            val = (a.cpu(), b.cpu(), c.cpu())
-            self._hypothesis_cache[key] = val
-
-    def get_hypothesis_with_caching(
-        self, inputs: Dict[str, torch.Tensor]
-    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
-        try:
-            (
-                frozen_embeddings,
-                hypothesis_input_ids,
-                hypothesis_attention_mask,
-            ) = self._get_hypothesis_cached(idx=inputs["idx"])
-        except KeyError:
-            (
-                frozen_embeddings,
-                hypothesis_input_ids,
-                hypothesis_attention_mask,
-            ) = self._get_hypothesis_uncached(inputs=inputs)
-            self._cache_hypothesis(
-                idx=inputs["idx"],
-                frozen_embeddings=frozen_embeddings,
-                hypothesis_input_ids=hypothesis_input_ids,
-                hypothesis_attention_mask=hypothesis_attention_mask,
-            )
-
-        return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask
-
     def compute_loss(
         self,
         model: JointEmbeddingTextEncoder,
@@ -188,13 +166,11 @@ class CorrectorTrainer(BaseTrainer):
             (batch_size, seq_length), device=self.args.device
         )
 
-        if training:
-            (
-                frozen_embeddings,
-                hypothesis_input_ids,
-                hypothesis_attention_mask,
-            ) = self.get_hypothesis_with_caching(inputs=inputs)
-        else:
+        try:
+            frozen_embeddings = inputs["frozen_embeddings"]
+            hypothesis_input_ids = inputs["hypothesis_input_ids"]
+            hypothesis_attention_mask = inputs["hypothesis_attention_mask"]
+        except KeyError:
             (
                 frozen_embeddings,
                 hypothesis_input_ids,
