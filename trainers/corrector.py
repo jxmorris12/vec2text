@@ -2,7 +2,6 @@ import logging
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import torch
-import torch.multiprocessing as mp
 import torch.nn as nn
 
 from models import JointEmbeddingTextEncoder
@@ -80,24 +79,15 @@ class CorrectorTrainer(BaseTrainer):
                 batch_size=self.args.train_batch_size,
                 desc=f"Precomputing hypotheses for val data ({k})",
             )
-
-
-        super()._inner_training_loop(*args, **kwargs)
+        return super()._inner_training_loop(*args, **kwargs)
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        with torch.no_grad():
-            frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
-                input_ids=inputs["embedder_input_ids"],
-                attention_mask=inputs["embedder_attention_mask"],
+        frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask = (
+            self._get_hypothesis_uncached(
+                inputs=inputs
             )
-            new_embeddings = self.model(
-                embedding=frozen_embeddings,
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"],
-            )
-        inputs["frozen_embeddings"] = new_embeddings
-
-        return self.inversion_trainer.generate(
+        )
+        return self.model.generate(
             inputs=inputs, generation_kwargs=generation_kwargs
         )
 
@@ -153,7 +143,6 @@ class CorrectorTrainer(BaseTrainer):
         self,
         model: JointEmbeddingTextEncoder,
         inputs: Dict[str, torch.Tensor],
-        training: bool = True,
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
         """Computes contrastive loss using model generations and real text."""
@@ -178,18 +167,18 @@ class CorrectorTrainer(BaseTrainer):
             ) = self._get_hypothesis_uncached(inputs=inputs)
 
         # NOTE TO SELF: can't put embedder_input_ids here, that's cheating.
-        new_embeddings = self.model(
+        # new_embeddings = self.model(
+        #     embedding=frozen_embeddings,
+        #     input_ids=hypothesis_input_ids,
+        #     attention_mask=hypothesis_attention_mask,
+        # )
+
+        # TODO: support passing embedder_input_ids/attention_mask as None.
+        outputs = self.model(
             embedding=frozen_embeddings,
             input_ids=hypothesis_input_ids,
             attention_mask=hypothesis_attention_mask,
-        )
-
-        # TODO: support passing embedder_input_ids/attention_mask as None.
-        outputs = self.inversion_trainer.model(
-            embedder_input_ids=fake_embedder_input_ids,
-            embedder_attention_mask=fake_embedder_attention_mask,
             labels=inputs["labels"],
-            frozen_embeddings=new_embeddings,
         )
         return outputs.loss
 
@@ -205,7 +194,7 @@ class CorrectorTrainer(BaseTrainer):
         """
         inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
         with torch.no_grad():
-            loss = self.compute_loss(model=model, inputs=inputs, training=False)
+            loss = self.compute_loss(model=model, inputs=inputs)
 
         logits, labels = None, None
         return loss, logits, labels

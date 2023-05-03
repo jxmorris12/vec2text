@@ -141,7 +141,7 @@ class Experiment(abc.ABC):
         last_checkpoint = None
         if (
             os.path.isdir(training_args.output_dir)
-            and not training_args.overwrite_output_dir
+            # and not training_args.overwrite_output_dir
         ):
             last_checkpoint = transformers.trainer_utils.get_last_checkpoint(
                 training_args.output_dir
@@ -167,6 +167,12 @@ class Experiment(abc.ABC):
             checkpoint = training_args.resume_from_checkpoint
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
+        
+        if checkpoint:
+            logger.info("Loading from checkpoint %s", checkpoint)
+        else:
+            logger.info("No checkpoint found, training from scratch")
+        
         return checkpoint
 
     @property
@@ -282,11 +288,11 @@ class Experiment(abc.ABC):
                     "broken feature - this breaks caching. fix caching to use."
                 )
 
-        # this argument allows us to *train* on less data (10% of our training set).
+        # this argument allows us to *train* on less data (1% of our training set).
         if data_args.use_less_data:
             for key in tokenized_datasets:
                 d = tokenized_datasets[key]
-                new_length = max(256, int(len(d) * 0.1))
+                new_length = max(256, int(len(d) * 0.01))
                 tokenized_datasets[key] = tokenized_datasets[key].select(
                     range(new_length)
                 )
@@ -425,9 +431,8 @@ class CorrectorExperiment(Experiment):
         )
 
     def load_model(self) -> torch.nn.Module:
-        transformers.T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
-        encoder = transformers.T5EncoderModel.from_pretrained("t5-base")
-        return JointEmbeddingTextEncoder(encoder=encoder)
+        encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
+        return JointEmbeddingTextEncoder(encoder_decoder=encoder_decoder)
 
 
 EXPERIMENT_CLS_MAP = {
@@ -443,3 +448,5 @@ def experiment_from_args(model_args, data_args, training_args) -> Experiment:
     else:
         raise ValueError(f"Unknown experiment {training_args.experiment}")
     return experiment_cls(model_args, data_args, training_args)  # type: ignore
+
+

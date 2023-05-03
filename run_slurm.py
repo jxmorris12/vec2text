@@ -67,7 +67,7 @@ batch_size = 128
 
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
 # max_seq_length = [8, 32, 128]
-max_seq_length = [64]
+max_seq_length = [32]
 
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
@@ -81,7 +81,7 @@ freeze_strategies = ["none"]
 
 fake_embedding_with_zeros = [False]  # embedder_fake_with_zeros
 
-do_truncation = [True, False]
+do_truncation = [False]
 
 ACTUALLY_RUN_COMMAND = True
 

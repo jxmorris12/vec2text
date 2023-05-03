@@ -24,7 +24,7 @@ class ModelArguments:
         ###
         ## huggingface.co/facebook/dpr-ctx_encoder-single-nq-base
         ###
-        default="t5-small",
+        default="t5-base",
         metadata={
             "help": (
                 "The model checkpoint for weights initialization .Don't set if you want to train a model from scratch."
