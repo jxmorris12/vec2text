@@ -41,8 +41,14 @@ def test_trainer():
     trainer = load_trainer(
         model_args=model_args, data_args=data_args, training_args=training_args
     )
-    train_result = trainer.train(resume_from_checkpoint=None)
-    train_metrics = train_result.metrics
-    print("train metrics:", train_metrics)
-    eval_metrics = trainer.evaluate()
-    print("eval metrics:", eval_metrics)
+    # train_result = trainer.train(resume_from_checkpoint=None)
+    # train_metrics = train_result.metrics
+    # print("train metrics:", train_metrics)
+
+    for eval_dataset_name, eval_dataset in trainer.eval_dataset.items():
+        eval_metrics = trainer.evaluate(
+            eval_dataset=eval_dataset,
+            ignore_keys=None,
+            metric_key_prefix=f"eval_{eval_dataset_name}",
+        )
+        print("eval metrics:", eval_metrics)

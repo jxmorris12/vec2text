@@ -167,12 +167,12 @@ class Experiment(abc.ABC):
             checkpoint = training_args.resume_from_checkpoint
         elif last_checkpoint is not None:
             checkpoint = last_checkpoint
-        
+
         if checkpoint:
             logger.info("Loading from checkpoint %s", checkpoint)
         else:
             logger.info("No checkpoint found, training from scratch")
-        
+
         return checkpoint
 
     @property
@@ -448,5 +448,3 @@ def experiment_from_args(model_args, data_args, training_args) -> Experiment:
     else:
         raise ValueError(f"Unknown experiment {training_args.experiment}")
     return experiment_cls(model_args, data_args, training_args)  # type: ignore
-
-

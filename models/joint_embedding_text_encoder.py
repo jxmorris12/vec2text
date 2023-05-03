@@ -1,8 +1,8 @@
+import copy
 from typing import Dict, Optional
+
 import torch
 import transformers
-
-from .model_utils import mean_pool
 
 
 class JointEmbeddingTextEncoder(torch.nn.Module):
@@ -18,7 +18,7 @@ class JointEmbeddingTextEncoder(torch.nn.Module):
         self.in_projection = torch.nn.Sequential(
             torch.nn.Linear(768, 768), torch.nn.GELU(), torch.nn.Linear(768, 768)
         )
-        
+
     def generate(
         self,
         inputs: Dict[str, torch.Tensor],
@@ -26,10 +26,12 @@ class JointEmbeddingTextEncoder(torch.nn.Module):
     ) -> torch.Tensor:
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
         if "max_length" not in generation_kwargs:
-            generation_kwargs["max_length"] = (
-                inputs["input_ids"].shape[1] + 1
-            )
-        
+            generation_kwargs["max_length"] = inputs["input_ids"].shape[1] + 1
+
+        embedding = inputs["frozen_embeddings"]
+        input_ids = inputs["hypothesis_input_ids"]
+        attention_mask = inputs["hypothesis_attention_mask"]
+
         batch_size, seq_length = inputs["input_ids"].shape
         assert embedding.shape == (batch_size, 768)
         embedding = self.in_projection(embedding)
@@ -68,7 +70,7 @@ class JointEmbeddingTextEncoder(torch.nn.Module):
         embedding: torch.Tensor,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        labels: Optional[torch.Tensor] = None
+        labels: Optional[torch.Tensor] = None,
     ):
         batch_size, seq_length = input_ids.shape
         assert embedding.shape == (batch_size, 768)

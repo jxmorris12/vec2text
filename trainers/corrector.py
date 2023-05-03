@@ -10,6 +10,7 @@ from run_args import TrainingArguments
 
 from .base import BaseTrainer
 from .inversion import InversionTrainer
+
 logger = logging.getLogger(__name__)
 
 
@@ -49,19 +50,22 @@ class CorrectorTrainer(BaseTrainer):
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
-    
-    def _precompute_hypothesis_and_embedding(self, ds_inputs: Dict[str, torch.Tensor]
-        ) -> Dict[str, torch.Tensor]:
-        inputs = {k: torch.tensor(v) for k,v in ds_inputs.items()}
-        inputs = {k: v.to(self.args.device) for k,v in inputs.items()}
-        frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask = self._get_hypothesis_uncached(
-            inputs=inputs
-        )
+
+    def _precompute_hypothesis_and_embedding(
+        self, ds_inputs: Dict[str, torch.Tensor]
+    ) -> Dict[str, torch.Tensor]:
+        inputs = {k: torch.tensor(v) for k, v in ds_inputs.items()}
+        inputs = {k: v.to(self.args.device) for k, v in inputs.items()}
+        (
+            frozen_embeddings,
+            hypothesis_input_ids,
+            hypothesis_attention_mask,
+        ) = self._get_hypothesis_uncached(inputs=inputs)
         ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
         ds_inputs["hypothesis_input_ids"] = hypothesis_input_ids.cpu()
         ds_inputs["hypothesis_attention_mask"] = hypothesis_attention_mask.cpu()
         return ds_inputs
-    
+
     def _inner_training_loop(self, *args, **kwargs):
         logger.info("Precomputing frozen embedding & hypotheses")
 
@@ -82,14 +86,15 @@ class CorrectorTrainer(BaseTrainer):
         return super()._inner_training_loop(*args, **kwargs)
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask = (
-            self._get_hypothesis_uncached(
-                inputs=inputs
-            )
-        )
-        return self.model.generate(
-            inputs=inputs, generation_kwargs=generation_kwargs
-        )
+        (
+            frozen_embeddings,
+            hypothesis_input_ids,
+            hypothesis_attention_mask,
+        ) = self._get_hypothesis_uncached(inputs=inputs)
+        inputs["frozen_embeddings"] = frozen_embeddings
+        inputs["hypothesis_input_ids"] = hypothesis_input_ids
+        inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
+        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
     def _get_frozen_embeddings(
         self,
@@ -147,13 +152,6 @@ class CorrectorTrainer(BaseTrainer):
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
-
-        fake_embedder_input_ids = torch.ones(
-            (batch_size, seq_length), device=self.args.device
-        )
-        fake_embedder_attention_mask = torch.ones(
-            (batch_size, seq_length), device=self.args.device
-        )
 
         try:
             frozen_embeddings = inputs["frozen_embeddings"]

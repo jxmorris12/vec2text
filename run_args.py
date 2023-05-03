@@ -307,7 +307,7 @@ class TrainingArguments(transformers.TrainingArguments):
         )
         print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")
 
-        self.dataloader_drop_last = True
+        self.dataloader_drop_last = False
 
         # Scale logging steps proportional to batch size.
         self.warmup_steps = round(self.warmup_steps * (32 / self.train_batch_size))
