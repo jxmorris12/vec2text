@@ -72,7 +72,7 @@ class CorrectorTrainer(BaseTrainer):
         self.train_dataset = self.train_dataset.map(
             self._precompute_hypothesis_and_embedding,
             batched=True,
-            batch_size=self.args.train_batch_size,
+            batch_size=self.args.train_batch_size * 2,
             desc="Precomputing hypotheses for training data",
         )
 
@@ -80,7 +80,7 @@ class CorrectorTrainer(BaseTrainer):
             self.eval_dataset[k] = v.map(
                 self._precompute_hypothesis_and_embedding,
                 batched=True,
-                batch_size=self.args.train_batch_size,
+                batch_size=self.args.train_batch_size * 2,
                 desc=f"Precomputing hypotheses for val data ({k})",
             )
         return super()._inner_training_loop(*args, **kwargs)

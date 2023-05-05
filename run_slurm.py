@@ -59,10 +59,10 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar19-random'
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
-exp_group_name = "apr27-baselines"
+exp_group_name = "may3-baselines"
 ##########################################
 
-batch_size = 128
+batch_size = 512
 # batch_size = 32
 
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
@@ -72,7 +72,7 @@ max_seq_length = [32]
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
 
-learning_rates = [1e-3]
+learning_rates = [2e-3]
 
 num_repeat_tokens = [16]
 

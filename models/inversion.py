@@ -256,15 +256,15 @@ class InversionModel(nn.Module):
 
     def embed_and_project(
         self,
-        embedder_input_ids: torch.Tensor,
-        embedder_attention_mask: torch.Tensor,
+        embedder_input_ids: Optional[torch.Tensor],
+        embedder_attention_mask: Optional[torch.Tensor],
         frozen_embeddings: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        if self.use_frozen_embeddings_as_input:
+        assert not ((embedder_input_ids is None) and (frozen_embeddings is None))
+        if self.use_frozen_embeddings_as_input or (embedder_input_ids is None):
             assert (
                 frozen_embeddings is not None
             ), "specified to train on frozen embeddings but none were provided"
-            assert len(embedder_input_ids) == len(frozen_embeddings)
             embeddings = frozen_embeddings
             assert len(embeddings.shape) == 2  # batch by d
         elif self.embedder_no_grad:
@@ -284,7 +284,7 @@ class InversionModel(nn.Module):
             pass
         elif self.embedding_transform_strategy == "repeat":
             embeddings = self.embedding_transform(embeddings)
-            batch_size = embedder_input_ids.shape[0]
+            batch_size = embeddings.shape[0]
             # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
             embeddings = embeddings.reshape((batch_size, self.num_repeat_tokens, -1))
         elif self.embedding_transform_strategy == "nearest_neighbors":
@@ -306,9 +306,10 @@ class InversionModel(nn.Module):
     ) -> torch.Tensor:
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
         if "max_length" not in generation_kwargs:
-            generation_kwargs["max_length"] = (
-                inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1] + 1
-            )
+            generation_kwargs["max_length"] = inputs.get(
+                "input_ids", inputs["embedder_input_ids"]
+            ).shape[1]
+        print("generation_kwargs:", generation_kwargs)
 
         inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=inputs["embedder_input_ids"],
@@ -345,6 +346,7 @@ class InversionModel(nn.Module):
         # embedder_token_type_ids: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
         frozen_embeddings: Optional[torch.Tensor] = None,
+        decoder_input_ids: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask, embedder_token_type_ids
@@ -353,8 +355,10 @@ class InversionModel(nn.Module):
             embedder_attention_mask=embedder_attention_mask,
             frozen_embeddings=frozen_embeddings,
         )
+        # print("decoder_input_ids:", decoder_input_ids)
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             labels=labels,
+            decoder_input_ids=decoder_input_ids,
         )

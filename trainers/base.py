@@ -1,5 +1,6 @@
 import copy
 import random
+import statistics
 from typing import Dict, List, Tuple
 
 import evaluate
@@ -175,17 +176,16 @@ class BaseTrainer(transformers.Trainer):
         rouge_result = self.metric_rouge.compute(
             predictions=predictions, references=references
         )
-        bertscore_result = self.metric_bleu.compute(
-            predictions=predictions, references=references
+        bertscore_result = self.metric_bertscore.compute(
+            predictions=predictions, references=references, lang="en"
         )
-
         return {
             "bleu_score": bleu_result["score"],
             "meteor_score": meteor_result["meteor"],
             "rouge_score": rouge_result[
                 "rouge1"
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
-            "bert_score": bertscore_result["score"],
+            "bert_score": statistics.fmean(bertscore_result["f1"]),
         }
 
     def eval_generation_metrics(self, dataloader: torch.utils.data.DataLoader) -> Dict:
