@@ -23,7 +23,7 @@ class InversionTrainer(BaseTrainer):
         self.generation_strategy = "none"  # contrastive, none
         self.contrastive_generation_alpha = 1.0
         self.contrastive_generation_gamma = 0.1
-        self.contrastive_generation_hypothesis_temperature = 1e-10  # basically 0
+        self.contrastive_generation_hypothesis_temperature = 0
         self.contrastive_generation_hypothesis_num_samples = 1
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:

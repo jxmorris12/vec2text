@@ -42,6 +42,12 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
             inputs.pop("decoder_input_ids")
         if "decoder_attention_mask" in inputs:
             inputs.pop("decoder_attention_mask")
+        
+        ## TEMP 1
+        # hns = self.hypothesis_num_samples
+        # self.hypothesis_num_samples = 1
+        ##
+
 
         do_sample = self.hypothesis_temperature > 0
         hypotheses = self.model.generate(
@@ -69,6 +75,15 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
                 input_ids=hypotheses_with_eos,
                 attention_mask=hypothesis_attention_mask,
             )
+        ## TEMP 2
+        # self.hypothesis_num_samples = hns
+        # hypothesis_embedding = (
+        #    hypothesis_embedding[:, None]
+        #        .repeat((1, self.hypothesis_num_samples, 1))
+        #        .reshape((batch_size * self.hypothesis_num_samples, -1))
+        # )
+        ##
+
         return hypothesis_embedding
 
     def __call__(
@@ -84,12 +99,12 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
         hypothesis_embedding = (
             self.hypothesis_embedding[:, None, :]
             .repeat((1, beam_width, 1))
-            .reshape((batch_size * beam_width * self.hypothesis_num_samples, -1))
+            .reshape((batch_size * self.hypothesis_num_samples * beam_width, -1))
         )
         input_ids = (
             input_ids.reshape((batch_size, beam_width, -1))
             .repeat((1, self.hypothesis_num_samples, 1))
-            .reshape((batch_size * beam_width * self.hypothesis_num_samples, -1))
+            .reshape((batch_size * self.hypothesis_num_samples * beam_width, -1))
         )
         with torch.no_grad():
             bad_outputs = self.model(
@@ -101,13 +116,20 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
         bad_token_logits = bad_outputs.logits[:, -1] * self.gamma
         bad_token_logits = (
             bad_token_logits.reshape(
-                (batch_size, beam_width, self.hypothesis_num_samples, -1)
+                (batch_size, self.hypothesis_num_samples, beam_width, -1)
             )
-            .mean(dim=2)
+            .log_softmax(dim=3)
+            # .exp()
+            # .sum(dim=1)
+            # .log()
+            #  .mean(dim=1)
+            .logsumexp(dim=1)
+            # .sum(dim=1)
             .reshape((batch_size * beam_width, -1))
         )
-
-        diff_logits = next_token_logits.log_softmax(1) - bad_token_logits.log_softmax(1)
+        #
+        next_token_logits = next_token_logits.log_softmax(1)
+        diff_logits = next_token_logits - bad_token_logits
         #
         next_token_probs = next_token_logits.softmax(-1)
         V_mask = (
