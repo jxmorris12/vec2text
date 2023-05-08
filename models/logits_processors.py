@@ -10,7 +10,9 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
     model: InversionModel
     alpha: float
     gamma: float
-    hypothesis_embedding: torch.Tensor
+    batch_size: int
+    seq_length: int
+    hypothesis_embedding: torch.Tensor  # shape [batch_size, num_hypothesis_embeddings, emb_d]
 
     def __init__(
         self,
@@ -26,41 +28,18 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
         self.gamma = gamma
         self.hypothesis_temperature = hypothesis_temperature  # 1e-9
         self.hypothesis_num_samples = hypothesis_num_samples
-        self.hypothesis_embedding = self._get_hypothesis_embedding(inputs=inputs)
-        # print(f"ContrastiveLogitsProcessor alpha={alpha} gamma={gamma}")
+        self.batch_size, self.seq_length = inputs["input_ids"].shape
+        self.hypothesis_embedding = self._generate_hypotheses_and_embed(inputs=inputs)
 
     @property
     def device(self) -> torch.device:
         return next(self.model.parameters()).device
 
-    def _get_hypothesis_embedding(
-        self, inputs: Dict[str, torch.Tensor]
-    ) -> torch.Tensor:
-        batch_size, seq_length = inputs["embedder_input_ids"].shape
+    @property
+    def embedding_dim(self) -> int:
+        return self.hypothesis_embedding.shape[2]
 
-        if "decoder_input_ids" in inputs:
-            inputs.pop("decoder_input_ids")
-        if "decoder_attention_mask" in inputs:
-            inputs.pop("decoder_attention_mask")
-        
-        ## TEMP 1
-        # hns = self.hypothesis_num_samples
-        # self.hypothesis_num_samples = 1
-        ##
-
-
-        do_sample = self.hypothesis_temperature > 0
-        hypotheses = self.model.generate(
-            inputs=inputs,
-            generation_kwargs={
-                "max_length": seq_length,
-                "early_stopping": True,
-                "num_beams": (self.hypothesis_num_samples if not do_sample else 1),
-                "do_sample": do_sample,
-                "temperature": self.hypothesis_temperature,
-                "num_return_sequences": self.hypothesis_num_samples,
-            },
-        )
+    def _get_hypothesis_embeddings(self, hypotheses: torch.Tensor) -> torch.Tensor:
         eos_token_id = self.model.embedder_tokenizer.eos_token_id
         eos_tokens = (
             torch.ones((len(hypotheses), 1), dtype=torch.long, device=self.device)
@@ -75,36 +54,67 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
                 input_ids=hypotheses_with_eos,
                 attention_mask=hypothesis_attention_mask,
             )
-        ## TEMP 2
-        # self.hypothesis_num_samples = hns
-        # hypothesis_embedding = (
-        #    hypothesis_embedding[:, None]
-        #        .repeat((1, self.hypothesis_num_samples, 1))
-        #        .reshape((batch_size * self.hypothesis_num_samples, -1))
-        # )
-        ##
-
         return hypothesis_embedding
+
+    def _generate_hypotheses_and_embed(
+        self, inputs: Dict[str, torch.Tensor]
+    ) -> torch.Tensor:
+        if "decoder_input_ids" in inputs:
+            inputs.pop("decoder_input_ids")
+        if "decoder_attention_mask" in inputs:
+            inputs.pop("decoder_attention_mask")
+
+        do_sample = self.hypothesis_temperature > 0
+        hypotheses = self.model.generate(
+            inputs=inputs,
+            generation_kwargs={
+                "max_length": self.seq_length,
+                "early_stopping": True,
+                "num_beams": (self.hypothesis_num_samples if not do_sample else 1),
+                "do_sample": do_sample,
+                "temperature": self.hypothesis_temperature,
+                "num_return_sequences": self.hypothesis_num_samples,
+            },
+        )
+        hypothesis_embedding = self._get_hypothesis_embeddings(hypotheses=hypotheses)
+        hypothesis_embedding = hypothesis_embedding.reshape(
+            (self.batch_size, self.hypothesis_num_samples, -1)
+        )
+        return hypothesis_embedding
+
+    def update_hypotheses(self, hypotheses: torch.Tensor) -> None:
+        new_hypothesis_embedding = self._get_hypothesis_embeddings(
+            hypotheses=hypotheses
+        )
+        new_hypothesis_embedding = new_hypothesis_embedding.reshape(
+            (self.batch_size, -1, self.embedding_dim)
+        )
+        self.hypothesis_embedding = torch.cat(
+            (self.hypothesis_embedding, new_hypothesis_embedding), dim=1
+        )
 
     def __call__(
         self, input_ids: torch.LongTensor, next_token_logits: torch.FloatTensor
     ) -> torch.FloatTensor:
-        batch_size = round(
-            self.hypothesis_embedding.shape[0] / self.hypothesis_num_samples
-        )
+        (
+            batch_size,
+            num_hypothesis_embeddings,
+            embedding_dim,
+        ) = self.hypothesis_embedding.shape
         batch_size_times_beam_width = input_ids.shape[0]
         assert batch_size_times_beam_width % batch_size == 0
         beam_width = int(batch_size_times_beam_width / batch_size)
 
         hypothesis_embedding = (
             self.hypothesis_embedding[:, None, :]
+            .reshape((batch_size, -1, self.embedding_dim))
             .repeat((1, beam_width, 1))
-            .reshape((batch_size * self.hypothesis_num_samples * beam_width, -1))
+            .reshape((batch_size * num_hypothesis_embeddings * beam_width, -1))
         )
         input_ids = (
             input_ids.reshape((batch_size, beam_width, -1))
-            .repeat((1, self.hypothesis_num_samples, 1))
-            .reshape((batch_size * self.hypothesis_num_samples * beam_width, -1))
+            .repeat((1, num_hypothesis_embeddings, 1))
+            .reshape((batch_size * num_hypothesis_embeddings * beam_width, -1))
         )
         with torch.no_grad():
             bad_outputs = self.model(
@@ -116,15 +126,9 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
         bad_token_logits = bad_outputs.logits[:, -1] * self.gamma
         bad_token_logits = (
             bad_token_logits.reshape(
-                (batch_size, self.hypothesis_num_samples, beam_width, -1)
-            )
-            .log_softmax(dim=3)
-            # .exp()
-            # .sum(dim=1)
-            # .log()
-            #  .mean(dim=1)
+                (batch_size, num_hypothesis_embeddings, beam_width, -1)
+            ).log_softmax(dim=3)
             .logsumexp(dim=1)
-            # .sum(dim=1)
             .reshape((batch_size * beam_width, -1))
         )
         #

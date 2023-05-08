@@ -21,6 +21,7 @@ class InversionTrainer(BaseTrainer):
 
         # todo move generation strategy into model?
         self.generation_strategy = "none"  # contrastive, none
+        self.contrastive_generation_num_rounds = 1
         self.contrastive_generation_alpha = 1.0
         self.contrastive_generation_gamma = 0.1
         self.contrastive_generation_hypothesis_temperature = 0
@@ -58,7 +59,15 @@ class InversionTrainer(BaseTrainer):
         # and mess with the softmax output
         generation_kwargs["renormalize_logits"] = True
 
-        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
+        for round_ in range(self.contrastive_generation_num_rounds):
+            generations = self.model.generate(
+                inputs=inputs, generation_kwargs=generation_kwargs
+            )
+            if round_ + 1 < self.contrastive_generation_num_rounds:
+                contrastive_logits_processor.update_hypotheses(
+                    hypotheses=generations,
+                )
+        return generations
 
     def _randomly_truncate_inputs(
         self, inputs: Dict[str, torch.Tensor]
