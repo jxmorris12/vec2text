@@ -23,6 +23,8 @@ class InversionTrainer(BaseTrainer):
         self.generation_strategy = "none"  # contrastive, none
         self.contrastive_generation_alpha = 1.0
         self.contrastive_generation_gamma = 0.1
+        self.contrastive_generation_hypothesis_temperature = 1e-10  # basically 0
+        self.contrastive_generation_hypothesis_num_samples = 1
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         if self.generation_strategy == "contrastive":
@@ -34,27 +36,29 @@ class InversionTrainer(BaseTrainer):
                 inputs=inputs, generation_kwargs=generation_kwargs
             )
 
-    def generate_contrastive(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
+    def generate_contrastive(
+        self, inputs: Dict, generation_kwargs: Dict
+    ) -> torch.Tensor:
         # TODO consider moving this method into the InversionTrainer– better separation of concerns?
         #
         contrastive_logits_processor = ContrastiveLogitsProcessor(
             model=self.model,
-            inputs=inputs,
             alpha=self.contrastive_generation_alpha,
             gamma=self.contrastive_generation_gamma,
+            hypothesis_temperature=self.contrastive_generation_hypothesis_temperature,
+            hypothesis_num_samples=self.contrastive_generation_hypothesis_num_samples,
+            inputs=inputs,
         )
         generation_kwargs["logits_processor"] = transformers.LogitsProcessorList(
             [
                 contrastive_logits_processor,
             ]
         )
-        # The following line tells HuggingFace that we will do log_softmax()
-        # ourselves
-        generation_kwargs["renormalize_logits"] = False
-        
-        return self.model.generate(
-            inputs=inputs, generation_kwargs=generation_kwargs
-        )
+        # The following line tells HuggingFace to renormalize, since we apply a mask
+        # and mess with the softmax output
+        generation_kwargs["renormalize_logits"] = True
+
+        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
     def _randomly_truncate_inputs(
         self, inputs: Dict[str, torch.Tensor]

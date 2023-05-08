@@ -309,7 +309,7 @@ class InversionModel(nn.Module):
             generation_kwargs["max_length"] = inputs.get(
                 "input_ids", inputs["embedder_input_ids"]
             ).shape[1]
-        print("generation_kwargs:", generation_kwargs)
+        # print("generation_kwargs:", generation_kwargs)
 
         inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=inputs["embedder_input_ids"],

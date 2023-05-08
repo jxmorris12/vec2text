@@ -37,7 +37,7 @@ class RerankingTrainer(BaseTrainer):
         self.reranking_method = "model"  # reranking with model (self) or embedder, or generate_before_embedder
         self.gen_kwargs = {
             "do_sample": False,
-            "no_repeat_ngram_size": 3,
+            "no_repeat_ngram_size": 0,
         }
         # TODO support gc
         # Need to train with same device as the inversion model to avoid weird errors.
@@ -83,7 +83,7 @@ class RerankingTrainer(BaseTrainer):
         # TODO properly handle decoder_attention_mask everywhere.
         # TODO properly handle min_length (don't force max length).
         with torch.no_grad():
-            generated_text_ids = self.inversion_trainer.model.generate(
+            generated_text_ids = self.inversion_trainer.generate(
                 inputs={
                     "decoder_input_ids": prefix_input_ids,
                     "decoder_attention_mask": prefix_attention_mask,
@@ -98,7 +98,7 @@ class RerankingTrainer(BaseTrainer):
                     "max_length": full_length + 1,
                     "early_stopping": False,
                     "do_sample": False,
-                    "no_repeat_ngram_size": 3,
+                    "no_repeat_ngram_size": 0,
                     "num_beams": B,
                     "num_return_sequences": B,
                 },
@@ -196,7 +196,7 @@ class RerankingTrainer(BaseTrainer):
             )
             # generate hypotheses
             attention_mask = torch.ones_like(all_inputs, device=self.args.device)
-            hypotheses = self.inversion_trainer.model.generate(
+            hypotheses = self.inversion_trainer.generate(
                 inputs={
                     "embedder_input_ids": inputs["embedder_input_ids"],
                     "embedder_attention_mask": inputs["embedder_attention_mask"],
@@ -236,7 +236,7 @@ class RerankingTrainer(BaseTrainer):
                     .repeat((1, B, 1))
                     .reshape(batch_size * B, -1)
                 )
-                finished_hypotheses = self.inversion_trainer.model.generate(
+                finished_hypotheses = self.inversion_trainer.generate(
                     inputs={
                         "embedder_input_ids": repeated_embedder_input_ids,
                         "embedder_attention_mask": repeated_embedder_attention_mask,
@@ -248,7 +248,7 @@ class RerankingTrainer(BaseTrainer):
                         "early_stopping": False,
                         "num_beams": 1,
                         "do_sample": False,
-                        "no_repeat_ngram_size": 3,
+                        "no_repeat_ngram_size": 0,
                     },
                 )
                 finished_hypothesis_attention_mask = torch.ones_like(
