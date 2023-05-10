@@ -10,7 +10,7 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
     model: InversionModel
     alpha: float
     gamma: float
-    beta:  float
+    beta: float
     batch_size: int
     seq_length: int
     hypothesis_embedding: torch.Tensor  # shape [batch_size, num_hypothesis_embeddings, emb_d]
@@ -20,7 +20,7 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
         model: InversionModel,
         alpha: float,
         gamma: float,
-        beta:  float,
+        beta: float,
         hypothesis_temperature: float,
         hypothesis_num_samples: int,
         inputs: Dict[str, torch.Tensor],
@@ -131,9 +131,9 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
             bad_token_logits.reshape(
                 (batch_size, num_hypothesis_embeddings, beam_width, -1)
             )
-                .log_softmax(dim=3)
-                .logsumexp(dim=1)
-                .reshape((batch_size * beam_width, -1))
+            .log_softmax(dim=3)
+            .logsumexp(dim=1)
+            .reshape((batch_size * beam_width, -1))
         )
         #
         next_token_logits = next_token_logits.log_softmax(1)

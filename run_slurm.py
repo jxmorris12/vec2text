@@ -33,9 +33,9 @@ python run.py \
 
 models = [
     # 't5-small',
-    "t5-base",
+    # "t5-base",
     # 't5-large',
-    # 't5-3b',
+    "t5-3b",
     # "t5-11b",
 ]
 
@@ -59,11 +59,11 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar19-random'
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
-exp_group_name = "may3-baselines"
+exp_group_name = "may9-baselines-2"
 ##########################################
 
-batch_size = 512
-# batch_size = 32
+# batch_size = 512
+batch_size = 32
 
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
 # max_seq_length = [8, 32, 128]
@@ -72,7 +72,7 @@ max_seq_length = [32]
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
 
-learning_rates = [2e-3]
+learning_rates = [2e-4]
 
 num_repeat_tokens = [16]
 
@@ -107,7 +107,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "cpus-per-task": 4,
                 "mem": "48G",
                 # "time": "72:00:00",
-                "time": "336:00:00",
+                "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[
                 "requeue",

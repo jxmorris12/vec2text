@@ -3,6 +3,7 @@ import hashlib
 import json
 import logging
 import os
+import resource
 import sys
 from typing import Dict, Optional, Tuple
 
@@ -16,6 +17,7 @@ from collator import CustomCollator
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     InversionModel,
+    InversionModelNonAutoregressive,
     JointEmbeddingTextEncoder,
     PrefixReranker,
     load_embedder_and_tokenizer,
@@ -221,6 +223,16 @@ class Experiment(abc.ABC):
                 },
                 allow_val_change=True,
             )
+            # Long-running experiments have been killed because wandb
+            # runs out of file descriptors to write summary files
+            # to. Very silly error, but seems unfixed:
+            # https://github.com/wandb/wandb/issues/2825
+            #
+            # Anyway, this line of code should (hopefully) set the
+            # limit to infinity so this can't happen.
+            resource.setrlimit(
+                resource.RLIMIT_CORE, (resource.RLIM_INFINITY, resource.RLIM_INFINITY)
+            )
         else:
             # Disable W&B
             pass
@@ -392,6 +404,52 @@ class InversionExperiment(Experiment):
         )
 
 
+class InversionExperimentNonAutoregressive(Experiment):
+    @property
+    def _wandb_project_name(self) -> str:
+        return "emb-inv-na-1"
+
+    def load_model(self) -> torch.nn.Module:
+        model_args = self.model_args
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            padding=True,
+            truncation="max_length",
+            max_length=model_args.max_seq_length,
+        )
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=model_args.embedder_model_name
+        )
+        encoder = transformers.AutoModel.from_pretrained(
+            model_args.model_name_or_path,
+        ).encoder
+        return InversionModelNonAutoregressive(
+            embedder=embedder,
+            encoder=encoder,
+            embedder_tokenizer=embedder_tokenizer,
+            tokenizer=tokenizer,
+        )
+
+    def load_trainer(self) -> transformers.Trainer:
+        model = self.load_model()
+        train_dataset, eval_dataset = self.load_train_and_val_datasets(
+            tokenizer=model.tokenizer,
+            embedder_tokenizer=model.embedder_tokenizer,
+        )
+        n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
+        logger.info(
+            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
+        )
+        return trainers.InversionTrainerNonAutoregressive(
+            model=model,
+            args=self.training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            # tokenizer=model.tokenizer,
+            data_collator=CustomCollator(tokenizer=model.tokenizer),
+        )
+
+
 class RerankingExperiment(Experiment):
     @property
     def _wandb_project_name(self) -> str:
@@ -439,6 +497,8 @@ EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "reranking": RerankingExperiment,
     "corrector": CorrectorExperiment,
+    #
+    "inversion_na": InversionExperimentNonAutoregressive,
 }
 
 

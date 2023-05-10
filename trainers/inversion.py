@@ -46,7 +46,7 @@ class InversionTrainer(BaseTrainer):
         contrastive_logits_processor = ContrastiveLogitsProcessor(
             model=self.model,
             alpha=self.contrastive_generation_alpha,
-            beta=self.contrastive_generation_beta, 
+            beta=self.contrastive_generation_beta,
             gamma=self.contrastive_generation_gamma,
             hypothesis_temperature=self.contrastive_generation_hypothesis_temperature,
             hypothesis_num_samples=self.contrastive_generation_hypothesis_num_samples,

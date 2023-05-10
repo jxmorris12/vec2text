@@ -1,4 +1,5 @@
 from .inversion import InversionModel  # noqa: F401
+from .inversion_na import InversionModelNonAutoregressive  # noqa: F401
 from .joint_embedding_text_encoder import JointEmbeddingTextEncoder  # noqa: F401
 from .model_utils import (  # noqa: F401
     EMBEDDING_TRANSFORM_STRATEGIES,

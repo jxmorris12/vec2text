@@ -20,7 +20,7 @@ MODEL_NAMES = [
 
 
 FREEZE_STRATEGIES = ["decoder", "encoder_and_decoder", "encoder", "none"]
-EMBEDDING_TRANSFORM_STRATEGIES = ["repeat", "nearest_neighbors"]
+EMBEDDING_TRANSFORM_STRATEGIES = ["repeat"]
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
