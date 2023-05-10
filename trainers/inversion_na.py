@@ -1,12 +1,9 @@
 import math
-import random
 from typing import Dict
 
 import torch
-import torch.nn as nn
 import transformers
 
-from models.logits_processors import ContrastiveLogitsProcessor
 from trainers.base import BaseTrainer
 
 
@@ -17,9 +14,7 @@ class InversionTrainerNonAutoregressive(BaseTrainer):
         self.call_embedding_model = self.model.call_embedding_model
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        return self.model.generate(
-            inputs=inputs, generation_kwargs=generation_kwargs
-        )
+        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
     def evaluation_loop(
         self, *args, **kwargs
