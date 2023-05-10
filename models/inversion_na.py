@@ -51,7 +51,7 @@ class InversionModelNonAutoregressive(nn.Module):
     ) -> torch.Tensor:
         # TODO respect generation kwargs.
         with torch.no_grad():
-            logits = self.masked_lm_logits(**inputs)
+            logits = self.forward(**inputs)["logits"]
         # TODO implement different generation strategies
 
         return logits.argmax(dim=2)
@@ -64,9 +64,6 @@ class InversionModelNonAutoregressive(nn.Module):
         outputs = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
         hidden_state = outputs.last_hidden_state
         embeddings = mean_pool(hidden_state, attention_mask)
-        import pdb
-
-        pdb.set_trace()
         return embeddings
 
     def masked_lm_logits(
@@ -87,14 +84,9 @@ class InversionModelNonAutoregressive(nn.Module):
 
     def masked_lm_loss(
         self,
-        inputs_embeds: torch.Tensor,
-        attention_mask: torch.Tensor,
+        logits: torch.Tensor,
         labels: torch.Tensor,
     ) -> torch.Tensor:
-        logits = self.masked_lm_logits(
-            inputs_embeds=inputs_embeds,
-            attention_mask=attention_mask,
-        )
         batch_size, seq_length, v = logits.shape
         logits = logits.reshape((batch_size * seq_length, v))
         labels = labels.reshape((batch_size * seq_length,))
@@ -105,7 +97,7 @@ class InversionModelNonAutoregressive(nn.Module):
         self,
         embedder_input_ids: torch.Tensor,
         embedder_attention_mask: torch.Tensor,
-        labels: Optional[torch.Tensor] = None,
+        labels: torch.Tensor = None,
         frozen_embeddings: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
@@ -121,23 +113,31 @@ class InversionModelNonAutoregressive(nn.Module):
         embedding = self.in_projection(embedding)
         # TODO: check that it's ok if we make every token '<unk>'.
         input_ids = self.tokenizer.unk_token_id * torch.ones_like(
-            labels, device=labels.device
+            embedder_input_ids, device=embedder_input_ids.device
         )
         inputs_embeds = self.encoder.embed_tokens(input_ids)
         # TODO: support & ablate concatenation methods.
         inputs_embeds = torch.cat((embedding[:, None, :], inputs_embeds), dim=1)
-        labels = torch.cat(
-            (
-                -100
-                * torch.ones((batch_size, 1), dtype=labels.dtype, device=labels.device),
-                labels,
-            ),
-            dim=1,
-        )
-        attention_mask = torch.ones_like(labels, device=labels.device)
-        loss = self.masked_lm_loss(
+        attention_mask = torch.ones(inputs_embeds.shape[0:2], device=inputs_embeds.device)
+        logits = self.masked_lm_logits(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            labels=labels,
         )
-        return {"loss": loss}  # hf trainer output format
+        outputs = {"logits": logits[:, 1:]}  # hf trainer output format
+        if labels is not None:
+            labels = torch.cat(
+                (
+                    -100
+                    * torch.ones(
+                        (batch_size, 1), dtype=labels.dtype, device=labels.device
+                    ),
+                    labels,
+                ),
+                dim=1,
+            )
+            loss = self.masked_lm_loss(
+                logits=logits,
+                labels=labels,
+            )
+            outputs["loss"] = loss
+        return outputs
