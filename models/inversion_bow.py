@@ -55,7 +55,7 @@ class InversionModelBagOfWords(nn.Module):
         # TODO implement different generation strategies
 
         max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
-
+        # Take top 32
         return logits.topk(max_length, dim=1).indices
 
     def call_embedding_model(
@@ -129,7 +129,7 @@ class InversionModelBagOfWords(nn.Module):
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
         )
-        outputs = {"logits": logits[:, 1:]}  # hf trainer output format
+        outputs = {"logits": logits}  # hf trainer output format
         if labels is not None:
             labels = torch.cat(
                 (

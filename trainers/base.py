@@ -251,7 +251,7 @@ class BaseTrainer(transformers.Trainer):
             )
             labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels,
-                attention_mask=(preds_sample_labels != pad_token_id),
+                attention_mask=torch.ones_like(preds_sample_labels),
             )
             emb_cos_sim = (
                 torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()
