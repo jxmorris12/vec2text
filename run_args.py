@@ -251,7 +251,13 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={
             "required": False,
             "help": "Which experiment to run (defines model, loss func, dataset...) ",
-            "choices": ["inversion", "inversion_na", "reranking", "corrector"],
+            "choices": [
+                "inversion",
+                "inversion_bow",
+                "inversion_na",
+                "reranking",
+                "corrector",
+            ],
         },
     )
     exp_name: str = field(

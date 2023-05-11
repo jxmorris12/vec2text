@@ -33,6 +33,6 @@ class InversionTrainerNonAutoregressive(BaseTrainer):
             perplexity = math.exp(output.metrics[f"{metric_key_prefix}_loss"])
         except OverflowError:
             perplexity = float("inf")
-        output.metrics["eval_perplexity"] = perplexity
+        output.metrics[f"{metric_key_prefix}_perplexity"] = perplexity
 
         return output

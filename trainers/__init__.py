@@ -6,5 +6,6 @@
 # See link: stackoverflow.com/questions/31079047
 from .corrector import CorrectorTrainer  # noqa: F401
 from .inversion import InversionTrainer  # noqa: F401
+from .inversion_bow import InversionTrainerBagOfWords  # noqa: F401
 from .inversion_na import InversionTrainerNonAutoregressive  # noqa: F401
 from .reranking import RerankingTrainer  # noqa: F401

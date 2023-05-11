@@ -118,7 +118,9 @@ class InversionModelNonAutoregressive(nn.Module):
         inputs_embeds = self.encoder.embed_tokens(input_ids)
         # TODO: support & ablate concatenation methods.
         inputs_embeds = torch.cat((embedding[:, None, :], inputs_embeds), dim=1)
-        attention_mask = torch.ones(inputs_embeds.shape[0:2], device=inputs_embeds.device)
+        attention_mask = torch.ones(
+            inputs_embeds.shape[0:2], device=inputs_embeds.device
+        )
         logits = self.masked_lm_logits(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

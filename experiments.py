@@ -17,6 +17,7 @@ from collator import CustomCollator
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     InversionModel,
+    InversionModelBagOfWords,
     InversionModelNonAutoregressive,
     JointEmbeddingTextEncoder,
     PrefixReranker,
@@ -450,6 +451,52 @@ class InversionExperimentNonAutoregressive(Experiment):
         )
 
 
+class InversionExperimentBagOfWords(Experiment):
+    @property
+    def _wandb_project_name(self) -> str:
+        return "emb-inv-bow-1"
+
+    def load_model(self) -> torch.nn.Module:
+        model_args = self.model_args
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            model_args.model_name_or_path,
+            padding=True,
+            truncation="max_length",
+            max_length=model_args.max_seq_length,
+        )
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=model_args.embedder_model_name
+        )
+        encoder = transformers.AutoModel.from_pretrained(
+            model_args.model_name_or_path,
+        ).encoder
+        return InversionModelBagOfWords(
+            embedder=embedder,
+            encoder=encoder,
+            embedder_tokenizer=embedder_tokenizer,
+            tokenizer=tokenizer,
+        )
+
+    def load_trainer(self) -> transformers.Trainer:
+        model = self.load_model()
+        train_dataset, eval_dataset = self.load_train_and_val_datasets(
+            tokenizer=model.tokenizer,
+            embedder_tokenizer=model.embedder_tokenizer,
+        )
+        n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
+        logger.info(
+            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
+        )
+        return trainers.InversionTrainerBagOfWords(
+            model=model,
+            args=self.training_args,
+            train_dataset=train_dataset,
+            eval_dataset=eval_dataset,
+            # tokenizer=model.tokenizer,
+            data_collator=CustomCollator(tokenizer=model.tokenizer),
+        )
+
+
 class RerankingExperiment(Experiment):
     @property
     def _wandb_project_name(self) -> str:
@@ -498,6 +545,7 @@ EXPERIMENT_CLS_MAP = {
     "reranking": RerankingExperiment,
     "corrector": CorrectorExperiment,
     #
+    "inversion_bow": InversionExperimentBagOfWords,
     "inversion_na": InversionExperimentNonAutoregressive,
 }
 
