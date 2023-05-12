@@ -198,8 +198,8 @@ class DataArguments:
             )
         },
     )
-    use_less_data: bool = field(
-        default=False,
+    use_less_data: Optional[int] = field(
+        default=None,
         metadata={
             "help": {"Use a small amount of the training/eval data (for testing)"}
         },

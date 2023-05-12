@@ -4,6 +4,7 @@ from datetime import datetime
 from slurmpy import Slurm
 
 BASE_PYTHON_CMD = """
+PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024 \
 python run.py \
 --experiment inversion \
 --per_device_train_batch_size {batch_size} \
@@ -21,21 +22,23 @@ python run.py \
 --use_frozen_embeddings_as_input False \
 --encoder_dropout_disabled False \
 --decoder_dropout_disabled False \
---use_less_data 0 \
---num_train_epochs 100 \
+--use_less_data {use_less_data} \
+--num_train_epochs 10000 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
---warmup_steps 100000 \
+--warmup_steps 0 \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1
 """
+# --resume_from_checkpoint "saves/f1fe315f3727514ba39bcc4376d56307/checkpoint-160000"
+ 
 
 models = [
     # 't5-small',
-    # "t5-base",
+    "t5-base",
     # 't5-large',
-    "t5-3b",
+    # "t5-3b",
     # "t5-11b",
 ]
 
@@ -59,8 +62,10 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar19-random'
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
-exp_group_name = "may9-baselines-2"
+exp_group_name = "may11-mem-test-2"
 ##########################################
+
+use_less_data = [10, 1000, 100_000] # [None]
 
 # batch_size = 512
 batch_size = 32
@@ -72,7 +77,7 @@ max_seq_length = [32]
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
 
-learning_rates = [2e-4]
+learning_rates = [1e-4]
 
 num_repeat_tokens = [16]
 
@@ -106,8 +111,9 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
+                "time": "24:00:00",
                 # "time": "72:00:00",
-                "time": "504:00:00",  # 504 hours --> 3 weeks
+                # "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[
                 "requeue",
@@ -127,6 +133,7 @@ for args in itertools.product(
     models,
     emb_models,
     learning_rates,
+    use_less_data,
     num_repeat_tokens,
     max_seq_length,
     embedder_no_grad,
@@ -134,7 +141,7 @@ for args in itertools.product(
     fake_embedding_with_zeros,
     do_truncation,
 ):
-    m, e, lr, n, msl, eng, frs, emb_fake, truncate = args
+    m, e, lr, uld, n, msl, eng, frs, emb_fake, truncate = args
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         batch_size=batch_size,
@@ -147,6 +154,8 @@ for args in itertools.product(
         #
         embedder_no_grad=eng,
         embedder_fake_with_zeros=emb_fake,
+        # 
+        use_less_data=uld,
         #
         exp_group_name=exp_group_name,
         freeze_strategy=frs,

@@ -31,6 +31,8 @@ class InversionTrainerNonAutoregressive(BaseTrainer):
         metric_key_prefix = kwargs["metric_key_prefix"]
         try:
             perplexity = math.exp(output.metrics[f"{metric_key_prefix}_loss"])
+        except KeyError:
+            perplexity = -1
         except OverflowError:
             perplexity = float("inf")
         output.metrics[f"{metric_key_prefix}_perplexity"] = perplexity

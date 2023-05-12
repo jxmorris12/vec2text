@@ -77,7 +77,6 @@ def whiten_embedded_dataset(dataset_dict: datasets.DatasetDict) -> datasets.Data
     for key in dataset_dict:
         dataset = dataset_dict[key]
         print(f"whitening split – {key} (len {len(dataset)})")
-        # import pdb; pdb.set_trace()
         embeddings = torch.tensor(dataset["frozen_embeddings"])
         whitened_embeddings = whiten_embeddings_torch(embeddings=embeddings)
         whitened_embeddings = whitened_embeddings.cpu().tolist()

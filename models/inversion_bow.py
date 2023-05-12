@@ -55,7 +55,7 @@ class InversionModelBagOfWords(nn.Module):
         # TODO implement different generation strategies
 
         max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
-        # Take top 32
+        # Take top `seq_length` tokens
         return logits.topk(max_length, dim=1).indices
 
     def call_embedding_model(

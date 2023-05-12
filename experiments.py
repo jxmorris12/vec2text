@@ -101,6 +101,7 @@ class Experiment(abc.ABC):
 
         # Checkpointing logic
         checkpoint = self._get_checkpoint()
+        logging.info("Experiment::train() loaded checkpoint %s", checkpoint)
         trainer = self.load_trainer()
 
         # Save model_args and data_args before training. Trainer will save training_args.
@@ -305,7 +306,7 @@ class Experiment(abc.ABC):
         if data_args.use_less_data:
             for key in tokenized_datasets:
                 d = tokenized_datasets[key]
-                new_length = max(256, int(len(d) * 0.01))
+                new_length = data_args.use_less_data
                 tokenized_datasets[key] = tokenized_datasets[key].select(
                     range(new_length)
                 )
