@@ -63,10 +63,7 @@ class InversionModel(nn.Module):
         encoder_decoder_lora: bool = False,
         embedding_transform_strategy: str = "repeat",
         bottleneck_dim: int = 768,  # 128,
-        token_decode_alpha: Optional[float] = None,
         embedder_decode_score: bool = False,
-        embedding_decode_score_lambda_val: float = 0.5,
-        embedding_decode_score_topk: int = 8,
         embeddings_from_layer_n: Optional[int] = None,
     ):
         super().__init__()
@@ -111,6 +108,12 @@ class InversionModel(nn.Module):
             nn.GELU(),  # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens),
         )
+        self.num_prefix_tokens = num_repeat_tokens
+        self.embedding_transform_kv = nn.Sequential(
+            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.GELU(),  # TODO consider dropout or normalization here.
+            nn.Linear(bottleneck_dim, encoder_hidden_dim * self.num_prefix_tokens * 4 * self.encoder_decoder.config.num_layers),
+        )
         if encoder_dropout_disabled:
             disable_dropout(self.encoder_decoder.encoder)
         if decoder_dropout_disabled:
@@ -123,15 +126,6 @@ class InversionModel(nn.Module):
         self.embedder_fake_with_zeros = embedder_fake_with_zeros
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
         self.embedding_transform_strategy = "repeat"  # "none" # "repeat"
-        self.token_decode_alpha = token_decode_alpha
-        if token_decode_alpha is not None:
-            assert embedder_tokenizer is not None
-            self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
-        else:
-            self.embedded_tokens = None
-        self.embedder_decode_score = embedder_decode_score
-        self.embedding_decode_score_lambda_val = embedding_decode_score_lambda_val
-        self.embedding_decode_score_topk = embedding_decode_score_topk
         self.embeddings_from_layer_n = embeddings_from_layer_n
 
     def precompute_whitening_params(self, train_dataloader):
@@ -228,7 +222,6 @@ class InversionModel(nn.Module):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
 
         if self.embedder_fake_with_zeros:
@@ -265,20 +258,19 @@ class InversionModel(nn.Module):
             assert (
                 frozen_embeddings is not None
             ), "specified to train on frozen embeddings but none were provided"
-            embeddings = frozen_embeddings
-            assert len(embeddings.shape) == 2  # batch by d
+            assert len(frozen_embeddings.shape) == 2  # batch by d
         elif self.embedder_no_grad:
             with torch.no_grad():
-                embeddings = self.call_embedding_model(
+                frozen_embeddings = self.call_embedding_model(
                     input_ids=embedder_input_ids,
                     attention_mask=embedder_attention_mask,
                 )
         else:
-            embeddings = self.call_embedding_model(
+            frozen_embeddings = self.call_embedding_model(
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        embeddings = self.consider_whitening(embeddings)
+        embeddings = self.consider_whitening(frozen_embeddings)
 
         if self.embedding_transform_strategy == "none":
             pass
@@ -294,10 +286,22 @@ class InversionModel(nn.Module):
             raise ValueError(
                 f"unknown embedding transformation strategy {self.embedding_transform_strategy}"
             )
+        ############################################################################
         attention_mask = torch.ones(
             (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
         )
-        return embeddings, attention_mask
+        ############################################################################
+        past_key_values = self.embedding_transform_kv(
+            frozen_embeddings
+        )
+        # Need to split up for past_key_values to work properly.
+        num_heads = self.encoder_decoder.config.num_attention_heads
+        past_key_values = past_key_values.reshape((
+            batch_size, self.num_prefix_tokens, self.encoder_decoder.config.num_layers * 4, num_heads, self.encoder_decoder.config.hidden_size // num_heads
+        ))
+        # Need to put batch size second.
+        past_key_values = past_key_values.permute([2, 0, 3, 1, 4]).split(4)
+        return (embeddings, attention_mask), past_key_values
 
     def generate(
         self,
@@ -311,7 +315,7 @@ class InversionModel(nn.Module):
             ).shape[1]
         # print("generation_kwargs:", generation_kwargs)
 
-        inputs_embeds, attention_mask = self.embed_and_project(
+        (inputs_embeds, attention_mask), past_key_values = self.embed_and_project(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
             frozen_embeddings=inputs.get("frozen_embeddings"),
@@ -321,6 +325,7 @@ class InversionModel(nn.Module):
                 # required: input embeddings
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
+            past_key_values=past_key_values,
                 # optional: input IDs (for starting generation).
                 # typically not set unless generating prefixes for
                 # reranking.
@@ -350,13 +355,14 @@ class InversionModel(nn.Module):
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask, embedder_token_type_ids
-        inputs_embeds, attention_mask = self.embed_and_project(
+        (inputs_embeds, attention_mask), past_key_values = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,
             embedder_attention_mask=embedder_attention_mask,
             frozen_embeddings=frozen_embeddings,
         )
         # print("decoder_input_ids:", decoder_input_ids)
         return self.encoder_decoder(
+            past_key_values=past_key_values,
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             labels=labels,

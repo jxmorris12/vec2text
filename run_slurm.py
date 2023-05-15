@@ -26,7 +26,7 @@ python run.py \
 --num_train_epochs 10000 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
---warmup_steps 0 \
+--warmup_steps 100000 \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1
@@ -62,13 +62,14 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar19-random'
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
-exp_group_name = "may11-mem-test-2"
+exp_group_name = "may14-ptune-3"
 ##########################################
 
-use_less_data = [10, 1000, 100_000] # [None]
+use_less_data = [-1] # [1000]
 
 # batch_size = 512
-batch_size = 32
+batch_size = 256
+# batch_size = 32
 
 # max_seq_length = [1+1, 4+1, 8+1, 64+1]
 # max_seq_length = [8, 32, 128]
@@ -77,7 +78,7 @@ max_seq_length = [32]
 embedder_no_grad = [True]
 # embedder_no_grad = [True, False]
 
-learning_rates = [1e-4]
+learning_rates = [1e-3]
 
 num_repeat_tokens = [16]
 
@@ -111,8 +112,10 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                "time": "24:00:00",
+                # "time": "24:00:00",
                 # "time": "72:00:00",
+                "time": "168:00:00",  # 168 hours --> 1 week
+                # "time": "336:00:00",  # 336 hours --> 2 weeks
                 # "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[

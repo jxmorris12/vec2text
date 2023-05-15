@@ -145,7 +145,7 @@ class Experiment(abc.ABC):
         last_checkpoint = None
         if (
             os.path.isdir(training_args.output_dir)
-            # and not training_args.overwrite_output_dir
+            and not training_args.overwrite_output_dir
         ):
             last_checkpoint = transformers.trainer_utils.get_last_checkpoint(
                 training_args.output_dir
@@ -303,7 +303,7 @@ class Experiment(abc.ABC):
                 )
 
         # this argument allows us to *train* on less data (1% of our training set).
-        if data_args.use_less_data:
+        if (data_args.use_less_data) and (data_args.use_less_data > 0):
             for key in tokenized_datasets:
                 d = tokenized_datasets[key]
                 new_length = data_args.use_less_data
