@@ -1,4 +1,5 @@
 import copy
+import math
 import random
 import statistics
 from typing import Dict, List, Tuple
@@ -162,24 +163,63 @@ class BaseTrainer(transformers.Trainer):
         return {**accuracy_result}
 
     def _text_comparison_metrics(
-        self, predictions: List[str], references: List[str]
+        self,
+        predictions_ids: List[List[int]],
+        predictions_str: List[str],
+        references_ids: List[List[int]],
+        references_str: List[str],
     ) -> Dict[str, float]:
-        assert len(predictions) == len(references)
-        if not len(predictions):
+        assert len(predictions_ids) == len(references_ids)
+        assert len(predictions_ids) == len(predictions_str)
+        assert len(predictions_str) == len(references_str)
+        num_preds = len(predictions_ids)
+        if not num_preds:
             return {}
+        
+        ###########################################################
+        # TODO: Optimize this code
+        precision_sum = 0.0
+        recall_sum = 0.0
+        f1_sum = 0.0
+        for i in range(num_preds):
+            true_words = set(references_ids[i]) - {0, 1, -100}
+            pred_words = set(predictions_ids[i]) - {0, 1, -100}
+
+            TP = len(true_words & pred_words)
+            FP = len(true_words) - len(true_words & pred_words)
+            FN = len(pred_words) - len(true_words & pred_words)
+
+            precision = (TP) / (TP + FP)
+            recall    = (TP) / (TP + FN)
+            
+            try:
+                f1 = (2 * precision * recall) / (precision + recall)
+            except ZeroDivisionError:
+                f1 = 0.0
+
+            precision_sum += precision
+            recall_sum += recall
+            f1_sum += f1
+
+        set_token_metrics = {
+            "token_set_precision": (precision_sum / num_preds),
+            "token_set_recall":    (recall_sum / num_preds),
+            "token_set_f1":        (f1_sum / num_preds),
+        }
+        ############################################################
         bleu_result = self.metric_bleu.compute(
-            predictions=predictions, references=references
+            predictions=predictions_str, references=references_str
         )
         meteor_result = self.metric_meteor.compute(
-            predictions=predictions, references=references
+            predictions=predictions_str, references=references_str
         )
         rouge_result = self.metric_rouge.compute(
-            predictions=predictions, references=references
+            predictions=predictions_str, references=references_str
         )
         bertscore_result = self.metric_bertscore.compute(
-            predictions=predictions, references=references, lang="en"
+            predictions=predictions_str, references=references_str, lang="en"
         )
-        return {
+        gen_metrics = {
             "bleu_score": bleu_result["score"],
             "meteor_score": meteor_result["meteor"],
             "rouge_score": rouge_result[
@@ -187,6 +227,7 @@ class BaseTrainer(transformers.Trainer):
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
             "bert_score": statistics.fmean(bertscore_result["f1"]),
         }
+        return { **set_token_metrics, **gen_metrics }
 
     def eval_generation_metrics(self, dataloader: torch.utils.data.DataLoader) -> Dict:
         # Get decoded text. Note that this is different than `preds`, which
@@ -203,7 +244,10 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_labels_list, skip_special_tokens=True
         )
         bleu_result = self._text_comparison_metrics(
-            predictions=decoded_preds, references=decoded_labels
+            predictions_ids=preds_sample_list,
+            predictions_str=decoded_preds, 
+            references_ids=preds_sample_labels_list,
+            references_str=decoded_labels,
         )
         self._log_preds_table(
             table_key="val_text_preds",

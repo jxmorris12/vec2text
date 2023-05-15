@@ -50,11 +50,17 @@ class InversionModelNonAutoregressive(nn.Module):
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
         # TODO respect generation kwargs.
+        batch_size, max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape
+
         with torch.no_grad():
             logits = self.forward(**inputs)["logits"]
-        # TODO implement different generation strategies
 
-        return logits.argmax(dim=2)
+        # Take top-32 most likely tokens.
+        top_idxs = logits.log_softmax(-1).sum(1).topk(32, dim=1).indices
+        return top_idxs
+        # This would be greedy.
+        #  TODO implement different generation strategies
+        # return logits.argmax(dim=2)
 
     def call_embedding_model(
         self,
