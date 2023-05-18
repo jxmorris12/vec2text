@@ -8,14 +8,15 @@ import transformers
 
 class CorrectorModel(torch.nn.Module):
     """Embeds text and concats with a provided embedding.
-    
+
     TODO improve comment here.
     """
+
     # Encoder-decoder model we train to correct embedding hypotheses.
     encoder_decoder: transformers.PreTrainedModel
 
     def __init__(
-        self, 
+        self,
         encoder_decoder: transformers.PreTrainedModel,
         embedder_dim: int = 768,
         num_repeat_tokens: int = 16,
@@ -31,17 +32,18 @@ class CorrectorModel(torch.nn.Module):
             nn.GELU(),  # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
         )
-    
+
     def get_encoder_embedding(
-        self, 
+        self,
         embedding: torch.Tensor,
         hypothesis_embedding: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Embeds e, e', and (e-e') using `self.embedding_transform`."""
         batch_size, D = embedding.shape
         assert D == self.encoder_hidden_dim
         assert embedding.shape == (batch_size, D)
         assert hypothesis_embedding.shape == (batch_size, D)
-        diff_embedding = (embedding - hypothesis_embedding)
+        diff_embedding = embedding - hypothesis_embedding
         #
         embedding = self.embedding_transform(embedding)
         embedding = embedding.reshape((batch_size, self.num_repeat_tokens, D))
@@ -50,25 +52,39 @@ class CorrectorModel(torch.nn.Module):
         diff_embedding = diff_embedding.reshape((batch_size, self.num_repeat_tokens, D))
         #
         hypothesis_embedding = self.embedding_transform(hypothesis_embedding)
-        hypothesis_embedding = hypothesis_embedding.reshape((batch_size, self.num_repeat_tokens, D))
+        hypothesis_embedding = hypothesis_embedding.reshape(
+            (batch_size, self.num_repeat_tokens, D)
+        )
         #
         ones = torch.ones((batch_size, 1), dtype=torch.long, device=embedding.device)
-        # TODO: pad_token_id or eos_token_id? Or does it not matter?
         sep_token = ones * self.encoder_decoder.config.eos_token_id
         sep_token = self.encoder_decoder.encoder.embed_tokens(sep_token)
-        # TODO: support & ablate concatenation methods.
-        inputs_embeds = torch.cat((sep_token, embedding, sep_token, hypothesis_embedding, sep_token, diff_embedding), dim=1)
+        inputs_embeds = torch.cat(
+            (
+                sep_token,
+                embedding,
+                sep_token,
+                hypothesis_embedding,
+                sep_token,
+                diff_embedding,
+            ),
+            dim=1,
+        )
         attention_mask = ones.repeat((1, 3 * (1 + self.num_repeat_tokens)))
         return (inputs_embeds, attention_mask)
-    
-    def null_hypothesis_embedding(self, hypothesis_embedding: torch.Tensor) -> torch.Tensor:
-        return torch.zeros_like(hypothesis_embedding, device=hypothesis_embedding.device)
+
+    def null_hypothesis_embedding(
+        self, hypothesis_embedding: torch.Tensor
+    ) -> torch.Tensor:
+        return torch.zeros_like(
+            hypothesis_embedding, device=hypothesis_embedding.device
+        )
 
     def generate(
         self,
         inputs: Dict[str, torch.Tensor],
         generation_kwargs: Dict[str, torch.Tensor],
-        embed_generated_hypothesis_func: Callable[torch.Tensor, torch.Tensor],
+        embed_generated_hypothesis_func: Callable[[torch.Tensor], torch.Tensor],
     ) -> torch.Tensor:
         """Does two-step generation by generating a hypothesis and then a correction."""
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
@@ -77,9 +93,9 @@ class CorrectorModel(torch.nn.Module):
             generation_kwargs["min_length"] = generation_kwargs["max_length"]
 
         embedding = inputs["frozen_embeddings"]
-        # 
+        #
         # [1/2] Generate hypothesis.
-        # 
+        #
         initial_inputs_embeds, initial_attention_mask = self.get_encoder_embedding(
             embedding=embedding,
             hypothesis_embedding=self.null_hypothesis_embedding(embedding),
@@ -98,9 +114,9 @@ class CorrectorModel(torch.nn.Module):
             hypothesis_embedding=hypothesis_embedding,
         )
 
-        # 
+        #
         # [2/2] Given generated hypothesis & embedding, generate a correction.
-        # 
+        #
         # We want to generate starting from the hypothesis
         generation_kwargs["max_length"] += inputs["hypothesis_input_ids"].shape[1]
         # Force the model to generate all the tokens

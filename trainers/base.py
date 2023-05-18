@@ -1,5 +1,4 @@
 import copy
-import math
 import random
 import statistics
 from typing import Dict, List, Tuple
@@ -147,7 +146,7 @@ class BaseTrainer(transformers.Trainer):
 
         assert len(labels), "got empty labels for eval"
         assert torch.tensor(preds).shape == torch.tensor(labels).shape
-        
+
         # preds have the same shape as the labels.
         labels = labels.reshape(-1)
         preds = preds.reshape(-1)
@@ -170,7 +169,7 @@ class BaseTrainer(transformers.Trainer):
         num_preds = len(predictions_ids)
         if not num_preds:
             return {}
-        
+
         ###########################################################
         # TODO: Optimize this code
         precision_sum = 0.0
@@ -185,8 +184,8 @@ class BaseTrainer(transformers.Trainer):
             FN = len(pred_words) - len(true_words & pred_words)
 
             precision = (TP) / (TP + FP + 1e-20)
-            recall    = (TP) / (TP + FN + 1e-20)
-            
+            recall = (TP) / (TP + FN + 1e-20)
+
             try:
                 f1 = (2 * precision * recall) / (precision + recall + 1e-20)
             except ZeroDivisionError:
@@ -198,8 +197,8 @@ class BaseTrainer(transformers.Trainer):
 
         set_token_metrics = {
             "token_set_precision": (precision_sum / num_preds),
-            "token_set_recall":    (recall_sum / num_preds),
-            "token_set_f1":        (f1_sum / num_preds),
+            "token_set_recall": (recall_sum / num_preds),
+            "token_set_f1": (f1_sum / num_preds),
         }
         ############################################################
         bleu_result = self.metric_bleu.compute(
@@ -222,9 +221,11 @@ class BaseTrainer(transformers.Trainer):
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
             "bert_score": statistics.fmean(bertscore_result["f1"]),
         }
-        return { **set_token_metrics, **gen_metrics }
+        return {**set_token_metrics, **gen_metrics}
 
-    def eval_generation_metrics(self, dataloader: torch.utils.data.DataLoader) -> Dict[str, float]:
+    def eval_generation_metrics(
+        self, dataloader: torch.utils.data.DataLoader
+    ) -> Dict[str, float]:
         # Get decoded text. Note that this is different than `preds`, which
         # is used to compute the loss.
         preds_sample_list, preds_sample_labels_list = self._get_decoded_sequences(
@@ -240,7 +241,7 @@ class BaseTrainer(transformers.Trainer):
         )
         bleu_result = self._text_comparison_metrics(
             predictions_ids=preds_sample_list,
-            predictions_str=decoded_preds, 
+            predictions_str=decoded_preds,
             references_ids=preds_sample_labels_list,
             references_str=decoded_labels,
         )
@@ -252,14 +253,14 @@ class BaseTrainer(transformers.Trainer):
 
         if not len(decoded_preds):
             return {}
-        print('[pred]', decoded_preds[0])
-        print('[true]', decoded_labels[0])
+        print("[pred]", decoded_preds[0])
+        print("[true]", decoded_labels[0])
         print("\n\n")
-        print('[pred]', decoded_preds[1])
-        print('[true]', decoded_labels[1])
+        print("[pred]", decoded_preds[1])
+        print("[true]", decoded_labels[1])
         print("\n\n")
-        print('[pred]', decoded_preds[2])
-        print('[true]', decoded_labels[2])
+        print("[pred]", decoded_preds[2])
+        print("[true]", decoded_labels[2])
 
         # Compute sims of eval data using embedder.
         preds_sample = torch.tensor(preds_sample_list, device=self.args.device)[:128]
@@ -267,8 +268,9 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_labels_list, device=self.args.device
         )[:128]
         # Fix eos token on generated text.
-        pad_token_id = self.embedder_tokenizer.pad_token_id
+        bos_token_id = self.embedder_tokenizer.pad_token_id
         eos_token_id = self.embedder_tokenizer.eos_token_id
+        # assert (preds_sample[:, 0] == bos_token_id).all()
         if eos_token_id is not None:
             eos_tokens = (
                 torch.ones(

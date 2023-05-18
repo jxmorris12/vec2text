@@ -50,7 +50,9 @@ class InversionModelNonAutoregressive(nn.Module):
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
         # TODO respect generation kwargs.
-        batch_size, max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape
+        batch_size, max_length = inputs.get(
+            "input_ids", inputs["embedder_input_ids"]
+        ).shape
 
         with torch.no_grad():
             logits = self.forward(**inputs)["logits"]
