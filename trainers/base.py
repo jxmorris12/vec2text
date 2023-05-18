@@ -224,7 +224,7 @@ class BaseTrainer(transformers.Trainer):
         }
         return { **set_token_metrics, **gen_metrics }
 
-    def eval_generation_metrics(self, dataloader: torch.utils.data.DataLoader) -> Dict:
+    def eval_generation_metrics(self, dataloader: torch.utils.data.DataLoader) -> Dict[str, float]:
         # Get decoded text. Note that this is different than `preds`, which
         # is used to compute the loss.
         preds_sample_list, preds_sample_labels_list = self._get_decoded_sequences(

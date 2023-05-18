@@ -1,5 +1,5 @@
 import copy
-from typing import Dict, Optional, Tuple
+from typing import Callable, Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -76,6 +76,7 @@ class CorrectorModel(torch.nn.Module):
             generation_kwargs["max_length"] = inputs["input_ids"].shape[1] + 1
             generation_kwargs["min_length"] = generation_kwargs["max_length"]
 
+        embedding = inputs["frozen_embeddings"]
         # 
         # [1/2] Generate hypothesis.
         # 
@@ -83,13 +84,15 @@ class CorrectorModel(torch.nn.Module):
             embedding=embedding,
             hypothesis_embedding=self.null_hypothesis_embedding(embedding),
         )
-        hypothesis_text_ids = self.encoder_decoder.generate(
+        hypothesis_input_ids = self.encoder_decoder.generate(
             inputs_embeds=initial_inputs_embeds,
             attention_mask=initial_attention_mask,
             **generation_kwargs,
         )
-        hypothesis_embedding = embed_generated_hypothesis_func(hypothesis_text_ids)
-
+        hypothesis_embedding = embed_generated_hypothesis_func(hypothesis_input_ids)
+        hypothesis_attention_mask = (
+            hypothesis_input_ids != self.encoder_decoder.config.pad_token_id
+        )
         inputs_embeds, attention_mask = self.get_encoder_embedding(
             embedding=embedding,
             hypothesis_embedding=hypothesis_embedding,
@@ -103,30 +106,24 @@ class CorrectorModel(torch.nn.Module):
         # Force the model to generate all the tokens
         generation_kwargs["min_length"] = generation_kwargs["max_length"]
 
-        gen_text_ids = self.encoder_decoder.generate(
+        return self.encoder_decoder.generate(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
             decoder_input_ids=hypothesis_input_ids,
             decoder_attention_mask=hypothesis_attention_mask,
-            # decoder_attention_mask=inputs["decoder_attention_mask"],
             **generation_kwargs,
         )
-        # Don't return <hypothesis><text> upon generation, just return <text>
-        return gen_text_ids[:, inputs["input_ids"].shape[1]:]
 
     def forward(
         self,
         embedding: torch.Tensor,
         hypothesis_embedding: torch.Tensor,
-        hypothesis_input_ids: torch.Tensor,
-        hypothesis_attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
     ):
         inputs_embeds, attention_mask = self.get_encoder_embedding(
             embedding=embedding,
             hypothesis_embedding=hypothesis_embedding,
         )
-        import pdb; pdb.set_trace()
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,

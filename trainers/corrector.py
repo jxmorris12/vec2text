@@ -1,5 +1,6 @@
 import logging
 import os
+import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import datasets
@@ -89,9 +90,10 @@ class CorrectorTrainer(BaseTrainer):
         model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
         assert os.path.exists(model_dir)
         cache_path = os.path.join(model_dir, f'{dataset._fingerprint}_hypotheses.cache')
-        cached = os.path.exists(cache_path)
+        cached = False # TMP
         if not os.path.exists(cache_path):
             logging.info("Computing hypotheses to save to path %s", cache_path)
+            print(f"Saving hypotheses to path {cache_path}")
             dataset = dataset.map(
                 self._precompute_hypothesis_and_embedding,
                 batched=True,
@@ -101,6 +103,7 @@ class CorrectorTrainer(BaseTrainer):
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
+            print(f"Loading hypotheses from path {cache_path}")
             dataset = datasets.load_from_disk(
                 cache_path
             )
@@ -115,44 +118,55 @@ class CorrectorTrainer(BaseTrainer):
         
         return super()._inner_training_loop(*args, **kwargs)
     
-    def embed_generated_hypothesis(self, input_ids: torch.Tensor, get_frozen_embeddings: Callable) -> torch.Tensor:
+    def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Embeds a generated hypothesis. Has to remove EOS token and add BOS token
         at the beginning.
         """
-        assert not (input_ids[:, 0] == 0).all()
-        eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
+        bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
+        eos_token_id = self.model.encoder_decoder.config.eos_token_id
+        assert (input_ids[:, 0] == bos_token_id).all()
+        batch_size = len(input_ids)
         eos_tokens = (
             torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
             * eos_token_id
         )
 
-        hypothesis_input_ids = torch.cat(
-            (hypothesis_input_ids[:, 1:], eos_tokens), dim=1
+        input_ids = torch.cat(
+            (input_ids[:, 1:], eos_tokens), dim=1
         )
-        hypothesis_attention_mask = (
-            hypothesis_input_ids != self.embedder_tokenizer.pad_token_id
+        attention_mask = (
+            input_ids != self.model.encoder_decoder.config.pad_token_id
         )
         return self.get_frozen_embeddings(
-            embedder_input_ids=hypothesis_input_ids,
-            embedder_attention_mask=hypothesis_attention_mask,
+            embedder_input_ids=input_ids,
+            embedder_attention_mask=attention_mask,
         )
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        (
-            frozen_embeddings,
-            hypothesis_input_ids,
-            hypothesis_attention_mask,
-            hypothesis_embedding,
-        ) = self._get_hypothesis_uncached(inputs=inputs)
+        try:
+            frozen_embeddings = inputs["frozen_embeddings"]
+            hypothesis_input_ids = inputs["hypothesis_input_ids"]
+            hypothesis_attention_mask = inputs["hypothesis_attention_mask"]
+            hypothesis_embedding = inputs["hypothesis_embedding"]
+        except KeyError:
+            (
+                frozen_embeddings,
+                hypothesis_input_ids,
+                hypothesis_attention_mask,
+                hypothesis_embedding,
+            ) = self._get_hypothesis_uncached(inputs=inputs)
         inputs["frozen_embeddings"] = frozen_embeddings
         inputs["hypothesis_input_ids"] = hypothesis_input_ids
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
-        return self.model.generate(
+        
+        gen_text_ids = self.model.generate(
             inputs=inputs,
             generation_kwargs=generation_kwargs,
             embed_generated_hypothesis_func=self.embed_generated_hypothesis,
         )
+        # Don't return <hypothesis><text> upon generation, just return <text>
+        return gen_text_ids[:, inputs["input_ids"].shape[1]:]
 
     def get_frozen_embeddings(
         self,
@@ -174,7 +188,7 @@ class CorrectorTrainer(BaseTrainer):
         fake_embedder_attention_mask = torch.ones(
             (batch_size, seq_length), device=self.args.device
         )
-        frozen_embeddings = self.model.get_frozen_embeddings(
+        frozen_embeddings = self.get_frozen_embeddings(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
         )
@@ -194,7 +208,10 @@ class CorrectorTrainer(BaseTrainer):
                 "no_repeat_ngram_size": 0,
             },
         )
-        hypothesis_embedding = self.model.embed_generated_hypothesis(
+        hypothesis_attention_mask = (
+            hypothesis_input_ids != self.model.encoder_decoder.config.pad_token_id
+        )
+        hypothesis_embedding = self.embed_generated_hypothesis(
             input_ids=hypothesis_input_ids
         )
         return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask, hypothesis_embedding
@@ -221,7 +238,7 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
         
-        if training:
+        if self.is_in_train:
             # Half the time, we feed in a 'null' hypothesis embedding
             # and train the model to decode good hypotheses. The other
             # half of the time, we train it to correct its own hypotheses
