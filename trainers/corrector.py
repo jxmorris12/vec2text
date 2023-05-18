@@ -4,7 +4,7 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 import torch
 import torch.nn as nn
 
-from models import JointEmbeddingTextEncoder
+from models import CorrectorModel
 from models.model_utils import freeze_params
 from run_args import TrainingArguments
 
@@ -26,7 +26,7 @@ class CorrectorTrainer(BaseTrainer):
 
     def __init__(
         self,
-        model: JointEmbeddingTextEncoder,
+        model: CorrectorModel,
         inversion_trainer: InversionTrainer,
         args: TrainingArguments,
     ):
@@ -47,6 +47,11 @@ class CorrectorTrainer(BaseTrainer):
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
 
+        # Initialize our model with pre-trained model params
+        missing_keys, unexpected_keys = (
+            self.model.load_state_dict(self.inversion_trainer.model.state_dict(), strict=False)
+        )
+
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
@@ -60,14 +65,16 @@ class CorrectorTrainer(BaseTrainer):
             frozen_embeddings,
             hypothesis_input_ids,
             hypothesis_attention_mask,
+            hypothesis_embedding,
         ) = self._get_hypothesis_uncached(inputs=inputs)
         ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
         ds_inputs["hypothesis_input_ids"] = hypothesis_input_ids.cpu()
         ds_inputs["hypothesis_attention_mask"] = hypothesis_attention_mask.cpu()
+        ds_inputs["hypothesis_embedding"] = hypothesis_embedding.cpu()
         return ds_inputs
 
     def _inner_training_loop(self, *args, **kwargs):
-        logger.info("Precomputing frozen embedding & hypotheses")
+        logger.info("Precomputing frozen embedding & hypotheses before training")
 
         self.train_dataset = self.train_dataset.map(
             self._precompute_hypothesis_and_embedding,
@@ -90,20 +97,26 @@ class CorrectorTrainer(BaseTrainer):
             frozen_embeddings,
             hypothesis_input_ids,
             hypothesis_attention_mask,
+            hypothesis_embedding,
         ) = self._get_hypothesis_uncached(inputs=inputs)
         inputs["frozen_embeddings"] = frozen_embeddings
         inputs["hypothesis_input_ids"] = hypothesis_input_ids
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
-        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
+        inputs["hypothesis_embedding"] = hypothesis_embedding
+        return self.model.generate(
+            inputs=inputs,
+            generation_kwargs=generation_kwargs,
+        )
 
     def _get_frozen_embeddings(
         self,
-        inputs: Dict[str, torch.Tensor],
+        embedder_input_ids: torch.Tensor,
+        embedder_attention_mask: torch.Tensor,
     ) -> torch.Tensor:
         with torch.no_grad():
-            frozen_embeddings = self.inversion_trainer.model.call_embedding_model(
-                input_ids=inputs["embedder_input_ids"],
-                attention_mask=inputs["embedder_attention_mask"],
+            frozen_embeddings = self.inversion_trainer.call_embedding_model(
+                input_ids=embedder_input_ids,
+                attention_mask=embedder_attention_mask,
             )
         return frozen_embeddings
 
@@ -115,7 +128,10 @@ class CorrectorTrainer(BaseTrainer):
         fake_embedder_attention_mask = torch.ones(
             (batch_size, seq_length), device=self.args.device
         )
-        frozen_embeddings = self._get_frozen_embeddings(inputs=inputs)
+        frozen_embeddings = self._get_frozen_embeddings(
+            embedder_input_ids=inputs["embedder_input_ids"],
+            embedder_attention_mask=inputs["embedder_attention_mask"],
+        )
         # TODO: support generated outputs of varying length.
         hypothesis_input_ids = self.inversion_trainer.model.generate(
             inputs={
@@ -135,18 +151,22 @@ class CorrectorTrainer(BaseTrainer):
             torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
             * eos_token_id
         )
-        # get rid of EOS token, add BOS token.
+        # get rid of BOS token, add EOS token.
         hypothesis_input_ids = torch.cat(
             (hypothesis_input_ids[:, 1:], eos_tokens), dim=1
         )
         hypothesis_attention_mask = (
             hypothesis_input_ids != self.embedder_tokenizer.pad_token_id
         )
-        return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask
+        hypothesis_embedding = self._get_frozen_embeddings(
+            embedder_input_ids=hypothesis_input_ids,
+            embedder_attention_mask=hypothesis_attention_mask,
+        )
+        return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask, hypothesis_embedding
 
     def compute_loss(
         self,
-        model: JointEmbeddingTextEncoder,
+        model: CorrectorModel,
         inputs: Dict[str, torch.Tensor],
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
@@ -157,25 +177,21 @@ class CorrectorTrainer(BaseTrainer):
             frozen_embeddings = inputs["frozen_embeddings"]
             hypothesis_input_ids = inputs["hypothesis_input_ids"]
             hypothesis_attention_mask = inputs["hypothesis_attention_mask"]
+            hypothesis_embedding = inputs["hypothesis_embedding"]
         except KeyError:
             (
                 frozen_embeddings,
                 hypothesis_input_ids,
                 hypothesis_attention_mask,
+                hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
-
-        # NOTE TO SELF: can't put embedder_input_ids here, that's cheating.
-        # new_embeddings = self.model(
-        #     embedding=frozen_embeddings,
-        #     input_ids=hypothesis_input_ids,
-        #     attention_mask=hypothesis_attention_mask,
-        # )
 
         # TODO: support passing embedder_input_ids/attention_mask as None.
         outputs = self.model(
             embedding=frozen_embeddings,
-            input_ids=hypothesis_input_ids,
-            attention_mask=hypothesis_attention_mask,
+            hypothesis_input_ids=hypothesis_input_ids,
+            hypothesis_attention_mask=hypothesis_attention_mask,
+            hypothesis_embedding=hypothesis_embedding,
             labels=inputs["labels"],
         )
         return outputs.loss

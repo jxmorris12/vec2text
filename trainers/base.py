@@ -189,11 +189,11 @@ class BaseTrainer(transformers.Trainer):
             FP = len(true_words) - len(true_words & pred_words)
             FN = len(pred_words) - len(true_words & pred_words)
 
-            precision = (TP) / (TP + FP)
-            recall    = (TP) / (TP + FN)
+            precision = (TP) / (TP + FP + 1e-20)
+            recall    = (TP) / (TP + FN + 1e-20)
             
             try:
-                f1 = (2 * precision * recall) / (precision + recall)
+                f1 = (2 * precision * recall) / (precision + recall + 1e-20)
             except ZeroDivisionError:
                 f1 = 0.0
 

@@ -16,10 +16,10 @@ import trainers
 from collator import CustomCollator
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
+    CorrectorModel,
     InversionModel,
     InversionModelBagOfWords,
     InversionModelNonAutoregressive,
-    JointEmbeddingTextEncoder,
     PrefixReranker,
     load_embedder_and_tokenizer,
     load_encoder_decoder,
@@ -538,7 +538,7 @@ class CorrectorExperiment(Experiment):
 
     def load_model(self) -> torch.nn.Module:
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        return JointEmbeddingTextEncoder(encoder_decoder=encoder_decoder)
+        return CorrectorModel(encoder_decoder=encoder_decoder)
 
 
 EXPERIMENT_CLS_MAP = {
