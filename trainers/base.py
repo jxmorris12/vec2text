@@ -268,9 +268,9 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_labels_list, device=self.args.device
         )[:128]
         # Fix eos token on generated text.
-        bos_token_id = self.embedder_tokenizer.pad_token_id
-        eos_token_id = self.embedder_tokenizer.eos_token_id
+        # bos_token_id = self.embedder_tokenizer.pad_token_id
         # assert (preds_sample[:, 0] == bos_token_id).all()
+        eos_token_id = self.embedder_tokenizer.eos_token_id
         if eos_token_id is not None:
             eos_tokens = (
                 torch.ones(
