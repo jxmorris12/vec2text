@@ -146,13 +146,8 @@ class BaseTrainer(transformers.Trainer):
         labels = eval_preds.label_ids
 
         assert len(labels), "got empty labels for eval"
-
         assert torch.tensor(preds).shape == torch.tensor(labels).shape
-        # train_raw_bleu_result = self.metric_bleu.compute(
-        #     predictions=decoded_train_preds, references=decoded_train_labels
-        # )
-        # train_bleu_result = { "bleu_score": train_raw_bleu_result["score"]}
-
+        
         # preds have the same shape as the labels.
         labels = labels.reshape(-1)
         preds = preds.reshape(-1)
