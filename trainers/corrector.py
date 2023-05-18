@@ -114,6 +114,28 @@ class CorrectorTrainer(BaseTrainer):
             self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
         
         return super()._inner_training_loop(*args, **kwargs)
+    
+    def embed_generated_hypothesis(self, input_ids: torch.Tensor, get_frozen_embeddings: Callable) -> torch.Tensor:
+        """Embeds a generated hypothesis. Has to remove EOS token and add BOS token
+        at the beginning.
+        """
+        assert not (input_ids[:, 0] == 0).all()
+        eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
+        eos_tokens = (
+            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
+            * eos_token_id
+        )
+
+        hypothesis_input_ids = torch.cat(
+            (hypothesis_input_ids[:, 1:], eos_tokens), dim=1
+        )
+        hypothesis_attention_mask = (
+            hypothesis_input_ids != self.embedder_tokenizer.pad_token_id
+        )
+        return self.get_frozen_embeddings(
+            embedder_input_ids=hypothesis_input_ids,
+            embedder_attention_mask=hypothesis_attention_mask,
+        )
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         (
@@ -129,9 +151,10 @@ class CorrectorTrainer(BaseTrainer):
         return self.model.generate(
             inputs=inputs,
             generation_kwargs=generation_kwargs,
+            embed_generated_hypothesis_func=self.embed_generated_hypothesis,
         )
 
-    def _get_frozen_embeddings(
+    def get_frozen_embeddings(
         self,
         embedder_input_ids: torch.Tensor,
         embedder_attention_mask: torch.Tensor,
@@ -151,7 +174,7 @@ class CorrectorTrainer(BaseTrainer):
         fake_embedder_attention_mask = torch.ones(
             (batch_size, seq_length), device=self.args.device
         )
-        frozen_embeddings = self._get_frozen_embeddings(
+        frozen_embeddings = self.model.get_frozen_embeddings(
             embedder_input_ids=inputs["embedder_input_ids"],
             embedder_attention_mask=inputs["embedder_attention_mask"],
         )
@@ -171,21 +194,8 @@ class CorrectorTrainer(BaseTrainer):
                 "no_repeat_ngram_size": 0,
             },
         )
-        eos_token_id = self.inversion_trainer.model.embedder_tokenizer.eos_token_id
-        eos_tokens = (
-            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
-            * eos_token_id
-        )
-        # get rid of BOS token, add EOS token.
-        hypothesis_input_ids = torch.cat(
-            (hypothesis_input_ids[:, 1:], eos_tokens), dim=1
-        )
-        hypothesis_attention_mask = (
-            hypothesis_input_ids != self.embedder_tokenizer.pad_token_id
-        )
-        hypothesis_embedding = self._get_frozen_embeddings(
-            embedder_input_ids=hypothesis_input_ids,
-            embedder_attention_mask=hypothesis_attention_mask,
+        hypothesis_embedding = self.model.embed_generated_hypothesis(
+            input_ids=hypothesis_input_ids
         )
         return frozen_embeddings, hypothesis_input_ids, hypothesis_attention_mask, hypothesis_embedding
 
@@ -210,12 +220,28 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_attention_mask,
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
+        
+        if training:
+            # Half the time, we feed in a 'null' hypothesis embedding
+            # and train the model to decode good hypotheses. The other
+            # half of the time, we train it to correct its own hypotheses
+            # using 'bad' hypotheses from the previous model.
+            if random.random() < 0.5:
+                hypothesis_embedding = self.model.null_hypothesis_embedding(hypothesis_embedding)
+                # Will look like [...label_input_ids, 1] and get right-shifted to 
+                # [0, ..input_ids] by the model.
+                labels = inputs["labels"]
+            else:
+                # Will look like [...hypothesis_input_ids, 1, ...label_ids, 1]
+                # and get right-shifted to [0, ...hypothesis_input_ids, 1, ...label_ids]
+                # by the model.
+                labels = torch.cat((
+                    hypothesis_input_ids, inputs["labels"]
+                ), dim=1)
 
         # TODO: support passing embedder_input_ids/attention_mask as None.
         outputs = self.model(
             embedding=frozen_embeddings,
-            hypothesis_input_ids=hypothesis_input_ids,
-            hypothesis_attention_mask=hypothesis_attention_mask,
             hypothesis_embedding=hypothesis_embedding,
             labels=inputs["labels"],
         )

@@ -11,6 +11,7 @@ class CorrectorModel(torch.nn.Module):
     
     TODO improve comment here.
     """
+    # Encoder-decoder model we train to correct embedding hypotheses.
     encoder_decoder: transformers.PreTrainedModel
 
     def __init__(
@@ -59,34 +60,54 @@ class CorrectorModel(torch.nn.Module):
         inputs_embeds = torch.cat((sep_token, embedding, sep_token, hypothesis_embedding, sep_token, diff_embedding), dim=1)
         attention_mask = ones.repeat((1, 3 * (1 + self.num_repeat_tokens)))
         return (inputs_embeds, attention_mask)
+    
+    def null_hypothesis_embedding(self, hypothesis_embedding: torch.Tensor) -> torch.Tensor:
+        return torch.zeros_like(hypothesis_embedding, device=hypothesis_embedding.device)
 
     def generate(
         self,
         inputs: Dict[str, torch.Tensor],
         generation_kwargs: Dict[str, torch.Tensor],
+        embed_generated_hypothesis_func: Callable[torch.Tensor, torch.Tensor],
     ) -> torch.Tensor:
+        """Does two-step generation by generating a hypothesis and then a correction."""
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
         if "max_length" not in generation_kwargs:
             generation_kwargs["max_length"] = inputs["input_ids"].shape[1] + 1
+            generation_kwargs["min_length"] = generation_kwargs["max_length"]
+
+        # 
+        # [1/2] Generate hypothesis.
+        # 
+        initial_inputs_embeds, initial_attention_mask = self.get_encoder_embedding(
+            embedding=embedding,
+            hypothesis_embedding=self.null_hypothesis_embedding(embedding),
+        )
+        hypothesis_text_ids = self.encoder_decoder.generate(
+            inputs_embeds=initial_inputs_embeds,
+            attention_mask=initial_attention_mask,
+            **generation_kwargs,
+        )
+        hypothesis_embedding = embed_generated_hypothesis_func(hypothesis_text_ids)
+
         inputs_embeds, attention_mask = self.get_encoder_embedding(
-            embedding=inputs["frozen_embeddings"],
-            hypothesis_embedding=inputs["hypothesis_embedding"],
+            embedding=embedding,
+            hypothesis_embedding=hypothesis_embedding,
         )
 
+        # 
+        # [2/2] Given generated hypothesis & embedding, generate a correction.
+        # 
         # We want to generate starting from the hypothesis
         generation_kwargs["max_length"] += inputs["hypothesis_input_ids"].shape[1]
         # Force the model to generate all the tokens
         generation_kwargs["min_length"] = generation_kwargs["max_length"]
 
         gen_text_ids = self.encoder_decoder.generate(
-            # required: input embeddings
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            # optional: input IDs (for starting generation).
-            # typically not set unless generating prefixes for
-            # reranking.
-            decoder_input_ids=inputs["hypothesis_input_ids"],
-            decoder_attention_mask=inputs["hypothesis_attention_mask"],
+            decoder_input_ids=hypothesis_input_ids,
+            decoder_attention_mask=hypothesis_attention_mask,
             # decoder_attention_mask=inputs["decoder_attention_mask"],
             **generation_kwargs,
         )
@@ -96,7 +117,7 @@ class CorrectorModel(torch.nn.Module):
     def forward(
         self,
         embedding: torch.Tensor,
-        hypothesis_embedding,
+        hypothesis_embedding: torch.Tensor,
         hypothesis_input_ids: torch.Tensor,
         hypothesis_attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
@@ -109,6 +130,5 @@ class CorrectorModel(torch.nn.Module):
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
-            decoder_input_ids=hypothesis_input_ids,
-            decoder_attention_mask=hypothesis_attention_mask,
- 
+            labels=labels,
+        )
