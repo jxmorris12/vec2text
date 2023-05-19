@@ -35,7 +35,8 @@ def test_trainer():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(
         args=DEFAULT_ARGS
     )
-    training_args.experiment = "corrector"
+    # training_args.experiment = "corrector"
+    training_args.experiment = "corrector_encoder"
     model_args.max_seq_length = 32
     data_args.dataset_name = dataset_name
     trainer = load_trainer(

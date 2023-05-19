@@ -16,6 +16,7 @@ import trainers
 from collator import CustomCollator
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
+    CorrectorEncoderModel,
     CorrectorModel,
     InversionModel,
     InversionModelBagOfWords,
@@ -540,10 +541,17 @@ class CorrectorExperiment(Experiment):
         return CorrectorModel(encoder_decoder=encoder_decoder)
 
 
+class CorrectorEncoderExperiment(CorrectorExperiment):
+    def load_model(self) -> torch.nn.Module:
+        encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
+        return CorrectorEncoderModel(encoder_decoder=encoder_decoder)
+
+
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "reranking": RerankingExperiment,
     "corrector": CorrectorExperiment,
+    "corrector_encoder": CorrectorEncoderExperiment,
     #
     "inversion_bow": InversionExperimentBagOfWords,
     "inversion_na": InversionExperimentNonAutoregressive,

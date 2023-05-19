@@ -7,7 +7,7 @@ import datasets
 import torch
 import torch.nn as nn
 
-from models import CorrectorModel
+from models import CorrectorEncoderModel, CorrectorModel
 from models.model_utils import freeze_params
 from run_args import TrainingArguments
 
@@ -29,7 +29,7 @@ class CorrectorTrainer(BaseTrainer):
 
     def __init__(
         self,
-        model: CorrectorModel,
+        model: Union[CorrectorEncoderModel, CorrectorModel],
         inversion_trainer: InversionTrainer,
         args: TrainingArguments,
     ):
@@ -156,13 +156,24 @@ class CorrectorTrainer(BaseTrainer):
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
 
-        gen_text_ids = self.model.generate(
-            inputs=inputs,
-            generation_kwargs=generation_kwargs,
-            embed_generated_hypothesis_func=self.embed_generated_hypothesis,
-        )
-        # Don't return <hypothesis><text> upon generation, just return <text>
-        return gen_text_ids[:, inputs["input_ids"].shape[1] :]
+        if self.is_corrector_encoder:
+            gen_text_ids = self.model.generate(
+                inputs=inputs,
+                generation_kwargs=generation_kwargs,
+            )
+        else:
+            gen_text_ids = self.model.generate(
+                inputs=inputs,
+                generation_kwargs=generation_kwargs,
+                embed_generated_hypothesis_func=self.embed_generated_hypothesis,
+            )
+            # Don't return <hypothesis><text> upon generation, just return <text>
+            gen_text_ids = gen_text_ids[:, inputs["input_ids"].shape[1] :]
+        return gen_text_ids
+
+    @bool
+    def is_corrector_encoder(self):
+        return isinstance(self.model, CorrectorEncoderModel)
 
     def get_frozen_embeddings(
         self,
@@ -239,7 +250,9 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
 
-        if self.is_in_train:
+        if self.is_corrector_encoder:
+            labels = inputs["labels"]
+        elif self.is_in_train:
             # Half the time, we feed in a 'null' hypothesis embedding
             # and train the model to decode good hypotheses. The other
             # half of the time, we train it to correct its own hypotheses
@@ -265,11 +278,20 @@ class CorrectorTrainer(BaseTrainer):
             labels = torch.cat((inputs["labels"], inputs["labels"]), dim=1)
 
         # TODO: support passing embedder_input_ids/attention_mask as None.
-        outputs = self.model(
-            embedding=frozen_embeddings,
-            hypothesis_embedding=hypothesis_embedding,
-            labels=labels,
-        )
+        if self.is_corrector_encoder:
+            outputs = self.model(
+                embedding=frozen_embeddings,
+                hypothesis_embedding=hypothesis_embedding,
+                hypothesis_input_ids=hypothesis_input_ids,
+                hypothesis_attention_mask=hypothesis_attention_mask,
+                labels=labels,
+            )
+        else:
+            outputs = self.model(
+                embedding=frozen_embeddings,
+                hypothesis_embedding=hypothesis_embedding,
+                labels=labels,
+            )
         return outputs.loss
 
     def prediction_step(

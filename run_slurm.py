@@ -6,7 +6,7 @@ from slurmpy import Slurm
 BASE_PYTHON_CMD = """
 PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024 \
 python run.py \
---experiment corrector \
+--experiment corrector_encoder \
 --per_device_train_batch_size {batch_size} \
 --per_device_eval_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
@@ -26,7 +26,7 @@ python run.py \
 --num_train_epochs 300 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
---warmup_steps 0 \
+--warmup_steps 100000 \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1
@@ -63,13 +63,13 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
 # exp_group_name = "may11-mem-test-2"
-exp_group_name = "may18-corr-decoder-2"
+exp_group_name = "may18-corr-encoder-1"
 ##########################################
 
 batch_size = 256
 max_seq_length = [32]
 
-use_less_data = [-1] # [-1]
+use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
 learning_rates = [5e-4]
 num_repeat_tokens = [16]
@@ -102,7 +102,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "mem": "48G",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
-                "time": "168:00:00", # 168 hours --> 2 weeks
+                "time": "168:00:00",  # 168 hours --> 2 weeks
                 # "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[
@@ -160,4 +160,3 @@ if ACTUALLY_RUN_COMMAND:
     print(f"successfully queued {total} jobs.")
 else:
     print(f"successfully queued {total} jobs. (pretend)")
-
