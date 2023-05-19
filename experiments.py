@@ -303,7 +303,7 @@ class Experiment(abc.ABC):
                 )
 
         # this argument allows us to *train* on less data (1% of our training set).
-        if data_args.use_less_data:
+        if data_args.use_less_data and (data_args.use_less_data > 0):
             for key in tokenized_datasets:
                 new_length = data_args.use_less_data
                 tokenized_datasets[key] = tokenized_datasets[key].select(

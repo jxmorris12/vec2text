@@ -23,7 +23,7 @@ python run.py \
 --encoder_dropout_disabled False \
 --decoder_dropout_disabled False \
 --use_less_data {use_less_data} \
---num_train_epochs 10000 \
+--num_train_epochs 300 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
 --warmup_steps 0 \
@@ -63,15 +63,15 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
 # exp_group_name = "may11-mem-test-2"
-exp_group_name = "may18-corr-decoder-1"
+exp_group_name = "may18-corr-decoder-2"
 ##########################################
 
 batch_size = 256
 max_seq_length = [32]
 
-use_less_data = [None]
+use_less_data = [-1] # [-1]
 embedder_no_grad = [True]
-learning_rates = [5e-3]
+learning_rates = [5e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
@@ -102,7 +102,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "mem": "48G",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
-                "time": "168:00:00",
+                "time": "168:00:00", # 168 hours --> 2 weeks
                 # "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[
@@ -160,3 +160,4 @@ if ACTUALLY_RUN_COMMAND:
     print(f"successfully queued {total} jobs.")
 else:
     print(f"successfully queued {total} jobs. (pretend)")
+
