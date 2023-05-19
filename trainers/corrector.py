@@ -108,13 +108,15 @@ class CorrectorTrainer(BaseTrainer):
             print(f"Loading hypotheses from path {cache_path}")
             dataset = datasets.load_from_disk(cache_path)
         return dataset
-
-    def _inner_training_loop(self, *args, **kwargs):
+    
+    def precompute_hypotheses(self) -> None:
         logger.info("Precomputing frozen embedding & hypotheses before training")
-
         self.train_dataset = self._preprocess_dataset(dataset=self.train_dataset)
         for k, v in self.eval_dataset.items():
             self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
+
+    def _inner_training_loop(self, *args, **kwargs):
+        self.precompute_hypotheses()
 
         return super()._inner_training_loop(*args, **kwargs)
 
@@ -168,10 +170,11 @@ class CorrectorTrainer(BaseTrainer):
                 embed_generated_hypothesis_func=self.embed_generated_hypothesis,
             )
             # Don't return <hypothesis><text> upon generation, just return <text>
-            gen_text_ids = gen_text_ids[:, inputs["input_ids"].shape[1] :]
+            max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
+            gen_text_ids = gen_text_ids[:, max_length:]
         return gen_text_ids
 
-    @bool
+    @property
     def is_corrector_encoder(self):
         return isinstance(self.model, CorrectorEncoderModel)
 
@@ -188,7 +191,7 @@ class CorrectorTrainer(BaseTrainer):
         return frozen_embeddings
 
     def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
-        batch_size, seq_length = inputs["input_ids"].shape
+        batch_size, seq_length = inputs["embedder_input_ids"].shape
         fake_embedder_input_ids = torch.ones(
             (batch_size, seq_length), device=self.args.device
         )

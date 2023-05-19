@@ -39,11 +39,18 @@ class CorrectorEncoderModel(torch.nn.Module):
         hypothesis_input_ids: torch.Tensor,
         hypothesis_attention_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        batch_size, seq_length = hypothesis_input_ids.shape
+        batch_size, D = embedding.shape
         assert embedding.shape == (batch_size, 768)
         assert hypothesis_embedding.shape == (batch_size, 768)
+        
+        diff_embedding = embedding - hypothesis_embedding
+
         embedding = self.embedding_transform(embedding)
         embedding = embedding.reshape((batch_size, self.num_repeat_tokens, -1))
+        #
+        diff_embedding = self.embedding_transform(diff_embedding)
+        diff_embedding = diff_embedding.reshape((batch_size, self.num_repeat_tokens, D))
+        #
         hypothesis_embedding = self.embedding_transform(hypothesis_embedding)
         hypothesis_embedding = hypothesis_embedding.reshape((batch_size, self.num_repeat_tokens, -1))
         inputs_embeds = self.encoder_decoder.encoder.embed_tokens(hypothesis_input_ids)
@@ -52,9 +59,21 @@ class CorrectorEncoderModel(torch.nn.Module):
         # TODO: pad_token_id or eos_token_id? Or does it not matter?
         sep_token = ones * self.encoder_decoder.config.eos_token_id
         sep_token = self.encoder_decoder.encoder.embed_tokens(sep_token)
-        # TODO: support & ablate concatenation methods.
-        inputs_embeds = torch.cat((sep_token, embedding, sep_token, hypothesis_embedding, inputs_embeds), dim=1)
-        attention_mask = torch.cat((ones, ones.repeat(1, self.num_repeat_tokens), ones, ones.repeat(1, self.num_repeat_tokens), hypothesis_attention_mask), dim=1)
+        # inputs_embeds = torch.cat((sep_token, embedding, sep_token, hypothesis_embedding, inputs_embeds), dim=1)
+        inputs_embeds = torch.cat(
+            (
+                sep_token,
+                embedding,
+                sep_token,
+                hypothesis_embedding,
+                sep_token,
+                diff_embedding,
+                sep_token,
+                inputs_embeds,
+            ),
+            dim=1,
+        )
+        attention_mask = torch.cat((ones.repeat(1, 4 + 3 * self.num_repeat_tokens), hypothesis_attention_mask), dim=1)
         return (inputs_embeds, attention_mask)
 
     def generate(
@@ -63,9 +82,9 @@ class CorrectorEncoderModel(torch.nn.Module):
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
-
+        max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
         if "max_length" not in generation_kwargs:
-            generation_kwargs["max_length"] = inputs["input_ids"].shape[1] + 1
+            generation_kwargs["max_length"] = max_length
         
         inputs_embeds, attention_mask = self.get_encoder_embedding(
             embedding=inputs["frozen_embeddings"],

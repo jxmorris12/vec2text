@@ -35,6 +35,7 @@ def test_trainer():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(
         args=DEFAULT_ARGS
     )
+    # TODO parameterize tests with experiment var
     # training_args.experiment = "corrector"
     training_args.experiment = "corrector_encoder"
     model_args.max_seq_length = 32

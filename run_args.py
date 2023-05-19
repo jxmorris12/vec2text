@@ -257,6 +257,7 @@ class TrainingArguments(transformers.TrainingArguments):
                 "inversion_na",
                 "reranking",
                 "corrector",
+                "corrector_encoder",
             ],
         },
     )
