@@ -29,6 +29,7 @@ class CorrectorModel(torch.nn.Module):
         self.encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Dropout(self.encoder_decoder.config.dropout_rate),
             nn.GELU(),  # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
         )
@@ -118,13 +119,13 @@ class CorrectorModel(torch.nn.Module):
         # The "start of sequence" token for the second guess is the end-of-sequence
         # token from the hypothesis.
         batch_size = len(hypothesis_input_ids)
-        eos_tokens = (
+        bos_tokens = (
             torch.ones((batch_size, 1), device=embedding.device, dtype=torch.long)
-            * self.encoder_decoder.config.eos_token_id
+            * self.encoder_decoder.config.decoder_start_token_id
         )
-        hypothesis_input_ids = torch.cat(
-            (hypothesis_input_ids, eos_tokens), dim=1
-        )
+        # hypothesis_input_ids = torch.cat(
+        #     (bos_tokens, hypothesis_input_ids), dim=1
+        # )
         hypothesis_attention_mask = (
             hypothesis_input_ids != self.encoder_decoder.config.pad_token_id
         )
@@ -153,6 +154,7 @@ class CorrectorModel(torch.nn.Module):
         self,
         embedding: torch.Tensor,
         hypothesis_embedding: torch.Tensor,
+        decoder_input_ids: Optional[torch.Tensor] = None,
         labels: Optional[torch.Tensor] = None,
     ):
         inputs_embeds, attention_mask = self.get_encoder_embedding(
@@ -162,5 +164,6 @@ class CorrectorModel(torch.nn.Module):
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
+            decoder_input_ids=decoder_input_ids,
             labels=labels,
         )

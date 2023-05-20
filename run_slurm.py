@@ -6,7 +6,7 @@ from slurmpy import Slurm
 BASE_PYTHON_CMD = """
 PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:1024 \
 python run.py \
---experiment corrector_encoder \
+--experiment corrector \
 --per_device_train_batch_size {batch_size} \
 --per_device_eval_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
@@ -23,10 +23,10 @@ python run.py \
 --encoder_dropout_disabled False \
 --decoder_dropout_disabled False \
 --use_less_data {use_less_data} \
---num_train_epochs 300 \
+--num_train_epochs 60 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
---warmup_steps 100000 \
+--warmup_steps 200000 \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1
@@ -63,7 +63,7 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
 # exp_group_name = "may11-mem-test-2"
-exp_group_name = "may18-corr-encoder-10--diff-embedding"
+exp_group_name = "may20-corr-decoder"
 ##########################################
 
 batch_size = 256
@@ -71,7 +71,7 @@ max_seq_length = [32]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [1e-3]
+learning_rates = [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
@@ -100,7 +100,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                "nodelist": "rush-compute-03",
+                # "nodelist": "rush-compute-03",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
                 "time": "168:00:00",    # 168 hours --> 2 weeks

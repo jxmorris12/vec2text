@@ -36,8 +36,8 @@ def test_trainer():
         args=DEFAULT_ARGS
     )
     # TODO parameterize tests with experiment var
-    # training_args.experiment = "corrector"
-    training_args.experiment = "corrector_encoder"
+    training_args.experiment = "corrector"
+    # training_args.experiment = "corrector_encoder"
     model_args.max_seq_length = 32
     data_args.dataset_name = dataset_name
     trainer = load_trainer(

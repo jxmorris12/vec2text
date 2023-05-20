@@ -171,7 +171,7 @@ class CorrectorTrainer(BaseTrainer):
             )
             # Don't return <hypothesis><text> upon generation, just return <text>
             max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
-            gen_text_ids = gen_text_ids[:, max_length:]
+            gen_text_ids = gen_text_ids[:, :max_length]
         return gen_text_ids
 
     @property
@@ -255,33 +255,6 @@ class CorrectorTrainer(BaseTrainer):
 
         if self.is_corrector_encoder:
             labels = inputs["labels"]
-        elif self.is_in_train:
-            # Half the time, we feed in a 'null' hypothesis embedding
-            # and train the model to decode good hypotheses. The other
-            # half of the time, we train it to correct its own hypotheses
-            # using 'bad' hypotheses from the previous model.
-            if random.random() < 0.5:
-                hypothesis_embedding = self.model.null_hypothesis_embedding(
-                    hypothesis_embedding
-                )
-                # Will look like [...label_input_ids, 1] and get right-shifted to
-                # [0, ..input_ids] by the model.
-                labels = inputs["labels"]
-            else:
-                # Will look like [...hypothesis_input_ids, 1, ...label_ids, 1]
-                # and get right-shifted to [0, ...hypothesis_input_ids, 1, ...label_ids]
-                # by the model.
-                # TODO make sure we should be using labels here twice, not
-                # hypothesis IDs.
-                labels = torch.cat((inputs["labels"], inputs["labels"]), dim=1)
-        else:
-            # During evaluation, compute PPL of true sequence twice
-            # TODO make sure we should be using labels here twice, not
-            # hypothesis IDs.
-            labels = torch.cat((inputs["labels"], inputs["labels"]), dim=1)
-
-        # TODO: support passing embedder_input_ids/attention_mask as None.
-        if self.is_corrector_encoder:
             outputs = self.model(
                 embedding=frozen_embeddings,
                 hypothesis_embedding=hypothesis_embedding,
@@ -290,9 +263,32 @@ class CorrectorTrainer(BaseTrainer):
                 labels=labels,
             )
         else:
+            shift_right = self.model.encoder_decoder._shift_right
+            # Special training scheme for the decoder-based model
+            if self.model.training and random.random() < 0.5:
+                # Half the time, we feed in a 'null' hypothesis embedding
+                # and train the model to decode good hypotheses. The other
+                # half of the time, we train it to correct its own hypotheses
+                # using 'bad' hypotheses from the previous model.
+                hypothesis_embedding = self.model.null_hypothesis_embedding(
+                    hypothesis_embedding
+                )
+                # Will look like [...label_input_ids, 1] and get right-shifted to
+                # [0, ..input_ids] by the model.
+                decoder_input_ids = shift_right(inputs["labels"])
+                labels = inputs["labels"]
+            else:
+                # Will look like [...hypothesis_input_ids, 1, ...label_ids, 1]
+                # and get right-shifted to [0, ...hypothesis_input_ids, 1, ...label_ids]
+                # by the model.
+                # Do this always during evaluation, and 50% of the time during training.
+                decoder_input_ids = shift_right(torch.cat((hypothesis_input_ids, inputs["labels"]), dim=1))
+                empty_tokens = torch.ones_like(hypothesis_input_ids, device=hypothesis_input_ids.device) * -100
+                labels = torch.cat((empty_tokens, inputs["labels"]), dim=1)
             outputs = self.model(
                 embedding=frozen_embeddings,
                 hypothesis_embedding=hypothesis_embedding,
+                decoder_input_ids=decoder_input_ids,
                 labels=labels,
             )
         return outputs.loss
@@ -310,6 +306,6 @@ class CorrectorTrainer(BaseTrainer):
         inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
         with torch.no_grad():
             loss = self.compute_loss(model=model, inputs=inputs)
-
+        
         logits, labels = None, None
         return loss, logits, labels
