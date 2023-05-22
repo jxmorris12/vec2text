@@ -39,7 +39,7 @@ class BaseTrainer(transformers.Trainer):
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
         input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
         print("\tInput to encode ->", input_string)
-        inputs = self.embedder_tokenizer(input_string, return_tensors="pt")
+        inputs = self.embedder_tokenizer(input_string, return_tensors="pt", max_length=32, truncation=True)
         inputs = inputs.to(self.args.device)
         regenerated = self.generate(
             inputs={

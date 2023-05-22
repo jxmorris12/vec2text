@@ -71,7 +71,7 @@ max_seq_length = [32]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [2e-3, 2e-4]
+learning_rates = [1e-3] # [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]

@@ -50,6 +50,9 @@ class CorrectorTrainer(BaseTrainer):
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
 
+        # Number of steps of self-correction
+        self.num_gen_recursive_steps = 1
+
         # Initialize our model with pre-trained model params
         missing_keys, unexpected_keys = self.model.load_state_dict(
             self.inversion_trainer.model.state_dict(), strict=False
@@ -120,27 +123,10 @@ class CorrectorTrainer(BaseTrainer):
 
         return super()._inner_training_loop(*args, **kwargs)
 
-    def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:
-        """Embeds a generated hypothesis. Has to remove EOS token and add BOS token
-        at the beginning.
-        """
-        bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
-        eos_token_id = self.model.encoder_decoder.config.eos_token_id
-        assert (input_ids[:, 0] == bos_token_id).all()
-        batch_size = len(input_ids)
-        eos_tokens = (
-            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
-            * eos_token_id
-        )
+    def generate(self, inputs: Dict, generation_kwargs: Dict, num_recursive_steps: int = None) -> torch.Tensor:
+        if num_recursive_steps is None:
+            num_recursive_steps = self.num_gen_recursive_steps
 
-        input_ids = torch.cat((input_ids[:, 1:], eos_tokens), dim=1)
-        attention_mask = input_ids != self.model.encoder_decoder.config.pad_token_id
-        return self.get_frozen_embeddings(
-            embedder_input_ids=input_ids,
-            embedder_attention_mask=attention_mask,
-        )
-
-    def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         try:
             frozen_embeddings = inputs["frozen_embeddings"]
             hypothesis_input_ids = inputs["hypothesis_input_ids"]
@@ -171,8 +157,21 @@ class CorrectorTrainer(BaseTrainer):
             )
             # Don't return <hypothesis><text> upon generation, just return <text>
             max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
-            gen_text_ids = gen_text_ids[:, :max_length]
-        return gen_text_ids
+            gen_text_ids = gen_text_ids[:, max_length:]
+        
+        # Make sure we generated the proper number of tokens
+        assert gen_text_ids.shape[1] == 32
+        
+        if num_recursive_steps == 1:
+            return gen_text_ids
+        else:
+            hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
+            inputs["hypothesis_input_ids"] = gen_text_ids
+            inputs["hypothesis_attention_mask"] = (gen_text_ids != self.model.encoder_decoder.config.pad_token_id).int()
+            inputs["hypothesis_embedding"] = hypothesis_embedding
+            return self.generate(
+                inputs=inputs, generation_kwargs=generation_kwargs, num_recursive_steps=(num_recursive_steps-1)
+            )
 
     @property
     def is_corrector_encoder(self):
@@ -189,6 +188,26 @@ class CorrectorTrainer(BaseTrainer):
                 attention_mask=embedder_attention_mask,
             )
         return frozen_embeddings
+
+    def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:
+        """Embeds a generated hypothesis. Has to remove EOS token and add BOS token
+        at the beginning.
+        """
+        bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
+        eos_token_id = self.model.encoder_decoder.config.eos_token_id
+        assert (input_ids[:, 0] == bos_token_id).all()
+        batch_size = len(input_ids)
+        eos_tokens = (
+            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
+            * eos_token_id
+        )
+
+        input_ids = torch.cat((input_ids[:, 1:], eos_tokens), dim=1)
+        attention_mask = input_ids != self.model.encoder_decoder.config.pad_token_id
+        return self.get_frozen_embeddings(
+            embedder_input_ids=input_ids,
+            embedder_attention_mask=attention_mask,
+        )
 
     def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         batch_size, seq_length = inputs["embedder_input_ids"].shape
