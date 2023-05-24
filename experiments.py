@@ -28,11 +28,16 @@ from models import (
 from run_args import DataArguments, ModelArguments, TrainingArguments
 from tokenize_data import tokenize_function
 
+# Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
-os.environ[
-    "TOKENIZERS_PARALLELISM"
-] = "True"  # For batch decoding outputs during evaluation.
+
+# For batch decoding outputs during evaluation.
+os.environ["TOKENIZERS_PARALLELISM"] = "True"
+
+# Don't send telemetry to HF every time we train.
+os.environ["HF_DATASETS_OFFLINE"] = "1"
+os.environ["TRANSFORMERS_OFFLINE"] = "1" 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
@@ -528,7 +533,7 @@ class CorrectorExperiment(Experiment):
     def load_trainer(self) -> transformers.Trainer:
         # TODO: argparse for this
         inversion_trainer = aliases.load_inversion_trainer_from_alias(
-            alias="dpr_nq__msl32_beta"
+            alias=self.training_args.corrector_model_alias,
         )
         return trainers.CorrectorTrainer(
             model=self.load_model(),

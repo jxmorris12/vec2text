@@ -216,6 +216,11 @@ class TrainingArguments(transformers.TrainingArguments):
     output_dir: str = field(
         default="saves", metadata={"help": "Output directory for training saves"}
     )
+    corrector_model_alias: str = field(
+        default="dpr_nq__msl32_beta",
+        metadata={"help": "Alias of corrector model to train (defined in aliases.py)"}
+    )
+
     steps_per_epoch: int = field(
         default=500_000,
         metadata={"required": False, "help": "Size of pseudo-training set."},

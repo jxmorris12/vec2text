@@ -4,6 +4,7 @@ import statistics
 from typing import Dict, List, Tuple
 
 import evaluate
+import numpy as np
 import torch
 import tqdm
 import transformers
@@ -171,7 +172,7 @@ class BaseTrainer(transformers.Trainer):
             return {}
 
         ###########################################################
-        # TODO: Optimize this code
+        # Compute token, precision, recall.
         precision_sum = 0.0
         recall_sum = 0.0
         f1_sum = 0.0
@@ -213,6 +214,7 @@ class BaseTrainer(transformers.Trainer):
         bertscore_result = self.metric_bertscore.compute(
             predictions=predictions_str, references=references_str, lang="en"
         )
+        exact_matches = (np.array(predictions_str) == np.array(references_str)).mean()
         gen_metrics = {
             "bleu_score": bleu_result["score"],
             "meteor_score": meteor_result["meteor"],
@@ -220,6 +222,7 @@ class BaseTrainer(transformers.Trainer):
                 "rouge1"
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
             "bert_score": statistics.fmean(bertscore_result["f1"]),
+            "exact_match": exact_matches,
         }
         return {**set_token_metrics, **gen_metrics}
 
@@ -229,7 +232,7 @@ class BaseTrainer(transformers.Trainer):
         # Get decoded text. Note that this is different than `preds`, which
         # is used to compute the loss.
         preds_sample_list, preds_sample_labels_list = self._get_decoded_sequences(
-            dataloader=dataloader, n=1000
+            dataloader=dataloader, n=10000
         )
 
         # Log BLEU, log table of text.
@@ -298,21 +301,12 @@ class BaseTrainer(transformers.Trainer):
                 torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()
             )
             sim_result = {"emb_cos_sim": emb_cos_sim}
-
-        # Log table for train data.
-        # train_preds_sample, train_preds_sample_labels = self._get_decoded_sequences(
-        #   dataloader=dataloader, n=100)
-        # decoded_train_preds = self.tokenizer.batch_decode(
-        #     train_preds_sample, skip_special_tokens=True
-        # )
-        # decoded_train_labels = self.tokenizer.batch_decode(
-        #     train_preds_sample_labels, skip_special_tokens=True
-        # )
-        # self._log_preds_table(
-        #     table_key="train_text_preds",
-        #     decoded_preds=decoded_train_preds,
-        #     decoded_labels=decoded_train_labels,
-        # )
+        
+        # Store stuff for access later.
+        self.preds_emb = preds_emb.cpu()
+        self.labels_emb = labels_emb.cpu()
+        self.preds_sample_list = preds_sample_list
+        self.preds_sample_labels_list = preds_sample_labels_list
 
         metrics = {**bleu_result, **sim_result}
         return metrics

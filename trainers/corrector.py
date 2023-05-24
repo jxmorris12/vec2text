@@ -160,7 +160,7 @@ class CorrectorTrainer(BaseTrainer):
             gen_text_ids = gen_text_ids[:, max_length:]
         
         # Make sure we generated the proper number of tokens
-        assert gen_text_ids.shape[1] == 32
+        # assert gen_text_ids.shape[1] in [32, 128]
         
         if num_recursive_steps == 1:
             return gen_text_ids

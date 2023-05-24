@@ -115,6 +115,10 @@ def load_wikibio_val() -> datasets.Dataset:
     d = d.rename_column("target_text", "text")
     return d
 
+def load_arxiv_val() -> datasets.Dataset:
+    d = datasets.load_dataset("ccdv/arxiv-summarization")["validation"]
+    d = d.rename_column("abstract", "text")
+    return d
 
 def retain_dataset_columns(
     d: datasets.Dataset, allowed_columns: List[str]
@@ -127,6 +131,7 @@ def load_standard_val_datasets() -> datasets.DatasetDict:
     """Loads a pre-defined set of standard val datasets."""
     d = {
         "ag_news": load_ag_news_test(),
+        "arxiv": load_arxiv_val(),
         "xsum_doc": load_xsum_val("document"),
         "xsum_summ": load_xsum_val("summary"),
         "wikibio": load_wikibio_val(),
