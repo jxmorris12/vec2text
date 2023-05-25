@@ -22,6 +22,8 @@ class CorrectorTrainer(BaseTrainer):
     InversionTrainer.
     """
 
+    train_dataset: datasets.Dataset
+    eval_dataset: Dict[str, datasets.Dataset]
     # TODO: don't assume that the encoder has to have the same tokenizer as the encoder_decoder
     # or embedder model.
 
@@ -122,7 +124,7 @@ class CorrectorTrainer(BaseTrainer):
             print(f"Loading hypotheses from path {cache_path}")
             dataset = datasets.load_from_disk(cache_path)
         return dataset
-    
+
     def precompute_hypotheses(self) -> None:
         logger.info("Precomputing frozen embedding & hypotheses before training")
         self.train_dataset = self._preprocess_dataset(dataset=self.train_dataset)
@@ -134,8 +136,13 @@ class CorrectorTrainer(BaseTrainer):
 
         return super()._inner_training_loop(*args, **kwargs)
 
-    def generate(self, inputs: Dict, generation_kwargs: Dict, num_recursive_steps: int = None,
-        num_recursive_steps_so_far: int = 0) -> torch.Tensor:
+    def generate(
+        self,
+        inputs: Dict,
+        generation_kwargs: Dict,
+        num_recursive_steps: int = None,
+        num_recursive_steps_so_far: int = 0,
+    ) -> torch.Tensor:
         """Generates text using self-correction.
 
         Args:
@@ -168,27 +175,36 @@ class CorrectorTrainer(BaseTrainer):
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
 
-        if (num_recursive_steps_so_far == 0) and (self.initial_hypothesis_str is not None):
+        if (num_recursive_steps_so_far == 0) and (
+            self.initial_hypothesis_str is not None
+        ):
             print("using initial hypothesis")
             # If set, uses this string as the hypothesis for step 0 of self-correction
             batch_size = frozen_embeddings.shape[0]
-            gen_text_ids = self.embedder_tokenizer(
-                [self.initial_hypothesis_str],
-                return_tensors="pt",
-                max_length=hypothesis_input_ids.shape[1],
-                truncation=True,
-                padding="max_length",
-            )["input_ids"].repeat((batch_size, 1)).to(self.args.device)
+            gen_text_ids = (
+                self.embedder_tokenizer(
+                    [self.initial_hypothesis_str],
+                    return_tensors="pt",
+                    max_length=hypothesis_input_ids.shape[1],
+                    truncation=True,
+                    padding="max_length",
+                )["input_ids"]
+                .repeat((batch_size, 1))
+                .to(self.args.device)
+            )
             # gen_text_ids = (
             #     torch.randint(low=1, high=self.embedder_tokenizer.vocab_size, size=(1, 32), dtype=torch.long)
             #     .repeat((batch_size, 1)).to(self.args.device)
             # )
             bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
-            bos_token_ids = torch.ones((batch_size, 1), dtype=torch.long, device=gen_text_ids.device) * bos_token_id
-            gen_text_ids = torch.cat(
-                (bos_token_ids, gen_text_ids[:, :-1]), dim=1
+            bos_token_ids = (
+                torch.ones(
+                    (batch_size, 1), dtype=torch.long, device=gen_text_ids.device
+                )
+                * bos_token_id
             )
-        
+            gen_text_ids = torch.cat((bos_token_ids, gen_text_ids[:, :-1]), dim=1)
+
         elif self.is_corrector_encoder:
             gen_text_ids = self.model.generate(
                 inputs=inputs,
@@ -203,25 +219,36 @@ class CorrectorTrainer(BaseTrainer):
             # Don't return <hypothesis><text> upon generation, just return <text>
             max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
             gen_text_ids = gen_text_ids[:, max_length:]
-        
-        
+
         hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
         # Make sure we generated the proper number of tokens
         # assert gen_text_ids.shape[1] in [32, 128]
 
         # Track best one we've seen so far.
-        best_hypothesis_input_ids = inputs.get("best_hypothesis_input_ids", inputs["hypothesis_input_ids"])
-        best_hypothesis_embedding = inputs.get("best_hypothesis_embedding", inputs["hypothesis_embedding"])
-        best_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(inputs["frozen_embeddings"], best_hypothesis_embedding)
-        new_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(inputs["frozen_embeddings"], hypothesis_embedding)
+        best_hypothesis_input_ids = inputs.get(
+            "best_hypothesis_input_ids", inputs["hypothesis_input_ids"]
+        )
+        best_hypothesis_embedding = inputs.get(
+            "best_hypothesis_embedding", inputs["hypothesis_embedding"]
+        )
+        best_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(
+            inputs["frozen_embeddings"], best_hypothesis_embedding
+        )
+        new_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(
+            inputs["frozen_embeddings"], hypothesis_embedding
+        )
         inputs["best_hypothesis_input_ids"] = torch.where(
-            (best_distance < new_distance)[:, None], best_hypothesis_input_ids, gen_text_ids
+            (best_distance < new_distance)[:, None],
+            best_hypothesis_input_ids,
+            gen_text_ids,
         )
         # if 0 < (best_distance < new_distance).float().mean() < 1: import pdb; pdb.set_trace()
         inputs["best_hypothesis_embedding"] = torch.where(
-            (best_distance < new_distance)[:, None], best_hypothesis_embedding, hypothesis_embedding
+            (best_distance < new_distance)[:, None],
+            best_hypothesis_embedding,
+            hypothesis_embedding,
         )
-        
+
         if num_recursive_steps == 1:
             if self.return_best_hypothesis:
                 return inputs["best_hypothesis_input_ids"]
@@ -229,12 +256,15 @@ class CorrectorTrainer(BaseTrainer):
                 return gen_text_ids
         else:
             inputs["hypothesis_input_ids"] = gen_text_ids
-            inputs["hypothesis_attention_mask"] = (gen_text_ids != self.model.encoder_decoder.config.pad_token_id).int()
+            inputs["hypothesis_attention_mask"] = (
+                gen_text_ids != self.model.encoder_decoder.config.pad_token_id
+            ).int()
             inputs["hypothesis_embedding"] = hypothesis_embedding
             return self.generate(
-                inputs=inputs, generation_kwargs=generation_kwargs, 
-                num_recursive_steps=(num_recursive_steps-1),
-                num_recursive_steps_so_far=num_recursive_steps_so_far+1,
+                inputs=inputs,
+                generation_kwargs=generation_kwargs,
+                num_recursive_steps=(num_recursive_steps - 1),
+                num_recursive_steps_so_far=num_recursive_steps_so_far + 1,
             )
 
     @property
@@ -366,8 +396,15 @@ class CorrectorTrainer(BaseTrainer):
                 # and get right-shifted to [0, ...hypothesis_input_ids, 1, ...label_ids]
                 # by the model.
                 # Do this always during evaluation, and 50% of the time during training.
-                decoder_input_ids = shift_right(torch.cat((hypothesis_input_ids, inputs["labels"]), dim=1))
-                empty_tokens = torch.ones_like(hypothesis_input_ids, device=hypothesis_input_ids.device) * -100
+                decoder_input_ids = shift_right(
+                    torch.cat((hypothesis_input_ids, inputs["labels"]), dim=1)
+                )
+                empty_tokens = (
+                    torch.ones_like(
+                        hypothesis_input_ids, device=hypothesis_input_ids.device
+                    )
+                    * -100
+                )
                 labels = torch.cat((empty_tokens, inputs["labels"]), dim=1)
             outputs = self.model(
                 embedding=frozen_embeddings,
@@ -390,6 +427,6 @@ class CorrectorTrainer(BaseTrainer):
         inputs = {key: value.to(self.args.device) for key, value in inputs.items()}
         with torch.no_grad():
             loss = self.compute_loss(model=model, inputs=inputs)
-        
+
         logits, labels = None, None
         return loss, logits, labels

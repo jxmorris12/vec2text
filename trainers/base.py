@@ -101,9 +101,7 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["max_length"] = inputs[
-                "input_ids"
-            ].shape[1]
+            gen_kwargs["max_length"] = inputs["input_ids"].shape[1]
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda, generation_kwargs=gen_kwargs
@@ -303,7 +301,7 @@ class BaseTrainer(transformers.Trainer):
                 torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()
             )
             sim_result = {"emb_cos_sim": emb_cos_sim}
-        
+
         # Store stuff for access later.
         self.preds_emb = preds_emb.cpu()
         self.labels_emb = labels_emb.cpu()

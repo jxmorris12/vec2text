@@ -37,7 +37,7 @@ os.environ["TOKENIZERS_PARALLELISM"] = "True"
 
 # Don't send telemetry to HF every time we train.
 os.environ["HF_DATASETS_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1" 
+os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)

@@ -72,7 +72,7 @@ max_seq_length = [128]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [5e-4, 1e-4] # [2e-3, 2e-4]
+learning_rates = [5e-4, 1e-4]  # [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
@@ -104,7 +104,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "nodelist": "rush-compute-03",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
-                "time": "168:00:00",    # 168 hours --> 2 weeks
+                "time": "168:00:00",  # 168 hours --> 2 weeks
                 # "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[

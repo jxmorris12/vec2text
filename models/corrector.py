@@ -118,11 +118,11 @@ class CorrectorModel(torch.nn.Module):
 
         # The "start of sequence" token for the second guess is the end-of-sequence
         # token from the hypothesis.
-        batch_size = len(hypothesis_input_ids)
-        bos_tokens = (
-            torch.ones((batch_size, 1), device=embedding.device, dtype=torch.long)
-            * self.encoder_decoder.config.decoder_start_token_id
-        )
+        # batch_size = len(hypothesis_input_ids)
+        # bos_tokens = (
+        #     torch.ones((batch_size, 1), device=embedding.device, dtype=torch.long)
+        #     * self.encoder_decoder.config.decoder_start_token_id
+        # )
         # hypothesis_input_ids = torch.cat(
         #     (bos_tokens, hypothesis_input_ids), dim=1
         # )
