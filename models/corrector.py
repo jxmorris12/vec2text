@@ -90,9 +90,9 @@ class CorrectorModel(torch.nn.Module):
         """Does two-step generation by generating a hypothesis and then a correction."""
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
         max_length = inputs["hypothesis_input_ids"].shape[1]
-        if "max_length" not in generation_kwargs:
-            generation_kwargs["max_length"] = max_length
-            generation_kwargs["min_length"] = generation_kwargs["max_length"]
+        # if "max_length" not in generation_kwargs:
+        generation_kwargs["max_length"] = max_length
+        generation_kwargs["min_length"] = generation_kwargs["max_length"]
 
         embedding = inputs["frozen_embeddings"]
         #

@@ -13,13 +13,15 @@ CHECKPOINT_FOLDERS_DICT = {
     "dpr_nq__msl32_beta": "/home/jxm3/research/retrieval/inversion/saves/db66b9c01b644541fedbdcc59c53a285/ebb31d91810c4b62d2b55b5382e8c7ea",
     #  https://wandb.ai/jack-morris/emb-inv-1/runs/dc72e8b9c01bd27b0ed1c2def90bcee5/overview?workspace=user-jxmorris12
     "gtr_nq__msl128_beta": "/home/jxm3/research/retrieval/inversion/saves/8631b1c05efebde3077d16c5b99f6d5e/dc72e8b9c01bd27b0ed1c2def90bcee5",
+    #  https://wandb.ai/jack-morris/emb-correct-1/runs/e9430bc73cfd6fb433eb0e5401d4a7ff
+    "gtr_nq__msl32_beta__correct": "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac",
 }
 
 
 def load_inversion_trainer_from_alias(alias: str):  # -> trainers.InversionTrainer:
     import trainers
 
-    args_str = ARGS_DICT[alias]
+    args_str = ARGS_DICT.get(alias)
     checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
     print(f"loading alias {alias} from {checkpoint_folder}...")
     trainer = analyze_utils.load_trainer(checkpoint_folder, args_str, do_eval=False)

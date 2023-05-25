@@ -502,28 +502,6 @@ class InversionExperimentBagOfWords(Experiment):
         )
 
 
-class RerankingExperiment(Experiment):
-    @property
-    def _wandb_project_name(self) -> str:
-        return "emb-rerank-1"
-
-    def load_trainer(self) -> transformers.Trainer:
-        # TODO: argparse for this
-        inversion_trainer = aliases.load_inversion_trainer_from_alias(
-            alias="dpr_nq__msl32_beta"
-        )
-        return trainers.RerankingTrainer(
-            model=self.load_model(),
-            inversion_trainer=inversion_trainer,
-            args=self.training_args,
-        )
-
-    def load_model(self) -> torch.nn.Module:
-        transformers.T5EncoderModel._keys_to_ignore_on_load_unexpected = ["decoder.*"]
-        prefix_embedder = transformers.T5EncoderModel.from_pretrained("t5-base")
-        return PrefixReranker(prefix_embedder=prefix_embedder)
-
-
 class CorrectorExperiment(Experiment):
     @property
     def _wandb_project_name(self) -> str:
@@ -541,6 +519,7 @@ class CorrectorExperiment(Experiment):
         )
 
     def load_model(self) -> torch.nn.Module:
+        raise RuntimeError("Did you mean to launch the CorrectorEncoder experiment instead?")
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
         return CorrectorModel(encoder_decoder=encoder_decoder)
 
@@ -548,7 +527,7 @@ class CorrectorExperiment(Experiment):
 class CorrectorEncoderExperiment(CorrectorExperiment):
     def load_model(self) -> torch.nn.Module:
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        return CorrectorEncoderModel(encoder_decoder=encoder_decoder)
+        return CorrectorEncoderModel(encoder_decoder=encoder_decoder, ignore_hypothesis_embedding=self.model_args.corrector_ignore_hypothesis_embedding)
 
 
 EXPERIMENT_CLS_MAP = {

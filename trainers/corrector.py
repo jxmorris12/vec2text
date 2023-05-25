@@ -178,7 +178,7 @@ class CorrectorTrainer(BaseTrainer):
         if (num_recursive_steps_so_far == 0) and (
             self.initial_hypothesis_str is not None
         ):
-            print("using initial hypothesis")
+            logger.info(f"Using initial hypothesis: {self.initial_hypothesis_str}")
             # If set, uses this string as the hypothesis for step 0 of self-correction
             batch_size = frozen_embeddings.shape[0]
             gen_text_ids = (
@@ -192,10 +192,10 @@ class CorrectorTrainer(BaseTrainer):
                 .repeat((batch_size, 1))
                 .to(self.args.device)
             )
-            # gen_text_ids = (
-            #     torch.randint(low=1, high=self.embedder_tokenizer.vocab_size, size=(1, 32), dtype=torch.long)
-            #     .repeat((batch_size, 1)).to(self.args.device)
-            # )
+            gen_text_ids = (
+                torch.randint(low=1, high=self.embedder_tokenizer.vocab_size, size=(1, 32), dtype=torch.long)
+                .repeat((batch_size, 1)).to(self.args.device)
+            )
             bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
             bos_token_ids = (
                 torch.ones(
@@ -221,9 +221,6 @@ class CorrectorTrainer(BaseTrainer):
             gen_text_ids = gen_text_ids[:, max_length:]
 
         hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
-        # Make sure we generated the proper number of tokens
-        # assert gen_text_ids.shape[1] in [32, 128]
-
         # Track best one we've seen so far.
         best_hypothesis_input_ids = inputs.get(
             "best_hypothesis_input_ids", inputs["hypothesis_input_ids"]
@@ -242,7 +239,6 @@ class CorrectorTrainer(BaseTrainer):
             best_hypothesis_input_ids,
             gen_text_ids,
         )
-        # if 0 < (best_distance < new_distance).float().mean() < 1: import pdb; pdb.set_trace()
         inputs["best_hypothesis_embedding"] = torch.where(
             (best_distance < new_distance)[:, None],
             best_hypothesis_embedding,

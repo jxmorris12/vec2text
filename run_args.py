@@ -109,7 +109,7 @@ class ModelArguments:
         },
     )
     num_repeat_tokens: int = field(
-        default=32,
+        default=16,
         metadata={
             "help": "Number of times to repeat embedding along T5 input sequence length."
         },
@@ -137,6 +137,12 @@ class ModelArguments:
         metadata={
             "help": "Whether to do whitening on embeddings (requires computing expensive covariance matrix first)"
         },
+    )
+    corrector_ignore_hypothesis_embedding: bool = field(
+        default=False,
+        metadata={
+            "help": "If set, and training corrector encoder, will ignore the hypothesis embedding"
+        }
     )
     embeddings_from_layer_n: Optional[int] = field(
         default=None,

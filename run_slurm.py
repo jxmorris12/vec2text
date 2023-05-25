@@ -6,7 +6,7 @@ from slurmpy import Slurm
 BASE_PYTHON_CMD = """
 PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
 python run.py \
---experiment corrector \
+--experiment corrector_encoder \
 --per_device_train_batch_size {batch_size} \
 --per_device_eval_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
@@ -23,14 +23,15 @@ python run.py \
 --encoder_dropout_disabled False \
 --decoder_dropout_disabled False \
 --use_less_data {use_less_data} \
---num_train_epochs 40 \
+--num_train_epochs 60 \
 --max_eval_samples 500 \
 --eval_steps 25000 \
 --warmup_steps 200000 \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1 \
---corrector_model_alias "gtr_nq__msl128_beta"
+--corrector_model_alias "dpr_nq__msl32_beta" \
+--corrector_ignore_hypothesis_embedding True
 """
 # --resume_from_checkpoint "saves/f1fe315f3727514ba39bcc4376d56307/checkpoint-160000"
 
@@ -64,15 +65,15 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
 # exp_group_name = "may11-mem-test-2"
-exp_group_name = "may24-corr-encoder-msl128-2"
+exp_group_name = "may25-correct-ignore-hypothesis"
 ##########################################
 
-batch_size = 64
-max_seq_length = [128]
+batch_size = 256
+max_seq_length = [32]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [5e-4, 1e-4]  # [2e-3, 2e-4]
+learning_rates = [2e-3]  # [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]

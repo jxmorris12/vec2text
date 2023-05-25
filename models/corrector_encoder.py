@@ -20,6 +20,7 @@ class CorrectorEncoderModel(torch.nn.Module):
         embedder_dim: int = 768,
         num_repeat_tokens: int = 16,
         bottleneck_dim: int = 768,
+        ignore_hypothesis_embedding: bool = False,
     ):
         super().__init__()
         self.encoder_decoder = encoder_decoder
@@ -43,6 +44,9 @@ class CorrectorEncoderModel(torch.nn.Module):
         batch_size, D = embedding.shape
         assert embedding.shape == (batch_size, 768)
         assert hypothesis_embedding.shape == (batch_size, 768)
+
+        if self.ignore_hypothesis_embedding:
+            hypothesis_embedding = embedding
 
         diff_embedding = embedding - hypothesis_embedding
 
