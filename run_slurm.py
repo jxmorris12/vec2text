@@ -30,9 +30,10 @@ python run.py \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1 \
---corrector_model_alias "dpr_nq__msl32_beta" \
+--corrector_model_alias "gtr_nq__msl128_beta" \
 --corrector_ignore_hypothesis_embedding True
 """
+# --corrector_model_alias "dpr_nq__msl32_beta" 
 # --resume_from_checkpoint "saves/f1fe315f3727514ba39bcc4376d56307/checkpoint-160000"
 
 
@@ -65,15 +66,15 @@ emb_models = ["gtr_base"]
 # exp_group_name = 'mar21-bn-drop'
 # exp_group_name = "apr16-huge"
 # exp_group_name = "may11-mem-test-2"
-exp_group_name = "may25-correct-ignore-hypothesis"
+exp_group_name = "may25-correct-sl128"
 ##########################################
 
-batch_size = 256
-max_seq_length = [32]
+batch_size = 64
+max_seq_length = [128]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [2e-3]  # [2e-3, 2e-4]
+learning_rates = [2e-3, 1e-3, 5e-4]  # [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
@@ -102,7 +103,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                "nodelist": "rush-compute-03",
+                # "nodelist": "rush-compute-03",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
                 "time": "168:00:00",  # 168 hours --> 2 weeks

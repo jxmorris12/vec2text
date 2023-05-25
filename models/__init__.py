@@ -10,4 +10,3 @@ from .model_utils import (  # noqa: F401
     load_embedder_and_tokenizer,
     load_encoder_decoder,
 )
-from .reranker import PrefixReranker  # noqa: F401

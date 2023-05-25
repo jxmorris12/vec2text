@@ -21,7 +21,6 @@ from models import (
     InversionModel,
     InversionModelBagOfWords,
     InversionModelNonAutoregressive,
-    PrefixReranker,
     load_embedder_and_tokenizer,
     load_encoder_decoder,
 )
@@ -532,7 +531,6 @@ class CorrectorEncoderExperiment(CorrectorExperiment):
 
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
-    "reranking": RerankingExperiment,
     "corrector": CorrectorExperiment,
     "corrector_encoder": CorrectorEncoderExperiment,
     #
