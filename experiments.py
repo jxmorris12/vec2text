@@ -406,7 +406,6 @@ class InversionExperiment(Experiment):
             args=self.training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            # tokenizer=model.tokenizer,
             data_collator=CustomCollator(tokenizer=model.tokenizer),
         )
 

@@ -27,6 +27,12 @@ class CorrectorTrainer(BaseTrainer):
 
     _hypothesis_cache: Dict[str, Tuple[torch.Tensor, torch.Tensor, torch.Tensor]]
 
+    # If set, only take hypothesis if it improves our distance to ground-truth.
+    return_best_hypothesis: bool = False
+
+    # Initialize from this hypothesis, if set
+    initial_hypothesis_str: Optional[str] = None
+
     def __init__(
         self,
         model: Union[CorrectorEncoderModel, CorrectorModel],
@@ -50,8 +56,13 @@ class CorrectorTrainer(BaseTrainer):
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
 
+        self.initial_hypothesis_str = None
+
         # Number of steps of self-correction
         self.num_gen_recursive_steps = 1
+
+        # If set, return closest (in embedding space) hypothesis we see during generation
+        self.return_best_hypothesis = False
 
         # Initialize our model with pre-trained model params
         missing_keys, unexpected_keys = self.model.load_state_dict(
@@ -123,7 +134,20 @@ class CorrectorTrainer(BaseTrainer):
 
         return super()._inner_training_loop(*args, **kwargs)
 
-    def generate(self, inputs: Dict, generation_kwargs: Dict, num_recursive_steps: int = None) -> torch.Tensor:
+    def generate(self, inputs: Dict, generation_kwargs: Dict, num_recursive_steps: int = None,
+        num_recursive_steps_so_far: int = 0) -> torch.Tensor:
+        """Generates text using self-correction.
+
+        Args:
+            inputs (Dict[str, torch.Tensor]): inputs for generation, like the input embedding, hypothesis,
+                and hypothesis embedding
+            generation_kwargs (Dict): dictionary of parameters for generation, will be passed on to the model
+            num_recursive_steps (int): Number of remaining steps of recursion, used to know when to stop
+            num_recusive_steps_so_far (int): Number of steps of recursion performed so far. This is how we
+                can check if it's the initial hypothesis or not.
+        Returns:
+            generated_ids (torch.Tensor): ids of generated text
+        """
         if num_recursive_steps is None:
             num_recursive_steps = self.num_gen_recursive_steps
 
@@ -144,7 +168,28 @@ class CorrectorTrainer(BaseTrainer):
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
 
-        if self.is_corrector_encoder:
+        if (num_recursive_steps_so_far == 0) and (self.initial_hypothesis_str is not None):
+            print("using initial hypothesis")
+            # If set, uses this string as the hypothesis for step 0 of self-correction
+            batch_size = frozen_embeddings.shape[0]
+            gen_text_ids = self.embedder_tokenizer(
+                [self.initial_hypothesis_str],
+                return_tensors="pt",
+                max_length=hypothesis_input_ids.shape[1],
+                truncation=True,
+                padding="max_length",
+            )["input_ids"].repeat((batch_size, 1)).to(self.args.device)
+            # gen_text_ids = (
+            #     torch.randint(low=1, high=self.embedder_tokenizer.vocab_size, size=(1, 32), dtype=torch.long)
+            #     .repeat((batch_size, 1)).to(self.args.device)
+            # )
+            bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
+            bos_token_ids = torch.ones((batch_size, 1), dtype=torch.long, device=gen_text_ids.device) * bos_token_id
+            gen_text_ids = torch.cat(
+                (bos_token_ids, gen_text_ids[:, :-1]), dim=1
+            )
+        
+        elif self.is_corrector_encoder:
             gen_text_ids = self.model.generate(
                 inputs=inputs,
                 generation_kwargs=generation_kwargs,
@@ -159,18 +204,37 @@ class CorrectorTrainer(BaseTrainer):
             max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
             gen_text_ids = gen_text_ids[:, max_length:]
         
+        
+        hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
         # Make sure we generated the proper number of tokens
         # assert gen_text_ids.shape[1] in [32, 128]
+
+        # Track best one we've seen so far.
+        best_hypothesis_input_ids = inputs.get("best_hypothesis_input_ids", inputs["hypothesis_input_ids"])
+        best_hypothesis_embedding = inputs.get("best_hypothesis_embedding", inputs["hypothesis_embedding"])
+        best_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(inputs["frozen_embeddings"], best_hypothesis_embedding)
+        new_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(inputs["frozen_embeddings"], hypothesis_embedding)
+        inputs["best_hypothesis_input_ids"] = torch.where(
+            (best_distance < new_distance)[:, None], best_hypothesis_input_ids, gen_text_ids
+        )
+        # if 0 < (best_distance < new_distance).float().mean() < 1: import pdb; pdb.set_trace()
+        inputs["best_hypothesis_embedding"] = torch.where(
+            (best_distance < new_distance)[:, None], best_hypothesis_embedding, hypothesis_embedding
+        )
         
         if num_recursive_steps == 1:
-            return gen_text_ids
+            if self.return_best_hypothesis:
+                return inputs["best_hypothesis_input_ids"]
+            else:
+                return gen_text_ids
         else:
-            hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
             inputs["hypothesis_input_ids"] = gen_text_ids
             inputs["hypothesis_attention_mask"] = (gen_text_ids != self.model.encoder_decoder.config.pad_token_id).int()
             inputs["hypothesis_embedding"] = hypothesis_embedding
             return self.generate(
-                inputs=inputs, generation_kwargs=generation_kwargs, num_recursive_steps=(num_recursive_steps-1)
+                inputs=inputs, generation_kwargs=generation_kwargs, 
+                num_recursive_steps=(num_recursive_steps-1),
+                num_recursive_steps_so_far=num_recursive_steps_so_far+1,
             )
 
     @property
@@ -235,6 +299,7 @@ class CorrectorTrainer(BaseTrainer):
                 "num_beams": 1,
                 "do_sample": False,
                 "no_repeat_ngram_size": 0,
+                "max_length": seq_length,
             },
         )
         hypothesis_attention_mask = (

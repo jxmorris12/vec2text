@@ -40,15 +40,19 @@ class BaseTrainer(transformers.Trainer):
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
         input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
         print("\tInput to encode ->", input_string)
-        inputs = self.embedder_tokenizer(input_string, return_tensors="pt", max_length=32, truncation=True)
+        inputs = self.embedder_tokenizer(input_string, return_tensors="pt")
         inputs = inputs.to(self.args.device)
+        gen_kwargs = copy.copy(self.gen_kwargs)
+        gen_kwargs["min_length"] = 1
+        gen_kwargs["max_length"] = max(128, inputs["input_ids"].shape[1] + 1)
         regenerated = self.generate(
             inputs={
                 "embedder_input_ids": inputs["input_ids"],
                 "embedder_attention_mask": inputs["attention_mask"],
             },
-            generation_kwargs=self.gen_kwargs,
+            generation_kwargs=gen_kwargs,
         )
+        print("\tDecoded output shape -> ", regenerated.shape)
         output_string = self.embedder_tokenizer.decode(
             regenerated.flatten(), skip_special_tokens=True
         )
@@ -97,7 +101,7 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["min_length"] = gen_kwargs["max_length"] = inputs[
+            gen_kwargs["max_length"] = inputs[
                 "input_ids"
             ].shape[1]
             with torch.no_grad():
@@ -285,8 +289,6 @@ class BaseTrainer(transformers.Trainer):
             )
             preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
             assert preds_sample.shape == preds_sample_labels.shape
-            # not true anymore, could be pad too.
-            # assert (preds_sample_labels[:, -1] == eos_tokens).all()
 
         with torch.no_grad():
             preds_emb = self.call_embedding_model(
