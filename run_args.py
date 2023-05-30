@@ -318,7 +318,6 @@ class TrainingArguments(transformers.TrainingArguments):
         self.report_to = (
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
-        # self.dataloader_num_workers = 0
         self.dataloader_pin_memory = True
         self.dataloader_num_workers = int(
             len(os.sched_getaffinity(0)) / torch.cuda.device_count()

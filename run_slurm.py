@@ -3,8 +3,9 @@ from datetime import datetime
 
 from slurmpy import Slurm
 
+# PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
+
 BASE_PYTHON_CMD = """
-PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
 python run.py \
 --experiment corrector_encoder \
 --per_device_train_batch_size {batch_size} \
@@ -25,7 +26,7 @@ python run.py \
 --use_less_data {use_less_data} \
 --num_train_epochs 60 \
 --max_eval_samples 500 \
---eval_steps 25000 \
+--eval_steps 50000 \
 --warmup_steps 200000 \
 --bf16=1 \
 --use_lora=0 \
@@ -69,7 +70,7 @@ emb_models = ["gtr_base"]
 # exp_group_name = "may11-mem-test-2"
 # exp_group_name = "may25-correct-sl128-2"
 # exp_group_name = "may25-correct-s32-no-feedback-2"
-exp_group_name = "may27-correct-sl128-3"
+exp_group_name = "may30-correct-sl128-no-share-params"
 ##########################################
 
 batch_size = 64
@@ -77,7 +78,7 @@ max_seq_length = [128]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [1e-4, 5e-5]  # [2e-3, 2e-4]
+learning_rates = [5e-4]  # [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]

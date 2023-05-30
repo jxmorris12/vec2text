@@ -70,6 +70,15 @@ class CorrectorTrainer(BaseTrainer):
         missing_keys, unexpected_keys = self.model.load_state_dict(
             self.inversion_trainer.model.state_dict(), strict=False
         )
+        self.model.embedding_transform_1.load_state_dict(
+            self.inversion_trainer.model.embedding_transform.state_dict(),
+        )
+        self.model.embedding_transform_2.load_state_dict(
+            self.inversion_trainer.model.embedding_transform.state_dict(),
+        )
+        self.model.embedding_transform_3.load_state_dict(
+            self.inversion_trainer.model.embedding_transform.state_dict(),
+        )
 
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16

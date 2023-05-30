@@ -44,6 +44,7 @@ def load_trainer(
     training_args.report_to = []
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
+    trainer.model._keys_to_ignore_on_save = []
     trainer._load_from_checkpoint(checkpoint)
     if sanity_decode:
         trainer.sanity_decode()

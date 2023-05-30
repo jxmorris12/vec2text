@@ -27,7 +27,19 @@ class CorrectorEncoderModel(torch.nn.Module):
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
-        self.embedding_transform = nn.Sequential(
+        self.embedding_transform_1 = nn.Sequential(
+            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Dropout(self.encoder_decoder.config.dropout_rate),
+            nn.GELU(),
+            nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens),
+        )
+        self.embedding_transform_2 = nn.Sequential(
+            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Dropout(self.encoder_decoder.config.dropout_rate),
+            nn.GELU(),
+            nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens),
+        )
+        self.embedding_transform_3 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
             nn.Dropout(self.encoder_decoder.config.dropout_rate),
             nn.GELU(),
@@ -51,13 +63,13 @@ class CorrectorEncoderModel(torch.nn.Module):
 
         diff_embedding = embedding - hypothesis_embedding
 
-        embedding = self.embedding_transform(embedding)
+        embedding = self.embedding_transform_1(embedding)
         embedding = embedding.reshape((batch_size, self.num_repeat_tokens, -1))
         #
-        diff_embedding = self.embedding_transform(diff_embedding)
+        diff_embedding = self.embedding_transform_2(diff_embedding)
         diff_embedding = diff_embedding.reshape((batch_size, self.num_repeat_tokens, D))
         #
-        hypothesis_embedding = self.embedding_transform(hypothesis_embedding)
+        hypothesis_embedding = self.embedding_transform_3(hypothesis_embedding)
         hypothesis_embedding = hypothesis_embedding.reshape(
             (batch_size, self.num_repeat_tokens, -1)
         )

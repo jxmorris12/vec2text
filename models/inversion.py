@@ -108,6 +108,7 @@ class InversionModel(nn.Module):
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Dropout(self.encoder_decoder.config.dropout_rate),
             nn.GELU(),  # TODO consider dropout or normalization here.
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens),
         )

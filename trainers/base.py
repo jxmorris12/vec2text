@@ -1,4 +1,6 @@
 import copy
+import logging
+import os
 import random
 import statistics
 from typing import Dict, List, Tuple
@@ -8,6 +10,9 @@ import numpy as np
 import torch
 import tqdm
 import transformers
+
+
+logger = logging.getLogger(__name__)
 
 
 def preprocess_logits_for_metrics(logits, labels):
@@ -328,3 +333,38 @@ class BaseTrainer(transformers.Trainer):
         }
         output.metrics.update(generation_metrics)
         return output
+    
+    def _remap_state_dict(self, state_dict: Dict) -> Dict:
+        """Edit keys posthumously on model load."""
+        return state_dict
+
+    def _load_from_checkpoint(self, resume_from_checkpoint, model=None):
+        """Copying transformers load_from_checkpoint so we can modify state dicts on load to support
+        post-hoc model architecture changes (specifically, adding dropout).
+        """
+        WEIGHTS_NAME = "pytorch_model.bin"
+        CONFIG_NAME = "config.json"
+        WEIGHTS_NAME = "pytorch_model.bin"
+
+        if model is None:
+            model = self.model
+
+        if not os.path.isfile(os.path.join(resume_from_checkpoint, WEIGHTS_NAME)) and not os.path.isfile(
+            os.path.join(resume_from_checkpoint, WEIGHTS_INDEX_NAME)
+        ):
+            raise ValueError(f"Can't find a valid checkpoint at {resume_from_checkpoint}")
+
+        logger.info(f"Loading model from {resume_from_checkpoint}.")
+
+        if os.path.isfile(os.path.join(resume_from_checkpoint, WEIGHTS_NAME)):
+            # We load the model state dict on the CPU to avoid an OOM error.
+            state_dict = torch.load(os.path.join(resume_from_checkpoint, WEIGHTS_NAME), map_location="cpu")
+            state_dict = self._remap_state_dict(state_dict)
+            # workaround for FSDP bug https://github.com/pytorch/pytorch/issues/82963
+            # which takes *args instead of **kwargs
+            load_result = model.load_state_dict(state_dict, strict=True)
+            # release memory
+            del state_dict
+            self._issue_warnings_after_load(load_result)
+        else:
+            raise ValueError("error loading from checkpoint")

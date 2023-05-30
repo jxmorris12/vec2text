@@ -23,11 +23,23 @@ class CorrectorModel(torch.nn.Module):
         bottleneck_dim: int = 768,
     ):
         super().__init__()
-        self.encoder_decoder = encoder_decoder
+        self.encoder_decoder = encoder_decoder.to_bettertransformer()
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens
         self.encoder_hidden_dim = self.encoder_decoder.config.hidden_size
-        self.embedding_transform = nn.Sequential(
+        self.embedding_transform_1 = nn.Sequential(
+            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Dropout(self.encoder_decoder.config.dropout_rate),
+            nn.GELU(),  # TODO consider dropout or normalization here.
+            nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
+        )
+        self.embedding_transform_2 = nn.Sequential(
+            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Dropout(self.encoder_decoder.config.dropout_rate),
+            nn.GELU(),  # TODO consider dropout or normalization here.
+            nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
+        )
+        self.embedding_transform_3 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
             nn.Dropout(self.encoder_decoder.config.dropout_rate),
             nn.GELU(),  # TODO consider dropout or normalization here.

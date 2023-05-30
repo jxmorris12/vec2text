@@ -119,3 +119,9 @@ class InversionTrainer(BaseTrainer):
         output.metrics[f"{metric_key_prefix}_perplexity"] = perplexity
 
         return output
+
+    def _remap_state_dict(self, state_dict: Dict) -> Dict:
+        """Edit keys posthumously on model load."""
+        state_dict["embedding_transform.3.weight"] = state_dict.pop("embedding_transform.2.weight")
+        state_dict["embedding_transform.3.bias"] = state_dict.pop("embedding_transform.2.bias")
+        return state_dict
