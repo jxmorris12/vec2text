@@ -526,7 +526,10 @@ class CorrectorExperiment(Experiment):
 class CorrectorEncoderExperiment(CorrectorExperiment):
     def load_model(self) -> torch.nn.Module:
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        return CorrectorEncoderModel(encoder_decoder=encoder_decoder, ignore_hypothesis_embedding=self.model_args.corrector_ignore_hypothesis_embedding)
+        return CorrectorEncoderModel(
+            encoder_decoder=encoder_decoder, 
+            ignore_hypothesis_embedding=self.model_args.corrector_ignore_hypothesis_embedding,
+        )
 
 
 EXPERIMENT_CLS_MAP = {

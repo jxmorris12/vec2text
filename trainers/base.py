@@ -213,9 +213,9 @@ class BaseTrainer(transformers.Trainer):
         rouge_result = self.metric_rouge.compute(
             predictions=predictions_str, references=references_str
         )
-        bertscore_result = self.metric_bertscore.compute(
-            predictions=predictions_str, references=references_str, lang="en"
-        )
+        # bertscore_result = self.metric_bertscore.compute(
+        #     predictions=predictions_str, references=references_str, lang="en"
+        # )
         exact_matches = (np.array(predictions_str) == np.array(references_str)).mean()
         gen_metrics = {
             "bleu_score": bleu_result["score"],
@@ -223,7 +223,7 @@ class BaseTrainer(transformers.Trainer):
             "rouge_score": rouge_result[
                 "rouge1"
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
-            "bert_score": statistics.fmean(bertscore_result["f1"]),
+            # "bert_score": statistics.fmean(bertscore_result["f1"]),
             "exact_match": exact_matches,
         }
         return {**set_token_metrics, **gen_metrics}

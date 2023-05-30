@@ -33,6 +33,7 @@ class CorrectorEncoderModel(torch.nn.Module):
             nn.GELU(),
             nn.Linear(bottleneck_dim, encoder_hidden_dim * num_repeat_tokens),
         )
+        self.ignore_hypothesis_embedding = ignore_hypothesis_embedding
 
     def get_encoder_embedding(
         self,
