@@ -1,3 +1,4 @@
+import random
 from typing import Callable, Dict
 
 import datasets
@@ -84,3 +85,19 @@ def whiten_embedded_dataset(dataset_dict: datasets.DatasetDict) -> datasets.Data
             "frozen_embeddings_whitened", whitened_embeddings
         )
     return dataset_dict
+
+
+def randomly_truncate_inputs(
+    inputs: Dict[str, torch.Tensor]
+) -> Dict[str, torch.Tensor]:
+    # randomly truncates inputs. assumes last input is a pad token.
+    seq_length = inputs["input_ids"].shape[1]
+    new_length = random.randint(1, seq_length - 1)
+    pos = random.randint(0, seq_length - new_length)
+    truncated_inputs = {k: v[:, pos : pos + new_length] for k, v in inputs.items()}
+    truncated_inputs_with_pad = {
+        k: torch.cat((truncated_inputs[k], inputs[k][:, -1, None]), dim=1)
+        for k, v in inputs.items()
+    }
+    # TODO fix eos and bos?
+    return truncated_inputs_with_pad

@@ -23,7 +23,7 @@ class CorrectorModel(torch.nn.Module):
         bottleneck_dim: int = 768,
     ):
         super().__init__()
-        self.encoder_decoder = encoder_decoder.to_bettertransformer()
+        self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens
         self.encoder_hidden_dim = self.encoder_decoder.config.hidden_size

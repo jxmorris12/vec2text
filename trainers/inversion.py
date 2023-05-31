@@ -1,5 +1,4 @@
 import math
-import random
 from typing import Dict
 
 import torch
@@ -71,21 +70,6 @@ class InversionTrainer(BaseTrainer):
                 )
         return generations
 
-    def _randomly_truncate_inputs(
-        self, inputs: Dict[str, torch.Tensor]
-    ) -> Dict[str, torch.Tensor]:
-        # randomly truncates inputs. assumes last input is a pad token.
-        assert not self.model.use_frozen_embeddings_as_input  # need to re-embed
-        seq_length = inputs["input_ids"].shape[1]
-        new_length = random.randint(1, seq_length - 1)
-        pos = random.randint(0, seq_length - new_length)
-        truncated_inputs = {k: v[:, pos : pos + new_length] for k, v in inputs.items()}
-        truncated_inputs_with_pad = {
-            k: torch.cat((truncated_inputs[k], inputs[k][:, -1, None]), dim=1)
-            for k, v in inputs.items()
-        }
-        return truncated_inputs_with_pad
-
     def training_step(
         self, model: nn.Module, inputs: Dict[str, torch.Tensor]
     ) -> torch.Tensor:
@@ -94,8 +78,6 @@ class InversionTrainer(BaseTrainer):
         """
         # TODO: Log training metrics from below... (How to do with huggingface?)
         self._compute_data_metrics(inputs=inputs)
-        if self.args.randomly_truncate_train_inputs:
-            inputs = self._randomly_truncate_inputs(inputs=inputs)
         # self.log({ f"train/{k}": v for k,v in metrics.items() })
         return super().training_step(model, inputs)
 
@@ -122,6 +104,10 @@ class InversionTrainer(BaseTrainer):
 
     def _remap_state_dict(self, state_dict: Dict) -> Dict:
         """Edit keys posthumously on model load."""
-        state_dict["embedding_transform.3.weight"] = state_dict.pop("embedding_transform.2.weight")
-        state_dict["embedding_transform.3.bias"] = state_dict.pop("embedding_transform.2.bias")
+        state_dict["embedding_transform.3.weight"] = state_dict.pop(
+            "embedding_transform.2.weight"
+        )
+        state_dict["embedding_transform.3.bias"] = state_dict.pop(
+            "embedding_transform.2.bias"
+        )
         return state_dict

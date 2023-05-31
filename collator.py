@@ -30,7 +30,6 @@ import transformers
 
 
 class CustomCollator(transformers.DataCollatorWithPadding):
-    tokenizer: transformers.PreTrainedTokenizerBase
     padding: Union[bool, str] = True
     max_length: Optional[int] = None
     pad_to_multiple_of: Optional[int] = None

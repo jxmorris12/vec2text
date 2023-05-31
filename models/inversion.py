@@ -71,7 +71,7 @@ class InversionModel(nn.Module):
     ):
         super().__init__()
         self.embedder = embedder
-        self.encoder_decoder = encoder_decoder
+        self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         if encoder_decoder_lora:
             from peft import (
                 LoraConfig,

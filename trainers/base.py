@@ -2,15 +2,17 @@ import copy
 import logging
 import os
 import random
-import statistics
+
+# import statistics
 from typing import Dict, List, Tuple
 
+import datasets
 import evaluate
 import numpy as np
 import torch
 import tqdm
 import transformers
-
+from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +108,23 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            gen_kwargs["max_length"] = inputs["input_ids"].shape[1]
+            max_length = inputs["input_ids"].shape[1]
+            gen_kwargs["max_length"] = max_length
             with torch.no_grad():
                 generated_text = self.generate(
                     inputs=inputs_cuda, generation_kwargs=gen_kwargs
                 )
+            if generated_text.shape[1] < max_length:
+                # Pad generated text to max length
+                pad_tokens = (
+                    torch.ones(
+                        (generated_text.shape[0], max_length - generated_text.shape[1]),
+                        dtype=torch.long,
+                        device=generated_text.device,
+                    )
+                    * self.model.encoder_decoder.config.pad_token_id
+                )
+                generated_text = torch.cat((generated_text, pad_tokens), dim=1)
             all_preds.extend(generated_text.cpu().tolist())
             all_labels.extend(inputs["input_ids"].cpu().tolist())
             if len(all_preds) >= n:
@@ -333,7 +347,7 @@ class BaseTrainer(transformers.Trainer):
         }
         output.metrics.update(generation_metrics)
         return output
-    
+
     def _remap_state_dict(self, state_dict: Dict) -> Dict:
         """Edit keys posthumously on model load."""
         return state_dict
@@ -343,22 +357,22 @@ class BaseTrainer(transformers.Trainer):
         post-hoc model architecture changes (specifically, adding dropout).
         """
         WEIGHTS_NAME = "pytorch_model.bin"
-        CONFIG_NAME = "config.json"
-        WEIGHTS_NAME = "pytorch_model.bin"
 
         if model is None:
             model = self.model
 
-        if not os.path.isfile(os.path.join(resume_from_checkpoint, WEIGHTS_NAME)) and not os.path.isfile(
-            os.path.join(resume_from_checkpoint, WEIGHTS_INDEX_NAME)
-        ):
-            raise ValueError(f"Can't find a valid checkpoint at {resume_from_checkpoint}")
+        if not os.path.isfile(os.path.join(resume_from_checkpoint, WEIGHTS_NAME)):
+            raise ValueError(
+                f"Can't find a valid checkpoint at {resume_from_checkpoint}"
+            )
 
         logger.info(f"Loading model from {resume_from_checkpoint}.")
 
         if os.path.isfile(os.path.join(resume_from_checkpoint, WEIGHTS_NAME)):
             # We load the model state dict on the CPU to avoid an OOM error.
-            state_dict = torch.load(os.path.join(resume_from_checkpoint, WEIGHTS_NAME), map_location="cpu")
+            state_dict = torch.load(
+                os.path.join(resume_from_checkpoint, WEIGHTS_NAME), map_location="cpu"
+            )
             state_dict = self._remap_state_dict(state_dict)
             # workaround for FSDP bug https://github.com/pytorch/pytorch/issues/82963
             # which takes *args instead of **kwargs
@@ -368,3 +382,54 @@ class BaseTrainer(transformers.Trainer):
             self._issue_warnings_after_load(load_result)
         else:
             raise ValueError("error loading from checkpoint")
+
+    def get_train_dataloader(self) -> DataLoader:
+        """
+        Returns the training [`~torch.utils.data.DataLoader`].
+
+        Have to override to set batch_size to None to use pre-batched data.
+        """
+        if self.train_dataset is None:
+            raise ValueError("Trainer: training requires a train_dataset.")
+
+        train_dataset = self.train_dataset
+        data_collator = self.data_collator
+        if isinstance(train_dataset, datasets.Dataset):
+            train_dataset = self._remove_unused_columns(
+                train_dataset, description="training"
+            )
+        else:
+            data_collator = self._get_collator_with_removed_columns(
+                data_collator, description="training"
+            )
+
+        if isinstance(train_dataset, torch.utils.data.IterableDataset):
+            if self.args.world_size > 1:
+                train_dataset = torch.utils.data.IterableDatasetShard(
+                    train_dataset,
+                    batch_size=None,
+                    drop_last=self.args.dataloader_drop_last,
+                    num_processes=self.args.world_size,
+                    process_index=self.args.process_index,
+                )
+
+            return DataLoader(
+                train_dataset,
+                batch_size=None,
+                collate_fn=None,
+                num_workers=self.args.dataloader_num_workers,
+                pin_memory=self.args.dataloader_pin_memory,
+            )
+
+        train_sampler = self._get_train_sampler()
+
+        return DataLoader(
+            train_dataset,
+            batch_size=None,
+            sampler=train_sampler,
+            collate_fn=None,
+            drop_last=self.args.dataloader_drop_last,
+            num_workers=self.args.dataloader_num_workers,
+            pin_memory=self.args.dataloader_pin_memory,
+            worker_init_fn=transformers.trainer_utils.seed_worker,
+        )

@@ -16,14 +16,14 @@ DEFAULT_ARGS += ["--fp16", "1"]
 
 def load_trainer(model_args, data_args, training_args) -> InversionTrainer:
     ########################################################
-    training_args.num_train_epochs = 1.0
+    training_args.num_train_epochs = 0.5
     training_args.eval_steps = 4
     data_args.max_eval_samples = 64
     trainer = experiment_from_args(
         model_args=model_args, data_args=data_args, training_args=training_args
     ).load_trainer()
     # make datasets smaller...
-    trainer.train_dataset = trainer.train_dataset.select(range(256))
+    trainer.train_dataset = trainer.train_dataset.select(range(8))  # just 8 batches
     ########################################################
     return trainer
 

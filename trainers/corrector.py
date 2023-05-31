@@ -123,8 +123,7 @@ class CorrectorTrainer(BaseTrainer):
             print(f"Saving hypotheses to path {cache_path}")
             dataset = dataset.map(
                 self._precompute_hypothesis_and_embedding,
-                batched=True,
-                batch_size=self.args.train_batch_size * 4,
+                batched=False,
                 desc="Precomputing hypotheses for data",
             )
             dataset.save_to_disk(cache_path)
@@ -185,7 +184,7 @@ class CorrectorTrainer(BaseTrainer):
         inputs["hypothesis_embedding"] = hypothesis_embedding
 
         max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
-        
+
         if (num_recursive_steps_so_far == 0) and (
             self.initial_hypothesis_str is not None
         ):
@@ -204,8 +203,14 @@ class CorrectorTrainer(BaseTrainer):
                 .to(self.args.device)
             )
             gen_text_ids = (
-                torch.randint(low=1, high=self.embedder_tokenizer.vocab_size, size=(1, 32), dtype=torch.long)
-                .repeat((batch_size, 1)).to(self.args.device)
+                torch.randint(
+                    low=1,
+                    high=self.embedder_tokenizer.vocab_size,
+                    size=(1, 32),
+                    dtype=torch.long,
+                )
+                .repeat((batch_size, 1))
+                .to(self.args.device)
             )
             bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
             bos_token_ids = (
@@ -228,20 +233,25 @@ class CorrectorTrainer(BaseTrainer):
             )
             # Don't return <hypothesis><text> upon generation, just return <text>
             gen_text_ids = gen_text_ids[:, max_length:]
-        
-        
+
         # Pad to max length.
-        def pad_to_length(ids: torch.Tensor, max_length: int, pad_token_id: int) -> torch.Tensor:
+        def pad_to_length(
+            ids: torch.Tensor, max_length: int, pad_token_id: int
+        ) -> torch.Tensor:
             batch_size = ids.shape[0]
             if ids.shape[1] < max_length:
                 num_pad_tokens = max_length - ids.shape[1]
                 pad_tokens = (
-                    torch.ones((batch_size, num_pad_tokens), dtype=torch.long, device=ids.device)
+                    torch.ones(
+                        (batch_size, num_pad_tokens),
+                        dtype=torch.long,
+                        device=ids.device,
+                    )
                     * pad_token_id
                 )
                 ids = torch.cat((ids, pad_tokens), dim=1)
             return ids
-        
+
         # Track best one we've seen so far.
         hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
         best_hypothesis_input_ids = inputs.get(
@@ -249,14 +259,20 @@ class CorrectorTrainer(BaseTrainer):
         )
 
         # Pad everything to max length so we can stack properly.
-        max_hypothesis_length = max(gen_text_ids.shape[1], best_hypothesis_input_ids.shape[1])
+        max_hypothesis_length = max(
+            gen_text_ids.shape[1], best_hypothesis_input_ids.shape[1]
+        )
         gen_text_ids = pad_to_length(
-            gen_text_ids, max_hypothesis_length, self.model.encoder_decoder.config.pad_token_id
+            gen_text_ids,
+            max_hypothesis_length,
+            self.model.encoder_decoder.config.pad_token_id,
         )
         best_hypothesis_input_ids = pad_to_length(
-            best_hypothesis_input_ids, max_hypothesis_length, self.model.encoder_decoder.config.pad_token_id
+            best_hypothesis_input_ids,
+            max_hypothesis_length,
+            self.model.encoder_decoder.config.pad_token_id,
         )
-        
+
         # Store closest-seen hypothesis.
         best_hypothesis_embedding = inputs.get(
             "best_hypothesis_embedding", inputs["hypothesis_embedding"]

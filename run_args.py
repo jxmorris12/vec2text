@@ -142,7 +142,7 @@ class ModelArguments:
         default=False,
         metadata={
             "help": "If set, and training corrector encoder, will ignore the hypothesis embedding"
-        }
+        },
     )
     embeddings_from_layer_n: Optional[int] = field(
         default=None,

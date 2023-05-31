@@ -23,7 +23,7 @@ class CorrectorEncoderModel(torch.nn.Module):
         ignore_hypothesis_embedding: bool = False,
     ):
         super().__init__()
-        self.encoder_decoder = encoder_decoder
+        self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
