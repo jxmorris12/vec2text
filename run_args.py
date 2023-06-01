@@ -11,7 +11,7 @@ from models import EMBEDDING_TRANSFORM_STRATEGIES, FREEZE_STRATEGIES, MODEL_NAME
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
-DATASET_NAMES = ["nq", "luar_reddit"]
+DATASET_NAMES = ["nq", "luar_reddit", "msmarco"]
 
 
 @dataclass
