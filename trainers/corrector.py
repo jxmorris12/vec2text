@@ -123,7 +123,8 @@ class CorrectorTrainer(BaseTrainer):
             print(f"Saving hypotheses to path {cache_path}")
             dataset = dataset.map(
                 self._precompute_hypothesis_and_embedding,
-                batched=False,
+                batched=True,
+                batch_size=(self.args.train_batch_size * 4),
                 desc="Precomputing hypotheses for data",
             )
             dataset.save_to_disk(cache_path)

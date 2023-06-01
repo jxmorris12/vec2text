@@ -16,21 +16,24 @@ DEFAULT_ARGS += ["--fp16", "1"]
 
 def load_trainer(model_args, data_args, training_args) -> InversionTrainer:
     ########################################################
-    training_args.num_train_epochs = 0.5
-    training_args.eval_steps = 4
+    training_args.dataloader_num_workers = 0  # no multiprocessing :)
+    training_args.num_train_epochs = 10.0
+    training_args.eval_steps = 64
     data_args.max_eval_samples = 64
+    training_args.warmup_steps = 0
     trainer = experiment_from_args(
         model_args=model_args, data_args=data_args, training_args=training_args
     ).load_trainer()
     # make datasets smaller...
-    trainer.train_dataset = trainer.train_dataset.select(range(8))  # just 8 batches
+    trainer.train_dataset = trainer.train_dataset.select(range(256))  # just 8 batches
     ########################################################
     return trainer
 
 
 @pytest.mark.parametrize("dataset_name", DATASET_NAMES)
 def test_trainer(dataset_name):
-    if dataset_name != "msmarco": return True
+    if dataset_name != "msmarco":
+        return True
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )

@@ -6,13 +6,11 @@ import random
 # import statistics
 from typing import Dict, List, Tuple
 
-import datasets
 import evaluate
 import numpy as np
 import torch
 import tqdm
 import transformers
-from torch.utils.data import DataLoader
 
 logger = logging.getLogger(__name__)
 
@@ -108,7 +106,7 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            max_length = inputs["input_ids"].shape[1]
+            max_length = inputs["embedder_input_ids"].shape[1]
             gen_kwargs["max_length"] = max_length
             with torch.no_grad():
                 generated_text = self.generate(
@@ -125,8 +123,23 @@ class BaseTrainer(transformers.Trainer):
                     * self.model.encoder_decoder.config.pad_token_id
                 )
                 generated_text = torch.cat((generated_text, pad_tokens), dim=1)
+            
+            true_input_ids = inputs["input_ids"]
+            if true_input_ids.shape[1] < max_length:
+                # Pad true text to max length
+                # Pad generated text to max length
+                pad_tokens = (
+                    torch.ones(
+                        (true_input_ids.shape[0], max_length - true_input_ids.shape[1]),
+                        dtype=torch.long,
+                        device=true_input_ids.device,
+                    )
+                    * self.model.encoder_decoder.config.pad_token_id
+                )
+                true_input_ids = torch.cat((true_input_ids, pad_tokens), dim=1)
+
             all_preds.extend(generated_text.cpu().tolist())
-            all_labels.extend(inputs["input_ids"].cpu().tolist())
+            all_labels.extend(true_input_ids.cpu().tolist())
             if len(all_preds) >= n:
                 break
 
@@ -291,6 +304,21 @@ class BaseTrainer(transformers.Trainer):
         preds_sample_labels = torch.tensor(
             preds_sample_labels_list, device=self.args.device
         )[:128]
+
+        # Log num tokens.
+        num_tokens_metrics = {
+            "pred_num_tokens": (preds_sample != self.model.encoder_decoder.config.pad_token_id)
+            .sum(1)
+            .float()
+            .mean(),
+            "true_num_tokens": (
+                preds_sample_labels != self.model.encoder_decoder.config.pad_token_id
+            )
+            .sum(1)
+            .float()
+            .mean(),
+        }
+
         # Fix eos token on generated text.
         # bos_token_id = self.embedder_tokenizer.pad_token_id
         # assert (preds_sample[:, 0] == bos_token_id).all()
@@ -327,7 +355,7 @@ class BaseTrainer(transformers.Trainer):
         self.preds_sample_list = preds_sample_list
         self.preds_sample_labels_list = preds_sample_labels_list
 
-        metrics = {**bleu_result, **sim_result}
+        metrics = {**num_tokens_metrics, **bleu_result, **sim_result}
         return metrics
 
     def evaluation_loop(
@@ -382,54 +410,3 @@ class BaseTrainer(transformers.Trainer):
             self._issue_warnings_after_load(load_result)
         else:
             raise ValueError("error loading from checkpoint")
-
-    def get_train_dataloader(self) -> DataLoader:
-        """
-        Returns the training [`~torch.utils.data.DataLoader`].
-
-        Have to override to set batch_size to None to use pre-batched data.
-        """
-        if self.train_dataset is None:
-            raise ValueError("Trainer: training requires a train_dataset.")
-
-        train_dataset = self.train_dataset
-        data_collator = self.data_collator
-        if isinstance(train_dataset, datasets.Dataset):
-            train_dataset = self._remove_unused_columns(
-                train_dataset, description="training"
-            )
-        else:
-            data_collator = self._get_collator_with_removed_columns(
-                data_collator, description="training"
-            )
-
-        if isinstance(train_dataset, torch.utils.data.IterableDataset):
-            if self.args.world_size > 1:
-                train_dataset = torch.utils.data.IterableDatasetShard(
-                    train_dataset,
-                    batch_size=None,
-                    drop_last=self.args.dataloader_drop_last,
-                    num_processes=self.args.world_size,
-                    process_index=self.args.process_index,
-                )
-
-            return DataLoader(
-                train_dataset,
-                batch_size=None,
-                collate_fn=None,
-                num_workers=self.args.dataloader_num_workers,
-                pin_memory=self.args.dataloader_pin_memory,
-            )
-
-        train_sampler = self._get_train_sampler()
-
-        return DataLoader(
-            train_dataset,
-            batch_size=None,
-            sampler=train_sampler,
-            collate_fn=None,
-            drop_last=self.args.dataloader_drop_last,
-            num_workers=self.args.dataloader_num_workers,
-            pin_memory=self.args.dataloader_pin_memory,
-            worker_init_fn=transformers.trainer_utils.seed_worker,
-        )

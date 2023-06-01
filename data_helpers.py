@@ -85,7 +85,9 @@ def load_msmarco_corpus_uncached(path: str) -> List[str]:
     color = "#" + "".join(hex(ord(x))[2:] for x in string_from_dataset)[:6]
     ######################################################################
 
-    for item_text in tqdm.tqdm(items, colour=color, desc="Loading dataset", leave=False):
+    for item_text in tqdm.tqdm(
+        items, colour=color, desc="Loading dataset", leave=False
+    ):
         item = json.loads(item_text)
         contexts.append(item["text"])
 
@@ -105,14 +107,14 @@ def load_msmarco_corpus(path: str) -> datasets.Dataset:
         logging.info("Loading MSMarco dataset %s path %s", dataset_path)
         dataset = datasets.load_from_disk(dataset_path)
     else:
-        logging.info(
-            "Loading DPR dataset %s from JSON (slow) at path %s", path
-        )
+        logging.info("Loading DPR dataset %s from JSON (slow) at path %s", path)
         corpus = load_msmarco_corpus_uncached(path=path)
         dataset = datasets.Dataset.from_list([{"text": t} for t in corpus])
         os.makedirs(os.path.join(cache_path, "emb_inv_msmarco"), exist_ok=True)
         dataset.save_to_disk(dataset_path)
-        logging.info("Saved MSMarco dataset as HF from %s to path %s", path, dataset_path)
+        logging.info(
+            "Saved MSMarco dataset as HF from %s to path %s", path, dataset_path
+        )
 
     return dataset
 

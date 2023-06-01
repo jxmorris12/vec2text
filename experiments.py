@@ -1,4 +1,5 @@
 import abc
+import functools
 import hashlib
 import json
 import logging
@@ -25,7 +26,7 @@ from models import (
     load_encoder_decoder,
 )
 from run_args import DataArguments, ModelArguments, TrainingArguments
-from tokenize_data import randomly_truncate_inputs, tokenize_function
+from tokenize_data import tokenize_function
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -42,11 +43,11 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
 
 
-def return_batch(batch: Dict[str, torch.Tensor]) -> Dict[str, Dict[str, torch.Tensor]]:
-    """Makes a batch of examples into a single "batch" example in huggingface datasets.
-    Basically just adds a dimension of 1 to all of the tensors.
-    """
-    return {k: v[None] for k, v in batch.items()}
+def compute_length(
+    batch: Dict[str, torch.Tensor], pad_token_id: int
+) -> Dict[str, Dict[str, torch.Tensor]]:
+    batch["length"] = (batch["input_ids"] != pad_token_id).sum(1)
+    return batch
 
 
 def md5_hash_kwargs(**kwargs) -> str:
@@ -354,21 +355,17 @@ class Experiment(abc.ABC):
             val_datasets_dict[name] = val_datasets_dict[name].add_column(
                 "idx", range(len(val_datasets_dict[name]))
             )
+            val_datasets_dict[name].set_format("pt")
 
+        
+        train_dataset.set_format("pt")
+
+        train_dataset = train_dataset.map(
+            functools.partial(compute_length, pad_token_id=tokenizer.pad_token_id),
+            batched=True,
+        )
         train_dataset = train_dataset.add_column("idx", range(len(train_dataset)))
         ###########################################################################
-
-        train_dataset.set_format(type="torch")
-        print("mapping dataset to a batch")
-        train_dataset = train_dataset.map(
-            return_batch, batch_size=self.training_args.train_batch_size, batched=True
-        )
-
-        if self.training_args.randomly_truncate_train_inputs:
-            # Random seed is already set so this'll be deterministic
-            train_dataset = train_dataset.map(randomly_truncate_inputs)
-
-        print("returning datasets")
 
         return train_dataset, val_datasets_dict
 
@@ -424,7 +421,7 @@ class InversionExperiment(Experiment):
             args=self.training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            data_collator=CustomCollator(tokenizer=None),
+            data_collator=CustomCollator(tokenizer=model.tokenizer),
         )
 
 
@@ -469,7 +466,7 @@ class InversionExperimentNonAutoregressive(Experiment):
             args=self.training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            data_collator=CustomCollator(tokenizer=None),
+            data_collator=CustomCollator(tokenizer=model.tokenizer),
         )
 
 
@@ -514,7 +511,7 @@ class InversionExperimentBagOfWords(Experiment):
             args=self.training_args,
             train_dataset=train_dataset,
             eval_dataset=eval_dataset,
-            data_collator=CustomCollator(tokenizer=None),
+            data_collator=CustomCollator(tokenizer=model.tokenizer),
         )
 
 

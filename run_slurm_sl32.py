@@ -33,7 +33,7 @@ python run.py \
 --corrector_model_alias "dpr_nq__msl32_beta" \
 --corrector_ignore_hypothesis_embedding False
 """
-# --corrector_model_alias "dpr_nq__msl32_beta" 
+# --corrector_model_alias "dpr_nq__msl32_beta"
 # --corrector_model_alias "gtr_nq__msl128_beta"
 # --resume_from_checkpoint "saves/f1fe315f3727514ba39bcc4376d56307/checkpoint-160000"
 
@@ -106,7 +106,7 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                #"nodelist": "rush-compute-03",
+                # "nodelist": "rush-compute-03",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
                 "time": "168:00:00",  # 168 hours --> 2 weeks

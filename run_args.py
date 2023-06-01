@@ -174,7 +174,7 @@ class DataArguments:
     """
 
     dataset_name: Optional[str] = field(
-        default="nq",
+        default="msmarco",
         metadata={
             "choices": DATASET_NAMES,
             "help": "The name of the dataset to use (via the datasets library).",
@@ -238,10 +238,6 @@ class TrainingArguments(transformers.TrainingArguments):
     learning_rate: float = field(
         default=2e-5,
         metadata={"help": "The initial learning rate for AdamW on the backbone model."},
-    )
-    randomly_truncate_train_inputs: bool = field(
-        default=False,
-        metadata={"help": "Whether to randomly truncate inputs during training"},
     )
     use_wandb: Optional[bool] = field(
         default=None, metadata={"help": "Whether or not to log to Weights & Biases."}
@@ -335,7 +331,6 @@ class TrainingArguments(transformers.TrainingArguments):
         # defaults from SentenceTransformers
         # lr 2e-5
         self.adam_epsilon = 1e-6
-        # TODO: consider this weight decay strategy, maybe just for
-        # full model fine-tuning...
-        # https://github.com/UKPLab/sentence-transformers/blob/0422a5e07a5a998948721dea435235b342a9f610/sentence_transformers/SentenceTransformer.py#L661-L674
-        # self.weight_decay = 0.1
+
+        self.group_by_length = True
+        self.length_column_name = "length"
