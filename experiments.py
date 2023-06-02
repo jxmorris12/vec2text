@@ -122,12 +122,13 @@ class Experiment(abc.ABC):
         trainer = self.load_trainer()
 
         # Save model_args and data_args before training. Trainer will save training_args.
-        torch.save(
-            self.data_args, os.path.join(training_args.output_dir, "data_args.bin")
-        )
-        torch.save(
-            self.model_args, os.path.join(training_args.output_dir, "model_args.bin")
-        )
+        if training_args.local_rank <= 0:
+            torch.save(
+                self.data_args, os.path.join(training_args.output_dir, "data_args.bin")
+            )
+            torch.save(
+                self.model_args, os.path.join(training_args.output_dir, "model_args.bin")
+            )
 
         # train.
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
@@ -340,6 +341,9 @@ class Experiment(abc.ABC):
             batched=True,
             desc="Running tokenizer on dataset",
         )
+
+        # filter out empty examples (these exist for xsum documents).
+        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex['length'] > 1)
         val_datasets_dict[self.data_args.dataset_name] = eval_dataset
 
         for name, dataset in val_datasets_dict.items():

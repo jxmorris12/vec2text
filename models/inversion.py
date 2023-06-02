@@ -23,10 +23,12 @@ logger = logging.getLogger(__name__)
 
 
 def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
-  # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
-  import openai
-  response = openai.Embedding.create(input=text_list, model=model)
-  return [e['embedding'] for e in response['data']]
+    # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
+    #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
+    # TODO: set up a caching system somehow.
+    import openai
+    response = openai.Embedding.create(input=text_list, model=model)
+    return [e['embedding'] for e in response['data']]
 
 
 def embed_api(
@@ -126,7 +128,7 @@ class InversionModel(nn.Module):
             # Hard-code OpenAI embedding dim
             self.embedder_dim = 1536
             bottleneck_dim = 1536
-        if use_frozen_embeddings_as_input:
+        elif use_frozen_embeddings_as_input:
             # temp hack to set fixed sentence embedding size to 512.
             # TODO do this in a smarter way (figure it out from data? or make it an arg.)
             self.embedder_dim = 512
@@ -266,9 +268,10 @@ class InversionModel(nn.Module):
         attention_mask: torch.Tensor,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
+        # print("** call_embedding_model")
         if self.embedder_no_grad:
             self.embedder.eval()
-
+        
         if self.embedder_fake_with_zeros:
             batch_size = input_ids.shape[0]
             return torch.zeros(
@@ -301,6 +304,7 @@ class InversionModel(nn.Module):
         embedder_attention_mask: Optional[torch.Tensor],
         frozen_embeddings: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
+        # print("** embed_and_project")
         assert not ((embedder_input_ids is None) and (frozen_embeddings is None))
         if self.use_frozen_embeddings_as_input or (embedder_input_ids is None):
             assert (
@@ -395,7 +399,7 @@ class InversionModel(nn.Module):
             embedder_attention_mask=embedder_attention_mask,
             frozen_embeddings=frozen_embeddings,
         )
-        # print("decoder_input_ids:", decoder_input_ids)
+        # print("** calling encoder_Decoder()")
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,
             attention_mask=attention_mask,
