@@ -1,6 +1,7 @@
 bert_score
 datasets
 evaluate
+openai
 optimum
 pre-commit
 rouge_score

@@ -22,6 +22,32 @@ from .model_utils import (
 logger = logging.getLogger(__name__)
 
 
+def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
+  # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
+  import openai
+  response = openai.Embedding.create(input=text_list, model=model)
+  return [e['embedding'] for e in response['data']]
+
+
+def embed_api(
+        input_ids: torch.Tensor, 
+        embedder_tokenizer: transformers.PreTrainedTokenizer, 
+        api_name: str
+    ) -> torch.Tensor:
+    text_list = embedder_tokenizer.batch_decode(
+        input_ids, skip_special_tokens=True
+    )
+    
+    if api_name.startswith("text-embedding-ada"):
+        embeddings = get_embeddings_openai(
+            text_list=text_list,
+            model=api_name,
+        )
+    else:
+        raise ValueError(f"unsupported api name {api_name}")
+    return torch.tensor(embeddings, device=input_ids.device)
+
+
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
 # TODO: Need config to subclass transformers.PreTrainedModel.
@@ -45,6 +71,7 @@ class InversionModel(nn.Module):
     use_frozen_embeddings_as_input: bool  # Whether to train/evaluate on frozen embeddings
     whiten_embeddings: bool  # Preprocess all embeddings using 'whitening'
     embedded_tokens: torch.Tensor  # used for decoding
+    embedder_model_api: Optional[str]
 
     def __init__(
         self,
@@ -55,6 +82,7 @@ class InversionModel(nn.Module):
         num_repeat_tokens: int,
         embedder_no_grad: bool,
         freeze_strategy: str = "none",
+        embedder_model_api: Optional[str] = None,
         embedder_fake_with_zeros: bool = False,
         encoder_dropout_disabled: bool = False,
         decoder_dropout_disabled: bool = False,
@@ -92,6 +120,12 @@ class InversionModel(nn.Module):
             self.encoder_decoder = get_peft_model(self.encoder_decoder, peft_config)
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
+
+        if embedder_model_api:
+            assert use_frozen_embeddings_as_input, "must precompute embeddings w/ api"
+            # Hard-code OpenAI embedding dim
+            self.embedder_dim = 1536
+            bottleneck_dim = 1536
         if use_frozen_embeddings_as_input:
             # temp hack to set fixed sentence embedding size to 512.
             # TODO do this in a smarter way (figure it out from data? or make it an arg.)
@@ -120,6 +154,7 @@ class InversionModel(nn.Module):
         ######################################################
         self.tokenizer = tokenizer
         self.embedder_tokenizer = embedder_tokenizer
+        self.embedder_model_api = embedder_model_api
         self.freeze(freeze_strategy=freeze_strategy)
         self.embedder_fake_with_zeros = embedder_fake_with_zeros
         assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
@@ -231,6 +266,8 @@ class InversionModel(nn.Module):
         attention_mask: torch.Tensor,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
+        if self.embedder_no_grad:
+            self.embedder.eval()
 
         if self.embedder_fake_with_zeros:
             batch_size = input_ids.shape[0]
@@ -239,10 +276,13 @@ class InversionModel(nn.Module):
                 dtype=torch.float32,
                 device=self.embedder_device,
             )
-
-        if self.embedder_no_grad:
-            self.embedder.eval()
-        if isinstance(self.embedder, SentenceTransformer):
+        elif self.embedder_model_api:
+            return embed_api(
+                input_ids=input_ids,
+                embedder_tokenizer=self.embedder_tokenizer,
+                api_name=self.embedder_model_api,
+            )
+        elif isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying
             model_output = self.embedder(
                 {"input_ids": input_ids, "attention_mask": attention_mask}

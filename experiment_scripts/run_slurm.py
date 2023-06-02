@@ -7,7 +7,7 @@ from slurmpy import Slurm
 
 BASE_PYTHON_CMD = """
 python run.py \
---experiment corrector_encoder \
+--experiment inversion \
 --per_device_train_batch_size {batch_size} \
 --per_device_eval_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
@@ -19,24 +19,19 @@ python run.py \
 --learning_rate {learning_rate} \
 --freeze_strategy {freeze_strategy} \
 --embedder_fake_with_zeros {embedder_fake_with_zeros} \
---randomly_truncate_train_inputs {truncate} \
---use_frozen_embeddings_as_input False \
 --encoder_dropout_disabled False \
 --decoder_dropout_disabled False \
 --use_less_data {use_less_data} \
 --num_train_epochs 60 \
 --max_eval_samples 500 \
---eval_steps 50000 \
+--eval_steps 200000 \
 --warmup_steps 200000 \
 --bf16=1 \
 --use_lora=0 \
 --use_wandb=1 \
---corrector_model_alias "gtr_nq__msl128_beta" \
---corrector_ignore_hypothesis_embedding False
+--embedder_model_api "text-embedding-ada-002" \
+--use_frozen_embeddings_as_input True
 """
-# --corrector_model_alias "dpr_nq__msl32_beta"
-# --corrector_model_alias "gtr_nq__msl128_beta"
-# --resume_from_checkpoint "saves/f1fe315f3727514ba39bcc4376d56307/checkpoint-160000"
 
 
 models = [
@@ -54,37 +49,21 @@ emb_models = ["gtr_base"]
 
 
 ##########################################
-# exp_group_name = 'feb27-t5-size'
-# exp_group_name = 'feb27-token-num-3'
-# exp_group_name = 'feb28-emb'
-# exp_group_name = 'mar1-msl-eng'
-# exp_group_name = 'mar2-gtr'
-# exp_group_name = 'mar3-freeze'
-# exp_group_name = 'mar9-bert'
-# exp_group_name = 'mar9-freeze'
-# exp_group_name = 'mar13-freeze-2'
-# exp_group_name = 'mar17-baselines'
-# exp_group_name = 'mar19-random'
-# exp_group_name = 'mar21-bn-drop'
-# exp_group_name = "apr16-huge"
-# exp_group_name = "may11-mem-test-2"
-# exp_group_name = "may25-correct-sl128-2"
-# exp_group_name = "may25-correct-s32-no-feedback-2"
-exp_group_name = "may30-correct-sl128-no-share-params"
+exp_group_name = "jun2-openai-4gpu"
 ##########################################
 
-batch_size = 64
+batch_size = 128
 max_seq_length = [128]
 
 use_less_data = [-1]  # [-1]
 embedder_no_grad = [True]
-learning_rates = [1e-4]  # [2e-3, 2e-4]
+learning_rates = [2e-4]  # [2e-3, 2e-4]
 num_repeat_tokens = [16]
 freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
 do_truncation = [False]
 
-ACTUALLY_RUN_COMMAND = True
+ACTUALLY_RUN_COMMAND = False
 
 
 def run_cmd(cmd: str, job_desc: str):
@@ -107,10 +86,10 @@ def run_cmd(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                # "nodelist": "rush-compute-03",
+                "nodelist": "rush-compute-03",
                 # "time": "24:00:00",
                 # "time": "72:00:00",
-                "time": "168:00:00",  # 168 hours --> 2 weeks
+                "time": "168:00:00",  # 168 hours --> 1 week
                 # "time": "504:00:00",  # 504 hours --> 3 weeks
             },
             slurm_flags=[

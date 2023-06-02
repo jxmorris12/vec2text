@@ -12,20 +12,22 @@ import transformers
 #         return torch.tensor(the_list + [value] * num_pads, dtype=torch.long)
 
 
-def cut_padding(batch: Dict[str, torch.Tensor], pad_token: int) -> Dict[str, torch.Tensor]:
+def cut_padding(
+    batch: Dict[str, torch.Tensor], pad_token: int
+) -> Dict[str, torch.Tensor]:
     """Truncates doc if some stuff is all padding at the end."""
-    assert 'input_ids' in batch
-    assert 'attention_mask' in batch
+    assert "input_ids" in batch
+    assert "attention_mask" in batch
     #
-    b, s = batch['input_ids'].shape
+    b, s = batch["input_ids"].shape
     #
-    all_padding = (batch['input_ids'] == pad_token).all(dim=0)
+    all_padding = (batch["input_ids"] == pad_token).all(dim=0)
     if all_padding.sum() == 0:
         return batch
     #
     padding_start = all_padding.int().argmax()
-    batch['input_ids'] = batch['input_ids'][:, :padding_start]
-    batch['attention_mask'] = batch['attention_mask'][:, :padding_start]
+    batch["input_ids"] = batch["input_ids"][:, :padding_start]
+    batch["attention_mask"] = batch["attention_mask"][:, :padding_start]
     return batch
 
 
@@ -51,7 +53,7 @@ class CustomCollator(transformers.DataCollatorWithPadding):
             # TODO why are these not tensors already since we tokenized with
             #   return_tensors='pt'?
             ex[k] = torch.stack(v)
-        
+
         ex = cut_padding(batch=ex, pad_token=self.tokenizer.pad_token_id)
 
         # TODO: call cut_padding and test if it speeds up the code

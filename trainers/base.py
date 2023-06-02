@@ -123,7 +123,7 @@ class BaseTrainer(transformers.Trainer):
                     * self.model.encoder_decoder.config.pad_token_id
                 )
                 generated_text = torch.cat((generated_text, pad_tokens), dim=1)
-            
+
             true_input_ids = inputs["input_ids"]
             if true_input_ids.shape[1] < max_length:
                 # Pad true text to max length
@@ -307,16 +307,20 @@ class BaseTrainer(transformers.Trainer):
 
         # Log num tokens.
         num_tokens_metrics = {
-            "pred_num_tokens": (preds_sample != self.model.encoder_decoder.config.pad_token_id)
+            "pred_num_tokens": (
+                preds_sample != self.model.encoder_decoder.config.pad_token_id
+            )
             .sum(1)
             .float()
-            .mean(),
+            .mean()
+            .item(),
             "true_num_tokens": (
                 preds_sample_labels != self.model.encoder_decoder.config.pad_token_id
             )
             .sum(1)
             .float()
-            .mean(),
+            .mean()
+            .item(),
         }
 
         # Fix eos token on generated text.

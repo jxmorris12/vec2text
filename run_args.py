@@ -37,9 +37,15 @@ class ModelArguments:
         ###
         default="dpr",
         metadata={
-            "help": "Model to get embeddings from",
+            "help": "Model to get embeddings from (locally)",
             "choices": MODEL_NAMES,
         },
+    )
+    embedder_model_api: str = field(
+        default=None,
+        metadata={
+            "help": "API to get embeddings from"
+        }
     )
     embedding_transform_strategy: str = field(
         default="repeat",
