@@ -2,6 +2,7 @@ import argparse
 import logging
 import os
 
+import pandas as pd
 import torch
 
 from beir import util, LoggingHandler
@@ -11,7 +12,31 @@ from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
 
 
+results_dir = "/home/jxm3/research/retrieval/inversion/results"
 datasets_cache_dir = "/home/jxm3/research/retrieval/distractor_exp"
+all_datasets = [
+    ####### public datasets #######
+    "arguana",
+    "climate-fever",
+    "cqadupstack",
+    "dbpedia-entity",
+    "fever",
+    "fiqa",
+    "hotpotqa",
+    "msmarco",
+    "nfcorpus",
+    "nq",
+    "quora",
+    "scidocs",
+    "scifact",
+    "covid",
+    "touche2020",
+    ####### private datasets #######
+    "bioasq",
+    "signal1m",
+    "trec-news",
+    "robust04"
+]
 
 
 class NoisySentenceBERT(models.SentenceBERT):
@@ -94,4 +119,26 @@ if __name__ == "__main__":
     )
 
     args = parser.parse_args()
-    evaluate(args.model, args.noise, args.dataset)
+    if args.dataset == "all":
+        # 
+        model_name = args.model.replace("/", "_").replace("-", "_")
+        save_path = os.path.join(
+            results_dir,
+            f"retrieval_noisy__{model_name}__{args.noise}.df.parquet"
+        )
+        if os.path.exists(save_path):
+            print(f"found experiment cached at {save_path}. exiting.")
+            exit()
+        # 
+        all_metrics = []
+        for dataset in all_datasets:
+            all_metrics.append(
+                evaluate(args.model, args.noise, dataset)
+            )
+            break
+        # 
+        df = pd.DataFrame(all_metrics)
+        df.to_parquet(save_path)
+    else:
+        evaluate(args.model, args.noise, args.dataset)
+        
