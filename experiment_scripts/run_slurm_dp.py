@@ -3,7 +3,6 @@ from datetime import datetime
 
 from slurmpy import Slurm
 
-# PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
 
 BASE_PYTHON_CMD = """
 python run.py \
@@ -34,28 +33,18 @@ python run.py \
 """
 
 
-models = [
-    # 't5-small',
-    "t5-base",
-    # 't5-large',
-    # "t5-3b",
-    # "t5-11b",
-]
-
-# emb_models = ['dpr', 'ance_tele']
-# emb_models = ['dpr']
-# emb_models = ['gtr_base__random_init']
+models = ["t5-base"]
 emb_models = ["gtr_base"]
 
 
 ##########################################
-exp_group_name = "jun2-openai-4gpu-dp"
+exp_group_name = "jun3-openai-4gpu-dp-3"
 ##########################################
 
 batch_size = 128
 max_seq_length = [128]
 
-use_less_data = [-1]  # [-1]
+use_less_data = [1_000_000]  # [-1]
 embedder_no_grad = [True]
 learning_rates = [2e-4]  # [2e-3, 2e-4]
 num_repeat_tokens = [16]
@@ -63,7 +52,7 @@ freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
 do_truncation = [False]
 
-ACTUALLY_RUN_COMMAND = True
+ACTUALLY_RUN_COMMAND = False
 
 
 def run_cmd(cmd: str, job_desc: str):
@@ -84,7 +73,7 @@ def run_cmd(cmd: str, job_desc: str):
                 # "gres": "gpu:1",
                 # "constraint": "a40|3090|a6000|a5000|a100-40",
                 "ntasks": 1,
-                "cpus-per-task": 4,
+                "cpus-per-task": 16,
                 "mem": "100G",
                 "nodelist": "rush-compute-02",
                 # "time": "24:00:00",

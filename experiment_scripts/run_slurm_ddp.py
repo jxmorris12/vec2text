@@ -6,8 +6,10 @@ from slurmpy import Slurm
 # PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
 
 BASE_PYTHON_CMD = """
-python -m torch.distributed.launch \
---master_port 0 --nproc_per_node 4 --use-env  \
+NCCL_P2P_LEVEL=NVL \
+LOGLEVEL=DEBUG NCCL_DEBUG=INFO \
+/home/jxm3/.conda/envs/torch/bin/torchrun \
+--master_port 0 --nproc_per_node 4 --rdzv-backend=c10d --rdzv-endpoint=localhost:0  \
 run.py \
 --experiment inversion \
 --per_device_train_batch_size {batch_size} \
@@ -26,22 +28,19 @@ run.py \
 --use_less_data {use_less_data} \
 --num_train_epochs 60 \
 --max_eval_samples 500 \
---eval_steps 200000 \
+--eval_steps 50000 \
 --warmup_steps 200000 \
 --bf16=1 \
 --use_lora=0 \
---use_wandb=1 \
---embedder_model_api "text-embedding-ada-002" \
---use_frozen_embeddings_as_input True
+--use_wandb=1
 """
+# --embedder_model_api "text-embedding-ada-002" \
+# --use_frozen_embeddings_as_input True
+# """
 
 
 models = [
-    # 't5-small',
     "t5-base",
-    # 't5-large',
-    # "t5-3b",
-    # "t5-11b",
 ]
 
 # emb_models = ['dpr', 'ance_tele']
@@ -51,7 +50,7 @@ emb_models = ["gtr_base"]
 
 
 ##########################################
-exp_group_name = "jun2-openai-4gpu"
+exp_group_name = "jun3-gtr-4gpu"
 ##########################################
 
 batch_size = 128
@@ -65,7 +64,7 @@ freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
 do_truncation = [False]
 
-ACTUALLY_RUN_COMMAND = False
+ACTUALLY_RUN_COMMAND = True
 
 
 def run_cmd(cmd: str, job_desc: str):
@@ -86,8 +85,8 @@ def run_cmd(cmd: str, job_desc: str):
                 # "gres": "gpu:1",
                 # "constraint": "a40|3090|a6000|a5000|a100-40",
                 "ntasks": 1,
-                "cpus-per-task": 4,
-                "mem": "48G",
+                "cpus-per-task": 16,
+                "mem": "100G",
                 "nodelist": "rush-compute-03",
                 # "time": "24:00:00",
                 # "time": "72:00:00",

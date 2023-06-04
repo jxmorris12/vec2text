@@ -69,6 +69,8 @@ class BaseTrainer(transformers.Trainer):
     ):
         if not self.args.use_wandb:
             return
+        elif not (self.args.local_rank <= 0):
+            return
 
         num_rows = 50
         idxs = random.choices(

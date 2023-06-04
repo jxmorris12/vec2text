@@ -324,7 +324,7 @@ class TrainingArguments(transformers.TrainingArguments):
         self.dataloader_num_workers = int(
             len(os.sched_getaffinity(0)) / torch.cuda.device_count()
         )
-        print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")
+        # print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")
 
         self.dataloader_drop_last = False
 

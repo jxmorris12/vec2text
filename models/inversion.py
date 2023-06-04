@@ -2,6 +2,11 @@ import copy
 import logging
 from typing import Dict, Optional, Tuple
 
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+)
 import torch
 import torch.nn as nn
 import tqdm
@@ -22,6 +27,7 @@ from .model_utils import (
 logger = logging.getLogger(__name__)
 
 
+@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
 def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
     # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
