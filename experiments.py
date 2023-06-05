@@ -26,6 +26,7 @@ from models import (
 )
 from run_args import DataArguments, ModelArguments, TrainingArguments
 from tokenize_data import embed_dataset_batch, tokenize_function
+from utils import torch_main_worker_finish_first
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -280,6 +281,7 @@ class Experiment(abc.ABC):
             pad_to_multiple_of=8 if self.training_args.fp16 else None,
         )
 
+    @torch_main_worker_finish_first
     def load_train_and_val_datasets(
         self,
         tokenizer: transformers.AutoTokenizer,
@@ -406,6 +408,7 @@ class InversionExperiment(Experiment):
             embeddings_from_layer_n=model_args.embeddings_from_layer_n,
         )
 
+    @torch_main_worker_finish_first
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         train_dataset, eval_dataset = self.load_train_and_val_datasets(

@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 import os
 
@@ -32,7 +33,8 @@ all_datasets = [
     ####### private datasets #######
     "signal1m",
     "trec-news",
-    "robust04" "bioasq",
+    "robust04",
+    "bioasq",
 ]
 
 
@@ -57,6 +59,14 @@ class NoisySentenceBERT(models.SentenceBERT):
 
 
 def evaluate(model_name: str, noise_level: float, dataset: str):
+    model_name_str = model_name.replace("/", "_").replace("-", "_")
+    save_path = os.path.join(
+        results_dir, f"retrieval_noisy__{model_name_str}__{dataset}__{noise_level}.json"
+    )
+    if os.path.exists(save_path):
+        print(f"found experiment cached at {save_path}.")
+        return json.load(open(save_path, "r"))
+        exit()
     #### Just some code to print debug information to stdout
     logging.basicConfig(
         format="%(asctime)s - %(message)s",
@@ -95,6 +105,7 @@ def evaluate(model_name: str, noise_level: float, dataset: str):
     }
     print("*** Metrics ***")
     print(metrics)
+    json.dump(metrics, open(save_path, "w"))
 
 
 if __name__ == "__main__":

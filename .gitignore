@@ -5,6 +5,7 @@ __pycache__/
 
 embeddings/
 logs/
+results/
 saves/
 slurm-scripts/
 wandb/
