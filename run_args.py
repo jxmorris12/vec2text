@@ -41,11 +41,8 @@ class ModelArguments:
             "choices": MODEL_NAMES,
         },
     )
-    embedder_model_api: str = field(
-        default=None,
-        metadata={
-            "help": "API to get embeddings from"
-        }
+    embedder_model_api: Optional[str] = field(
+        default=None, metadata={"help": "API to get embeddings from"}
     )
     embedding_transform_strategy: str = field(
         default="repeat",

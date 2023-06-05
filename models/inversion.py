@@ -2,16 +2,12 @@ import copy
 import logging
 from typing import Dict, Optional, Tuple
 
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_fixed,
-)
 import torch
 import torch.nn as nn
 import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from utils import embed_all_tokens
 
@@ -33,19 +29,18 @@ def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
     import openai
+
     response = openai.Embedding.create(input=text_list, model=model)
-    return [e['embedding'] for e in response['data']]
+    return [e["embedding"] for e in response["data"]]
 
 
 def embed_api(
-        input_ids: torch.Tensor, 
-        embedder_tokenizer: transformers.PreTrainedTokenizer, 
-        api_name: str
-    ) -> torch.Tensor:
-    text_list = embedder_tokenizer.batch_decode(
-        input_ids, skip_special_tokens=True
-    )
-    
+    input_ids: torch.Tensor,
+    embedder_tokenizer: transformers.PreTrainedTokenizer,
+    api_name: str,
+) -> torch.Tensor:
+    text_list = embedder_tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+
     if api_name.startswith("text-embedding-ada"):
         embeddings = get_embeddings_openai(
             text_list=text_list,
@@ -100,9 +95,6 @@ class InversionModel(nn.Module):
         embedding_transform_strategy: str = "repeat",
         bottleneck_dim: int = 768,  # 128,
         token_decode_alpha: Optional[float] = None,
-        embedder_decode_score: bool = False,
-        embedding_decode_score_lambda_val: float = 0.5,
-        embedding_decode_score_topk: int = 8,
         embeddings_from_layer_n: Optional[int] = None,
     ):
         super().__init__()
@@ -173,9 +165,6 @@ class InversionModel(nn.Module):
             self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
         else:
             self.embedded_tokens = None
-        self.embedder_decode_score = embedder_decode_score
-        self.embedding_decode_score_lambda_val = embedding_decode_score_lambda_val
-        self.embedding_decode_score_topk = embedding_decode_score_topk
         self.embeddings_from_layer_n = embeddings_from_layer_n
 
     def precompute_whitening_params(self, train_dataloader):
@@ -277,7 +266,7 @@ class InversionModel(nn.Module):
         # print("** call_embedding_model")
         if self.embedder_no_grad:
             self.embedder.eval()
-        
+
         if self.embedder_fake_with_zeros:
             batch_size = input_ids.shape[0]
             return torch.zeros(

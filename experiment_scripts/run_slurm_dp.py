@@ -3,7 +3,6 @@ from datetime import datetime
 
 from slurmpy import Slurm
 
-
 BASE_PYTHON_CMD = """
 python run.py \
 --experiment inversion \

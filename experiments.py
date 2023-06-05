@@ -25,7 +25,7 @@ from models import (
     load_encoder_decoder,
 )
 from run_args import DataArguments, ModelArguments, TrainingArguments
-from tokenize_data import tokenize_function, embed_dataset_batch
+from tokenize_data import embed_dataset_batch, tokenize_function
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -46,7 +46,7 @@ def compute_length(
     batch: Dict[str, torch.Tensor], pad_token_id: int
 ) -> Dict[str, Dict[str, torch.Tensor]]:
     # TODO: Remove this function since length is now computed during tokenize.
-    if "length" in batch: 
+    if "length" in batch:
         return batch
     batch["length"] = [
         (input_ids != pad_token_id).sum() for input_ids in batch["input_ids"]
@@ -127,7 +127,8 @@ class Experiment(abc.ABC):
                 self.data_args, os.path.join(training_args.output_dir, "data_args.bin")
             )
             torch.save(
-                self.model_args, os.path.join(training_args.output_dir, "model_args.bin")
+                self.model_args,
+                os.path.join(training_args.output_dir, "model_args.bin"),
             )
 
         # train.
@@ -343,7 +344,7 @@ class Experiment(abc.ABC):
         )
 
         # filter out empty examples (these exist for xsum documents).
-        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex['length'] > 1)
+        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
         val_datasets_dict[self.data_args.dataset_name] = eval_dataset
 
         for name, dataset in val_datasets_dict.items():
@@ -415,7 +416,6 @@ class InversionExperiment(Experiment):
         logger.info(
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
-
 
         ###########################################################################
         # Preprocess embeddings

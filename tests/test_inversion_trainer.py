@@ -55,6 +55,7 @@ def test_trainer(dataset_name):
 
     print("metrics:", metrics)
 
+
 def test_trainer_openai():
     dataset_name = "msmarco"
     parser = transformers.HfArgumentParser(
@@ -78,6 +79,7 @@ def test_trainer_openai():
     assert metrics["train_loss"] > 0
 
     print("metrics:", metrics)
+
 
 # def test_trainer_luar_data():
 #     parser = transformers.HfArgumentParser(

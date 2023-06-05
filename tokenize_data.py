@@ -41,9 +41,8 @@ def tokenize_function(
         )
         embedder_output = {f"embedder_{k}": v for k, v in embedder_output.items()}
 
-
         output["length"] = [
-            (torch.tensor(input_ids) != tokenizer.pad_token_id).sum().item() 
+            (torch.tensor(input_ids) != tokenizer.pad_token_id).sum().item()
             for input_ids in output["input_ids"]
         ]
 
