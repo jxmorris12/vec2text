@@ -7,9 +7,8 @@ import torch.nn as nn
 import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
-from tenacity import retry, stop_after_attempt, wait_fixed
 
-from utils import embed_all_tokens
+from utils import embed_all_tokens, embed_api
 
 from .model_utils import (
     EMBEDDING_TRANSFORM_STRATEGIES,
@@ -21,34 +20,6 @@ from .model_utils import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
-def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
-    # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
-    #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
-    # TODO: set up a caching system somehow.
-    import openai
-
-    response = openai.Embedding.create(input=text_list, model=model)
-    return [e["embedding"] for e in response["data"]]
-
-
-def embed_api(
-    input_ids: torch.Tensor,
-    embedder_tokenizer: transformers.PreTrainedTokenizer,
-    api_name: str,
-) -> torch.Tensor:
-    text_list = embedder_tokenizer.batch_decode(input_ids, skip_special_tokens=True)
-
-    if api_name.startswith("text-embedding-ada"):
-        embeddings = get_embeddings_openai(
-            text_list=text_list,
-            model=api_name,
-        )
-    else:
-        raise ValueError(f"unsupported api name {api_name}")
-    return torch.tensor(embeddings, device=input_ids.device)
 
 
 # TODO: can we make this class a HF pretrained model so it works nicely with

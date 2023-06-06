@@ -1,9 +1,9 @@
 from typing import Callable
 
+import numpy as np
 import torch
 import tqdm
 import transformers
-from tenacity import retry, stop_after_attempt, wait_fixed
 
 
 def emb(
@@ -69,7 +69,7 @@ def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokeniz
 
 
 def torch_main_worker_finish_first(func: Callable):
-    def wrapped_func():
+    def wrapper(*args, **kwargs):
         # Get local rank (need to support non-DDP).
         try:
             local_rank = torch.distributed.get_rank()
@@ -77,52 +77,50 @@ def torch_main_worker_finish_first(func: Callable):
         except RuntimeError:
             local_rank = -1
             ddp_enabled = False
+        is_main_worker = local_rank <= 0
         # Run on main worker first.
-        if local_rank <= 0:
-            result = func()
+        if is_main_worker:
+            result = func(*args, **kwargs)
         # Then everyone waits.
         if ddp_enabled:
             torch.distributed.barrier()
         # Run on other workers now.
-        if local_rank > 0:
-            result = func()
+        if not is_main_worker:
+            result = func(*args, **kwargs)
         # Now everyone waits again.
         if ddp_enabled:
             torch.distributed.barrier()
         return result
 
-
-def get_global_redis():
-    import redis
-
-    REDIS_HOST = "rush-compute-01.tech.cornell.edu"
-    REDIS_PORT = 9200
-    return redis.Redis(host=REDIS_HOST, host=REDIS_PORT)
+    return wrapper
 
 
-def redis_cache(func):
-    def wrapper(*args):
-        key = "_".join(map(str, args))
-        r = get_global_redis()
-        cached_value = r.get(key)
-        if cached_value:
-            return cached_value
-        else:
-            computed_value = func(*args)
-            r.set(key, computed_value)
-            return computed_value
+manifest_object = None
 
 
-@redis_cache
-@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
+def get_manifest_global():
+    from manifest import Manifest
+
+    global manifest_object
+    if manifest_object is None:
+        manifest_object = Manifest(
+            client_name="openaiembedding",  # defaults to 'text-embedding-ada-002'
+            cache_name="sqlite",
+            cache_connection="/home/jxm3/.manifest/jxm_openai_manifest.sqlite",
+        )
+        # manifest_object.PARAMS = {
+        #     'engine': ('model', 'text-embedding-ada-002'),
+        #     'batch_size': ('batch_size', 128),
+        # }
+    return manifest_object
+
+
 def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
     # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
-    import openai
-
-    response = openai.Embedding.create(input=text_list, model=model)
-    return [e["embedding"] for e in response["data"]]
+    manifest = get_manifest_global()
+    return np.array(manifest.run(text_list, batch_size=min(len(text_list), 128)))
 
 
 def embed_api(

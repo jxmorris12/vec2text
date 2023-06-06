@@ -6,7 +6,7 @@ import logging
 import os
 import resource
 import sys
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional
 
 import datasets
 import torch
@@ -43,16 +43,9 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
 
 
-def compute_length(
-    batch: Dict[str, torch.Tensor], pad_token_id: int
-) -> Dict[str, Dict[str, torch.Tensor]]:
-    # TODO: Remove this function since length is now computed during tokenize.
-    if "length" in batch:
-        return batch
-    batch["length"] = [
-        (input_ids != pad_token_id).sum() for input_ids in batch["input_ids"]
-    ]
-    return batch
+# We maintain our own cache because huggingface datasets caching
+# doesn't work properly.
+DATASET_CACHE_PATH = "/home/jxm3/.cache/inversion"
 
 
 def md5_hash_kwargs(**kwargs) -> str:
@@ -132,7 +125,7 @@ class Experiment(abc.ABC):
                 os.path.join(training_args.output_dir, "model_args.bin"),
             )
 
-        # train.
+        # train.   :)
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 
@@ -282,11 +275,12 @@ class Experiment(abc.ABC):
         )
 
     @torch_main_worker_finish_first
-    def load_train_and_val_datasets(
+    def _load_train_dataset_uncached(
         self,
+        model: torch.nn.Module,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
-    ) -> Tuple[datasets.Dataset, Dict[str, datasets.Dataset]]:
+    ) -> datasets.DatasetDict:
         data_args = self.data_args
         ###########################################################################
         # Load datasets
@@ -295,16 +289,21 @@ class Experiment(abc.ABC):
 
         # Remove extra features except for 'frozen_embeddings' which could be embeddings
         # saved to disk.
-        text_column_name = "text"
         column_names = list(raw_datasets["train"].features)
         ALLOWED_COLUMN_NAMES = {"frozen_embeddings"}  # "document_id"}
         column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
+
+        # this argument allows us to *train* on less data (1% of our training set).
+        if data_args.use_less_data and (data_args.use_less_data > 0):
+            for key in raw_datasets:
+                new_length = min(len(raw_datasets[key]), data_args.use_less_data)
+                raw_datasets[key] = raw_datasets[key].select(range(new_length))
 
         tokenized_datasets = raw_datasets.map(
             tokenize_function(
                 tokenizer,
                 embedder_tokenizer,
-                text_column_name,
+                "text",
                 self.model_args.max_seq_length,
                 padding=False,
             ),
@@ -314,40 +313,34 @@ class Experiment(abc.ABC):
             desc="Running tokenizer on dataset",
         )
 
-        # this argument allows us to *train* on less data (1% of our training set).
-        if data_args.use_less_data and (data_args.use_less_data > 0):
-            for key in tokenized_datasets:
-                new_length = min(len(tokenized_datasets[key]), data_args.use_less_data)
-                tokenized_datasets[key] = tokenized_datasets[key].select(
-                    range(new_length)
-                )
-
         ###########################################################################
-        train_dataset = tokenized_datasets["train"]
-        eval_dataset = tokenized_datasets["validation"]
+        tokenized_datasets["train"].set_format("pt")
+        tokenized_datasets["train"] = tokenized_datasets["train"].add_column(
+            "idx", range(len(tokenized_datasets["train"]))
+        )
+        ###########################################################################
+        if self.model_args.use_frozen_embeddings_as_input:
+            tokenized_datasets = tokenized_datasets.map(
+                functools.partial(embed_dataset_batch, model),
+                batched=True,
+                batch_size=self.training_args.per_device_train_batch_size,
+            )
+        ###########################################################################
+        return tokenized_datasets
 
+    def _load_val_datasets_uncached(
+        self,
+        model: torch.nn.Module,
+        tokenizer: transformers.AutoTokenizer,
+        embedder_tokenizer: transformers.AutoTokenizer,
+    ) -> datasets.DatasetDict:
+        data_args = self.data_args
         val_datasets_dict = load_standard_val_datasets()
         logger.info(
             "Loaded %d validation datasets: %s",
             len(val_datasets_dict),
             val_datasets_dict.keys(),
         )
-
-        val_datasets_dict = val_datasets_dict.map(
-            tokenize_function(
-                tokenizer,
-                embedder_tokenizer,
-                text_column_name,
-                self.model_args.max_seq_length,
-            ),
-            remove_columns=["text"],
-            batched=True,
-            desc="Running tokenizer on dataset",
-        )
-
-        # filter out empty examples (these exist for xsum documents).
-        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
-        val_datasets_dict[self.data_args.dataset_name] = eval_dataset
 
         for name, dataset in val_datasets_dict.items():
             max_eval_samples = min(len(dataset), data_args.max_eval_samples)
@@ -359,16 +352,83 @@ class Experiment(abc.ABC):
             )
             val_datasets_dict[name].set_format("pt")
 
-        train_dataset.set_format("pt")
-
-        train_dataset = train_dataset.map(
-            functools.partial(compute_length, pad_token_id=tokenizer.pad_token_id),
+        val_datasets_dict = val_datasets_dict.map(
+            tokenize_function(
+                tokenizer,
+                embedder_tokenizer,
+                "text",
+                self.model_args.max_seq_length,
+            ),
+            remove_columns=["text"],
             batched=True,
+            desc="Running tokenizer on dataset",
         )
-        train_dataset = train_dataset.add_column("idx", range(len(train_dataset)))
-        ###########################################################################
 
-        return train_dataset, val_datasets_dict
+        if self.model_args.use_frozen_embeddings_as_input:
+            val_datasets_dict = val_datasets_dict.map(
+                functools.partial(embed_dataset_batch, model),
+                batched=True,
+                batch_size=self.training_args.per_device_train_batch_size,
+            )
+
+        # filter out empty examples (these exist for xsum documents).
+        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
+        return val_datasets_dict
+
+    def load_train_and_val_datasets(
+        self,
+        model: torch.nn.Module,
+        tokenizer: transformers.AutoTokenizer,
+        embedder_tokenizer: transformers.AutoTokenizer,
+    ):
+        dataset_kwargs = {
+            "model_name": self.model_args.model_name_or_path,
+            "embedder_name": self.model_args.embedder_model_name,
+            "max_seq_length": self.model_args.max_seq_length,
+            "use_less_data": self.data_args.use_less_data,
+        }
+        ######################################################################
+        train_dataset_kwargs = {
+            "dataset_name": self.data_args.dataset_name,
+            **dataset_kwargs,
+        }
+        train_dataset_path = os.path.join(
+            DATASET_CACHE_PATH, (md5_hash_kwargs(**train_dataset_kwargs) + ".arrow")
+        )
+        if os.path.exists(train_dataset_path):
+            train_datasets = datasets.load_from_disk(train_dataset_path)
+        else:
+            train_datasets = self._load_train_dataset_uncached(
+                model=model,
+                tokenizer=tokenizer,
+                embedder_tokenizer=embedder_tokenizer,
+            )
+            train_datasets.save_to_disk(train_dataset_path)
+        ######################################################################
+        val_dataset_kwargs = {
+            "dataset_name": "__".join(
+                ["ag_news", "arxiv", "xsum_doc", "xsum_summ", "wikibio"]
+            ),
+            **dataset_kwargs,
+        }
+        val_dataset_path = os.path.join(
+            DATASET_CACHE_PATH, (md5_hash_kwargs(**val_dataset_kwargs) + ".arrow")
+        )
+        assert val_dataset_path != train_dataset_path
+        if os.path.exists(val_dataset_path):
+            val_datasets_dict = datasets.load_from_disk(val_dataset_path)
+        else:
+            val_datasets_dict = self._load_val_datasets_uncached(
+                model=model,
+                tokenizer=tokenizer,
+                embedder_tokenizer=embedder_tokenizer,
+            )
+            val_datasets_dict.save_to_disk(val_dataset_path)
+        ######################################################################
+        train_dataset = train_datasets["train"]
+        val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
+
+        return (train_dataset, val_datasets_dict)
 
 
 class InversionExperiment(Experiment):
@@ -412,6 +472,7 @@ class InversionExperiment(Experiment):
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         train_dataset, eval_dataset = self.load_train_and_val_datasets(
+            model=model,
             tokenizer=model.tokenizer,
             embedder_tokenizer=model.embedder_tokenizer,
         )
@@ -419,34 +480,6 @@ class InversionExperiment(Experiment):
         logger.info(
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
-
-        ###########################################################################
-        # Preprocess embeddings
-        if self.model_args.use_frozen_embeddings_as_input:
-            if "frozen_embeddings" in train_dataset.column_names:
-                # This happens if we load a dataset of (text, embedding) pairs from disk,
-                # like in the case of the LUAR data.
-                logging.info(
-                    "Frozen embeddings already present in the dataset. Skipping re-embedding."
-                )
-            else:
-                if not self.model_args.embedder_model_api:
-                    # files are just too big to cache :( 5 million 768-dim embeddings is 15gb
-                    # datasets.disable_caching()
-                    raise ValueError(
-                        "broken feature - this breaks caching. fix caching to use."
-                    )
-                train_dataset = train_dataset.map(
-                    functools.partial(embed_dataset_batch, model),
-                    batched=True,
-                    batch_size=self.training_args.per_device_train_batch_size,
-                )
-                eval_dataset = eval_dataset.map(
-                    functools.partial(embed_dataset_batch, model),
-                    batched=True,
-                    batch_size=self.training_args.per_device_train_batch_size,
-                )
-        ###########################################################################
 
         return trainers.InversionTrainer(
             model=model,
@@ -486,6 +519,7 @@ class InversionExperimentNonAutoregressive(Experiment):
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         train_dataset, eval_dataset = self.load_train_and_val_datasets(
+            model=model,
             tokenizer=model.tokenizer,
             embedder_tokenizer=model.embedder_tokenizer,
         )
@@ -531,6 +565,7 @@ class InversionExperimentBagOfWords(Experiment):
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         train_dataset, eval_dataset = self.load_train_and_val_datasets(
+            model=model,
             tokenizer=model.tokenizer,
             embedder_tokenizer=model.embedder_tokenizer,
         )

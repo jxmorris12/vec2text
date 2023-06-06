@@ -54,6 +54,7 @@ def tokenize_function(
 def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
     assert "embedder_input_ids" in batch.keys(), f"invalid keys {batch.keys()}"
     assert "embedder_attention_mask" in batch.keys(), f"invalid keys {batch.keys()}"
+    assert hasattr(model, "call_embedding_model")
 
     model_device = next(model.parameters()).device
     with torch.no_grad():

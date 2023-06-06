@@ -67,7 +67,7 @@ def load_dpr_corpus(name: str) -> datasets.Dataset:
             "Loading DPR dataset %s from JSON (slow) at path %s", name, dataset_path
         )
         corpus = load_dpr_corpus_uncached(name=name)
-        dataset = corpus = datasets.Dataset.from_list([{"text": t} for t in corpus])
+        dataset = datasets.Dataset.from_list([{"text": t} for t in corpus])
         dataset.save_to_disk(dataset_path)
         logging.info("Saved DPR dataset %s to path %s", name, dataset_path)
 
