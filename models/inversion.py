@@ -272,10 +272,7 @@ class InversionModel(nn.Module):
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         # print("** embed_and_project")
         assert not ((embedder_input_ids is None) and (frozen_embeddings is None))
-        if self.use_frozen_embeddings_as_input or (embedder_input_ids is None):
-            assert (
-                frozen_embeddings is not None
-            ), "specified to train on frozen embeddings but none were provided"
+        if frozen_embeddings is not None:
             embeddings = frozen_embeddings
             assert len(embeddings.shape) == 2  # batch by d
         elif self.embedder_no_grad:

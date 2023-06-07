@@ -55,8 +55,8 @@ class CorrectorEncoderModel(torch.nn.Module):
         hypothesis_attention_mask: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         batch_size, D = embedding.shape
-        assert embedding.shape == (batch_size, 768)
-        assert hypothesis_embedding.shape == (batch_size, 768)
+        assert embedding.shape == (batch_size, self.embedder_dim)
+        assert hypothesis_embedding.shape == (batch_size, self.embedder_dim)
 
         if self.ignore_hypothesis_embedding:
             hypothesis_embedding = embedding

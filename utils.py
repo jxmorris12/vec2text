@@ -5,6 +5,12 @@ import torch
 import tqdm
 import transformers
 
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_fixed,
+)
+
 
 def emb(
     model: torch.nn.Module, input_ids: torch.Tensor, attention_mask: torch.Tensor
@@ -115,6 +121,7 @@ def get_manifest_global():
     return manifest_object
 
 
+@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
 def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
     # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
@@ -137,4 +144,4 @@ def embed_api(
         )
     else:
         raise ValueError(f"unsupported api name {api_name}")
-    return torch.tensor(embeddings, device=input_ids.device)
+    return torch.tensor(embeddings, device=input_ids.device, dtype=torch.float32)

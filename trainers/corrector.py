@@ -1,3 +1,4 @@
+import functools
 import logging
 import os
 import random
@@ -85,10 +86,11 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
     def _precompute_hypothesis_and_embedding(
-        self, ds_inputs: Dict[str, torch.Tensor]
+        self, ds_inputs: Dict[str, torch.Tensor], collator=None
     ) -> Dict[str, torch.Tensor]:
-        inputs = {k: torch.tensor(v) for k, v in ds_inputs.items()}
-        inputs = {k: v.to(self.args.device) for k, v in inputs.items()}
+        # inputs = {k: torch.tensor(v) for k, v in ds_inputs.items()}
+        import pdb; pdb.set_trace()
+        inputs = {k: v.to(self.args.device) for k, v in ds_inputs.items()}
         (
             frozen_embeddings,
             hypothesis_input_ids,
@@ -122,7 +124,10 @@ class CorrectorTrainer(BaseTrainer):
             logging.info("Computing hypotheses to save to path %s", cache_path)
             print(f"Saving hypotheses to path {cache_path}")
             dataset = dataset.map(
-                self._precompute_hypothesis_and_embedding,
+                functools.partial(
+                    self._precompute_hypothesis_and_embedding, 
+                    collator=self.data_collator
+                ),
                 batched=True,
                 batch_size=(self.args.train_batch_size * 4),
                 desc="Precomputing hypotheses for data",
@@ -357,10 +362,13 @@ class CorrectorTrainer(BaseTrainer):
         fake_embedder_attention_mask = torch.ones(
             (batch_size, seq_length), device=self.args.device
         )
-        frozen_embeddings = self.get_frozen_embeddings(
-            embedder_input_ids=inputs["embedder_input_ids"],
-            embedder_attention_mask=inputs["embedder_attention_mask"],
-        )
+        if "frozen_embeddings" in inputs:
+            frozen_embeddings = inputs["frozen_embeddings"]
+        else:
+            frozen_embeddings = self.get_frozen_embeddings(
+                embedder_input_ids=inputs["embedder_input_ids"],
+                embedder_attention_mask=inputs["embedder_attention_mask"],
+            )
 
         # TODO: support generated outputs of varying length.
         # TODO consider other (multiple?) hypothesis generation conditions.

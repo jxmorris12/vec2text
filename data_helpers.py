@@ -185,8 +185,8 @@ def load_standard_val_datasets() -> datasets.DatasetDict:
     d = {
         "ag_news": load_ag_news_test(),
         "arxiv": load_arxiv_val(),
-        "xsum_doc": load_xsum_val("document"),
-        "xsum_summ": load_xsum_val("summary"),
+        # "xsum_doc": load_xsum_val("document"),
+        # "xsum_summ": load_xsum_val("summary"),
         "wikibio": load_wikibio_val(),
     }
     d = {k: retain_dataset_columns(v, ["text"]) for k, v in d.items()}

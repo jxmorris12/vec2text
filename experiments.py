@@ -386,6 +386,7 @@ class Experiment(abc.ABC):
             "embedder_name": self.model_args.embedder_model_name,
             "max_seq_length": self.model_args.max_seq_length,
             "use_less_data": self.data_args.use_less_data,
+            "embedder_model_api": self.model_args.embedder_model_api,
         }
         ######################################################################
         train_dataset_kwargs = {
@@ -609,8 +610,15 @@ class CorrectorExperiment(Experiment):
 class CorrectorEncoderExperiment(CorrectorExperiment):
     def load_model(self) -> torch.nn.Module:
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
+        if self.model_args.embedder_model_api:
+            embedder_dim = 1536
+        else:
+            embedder_dim = 768
+
         return CorrectorEncoderModel(
             encoder_decoder=encoder_decoder,
+            embedder_dim=embedder_dim,
+            bottleneck_dim=embedder_dim,
             ignore_hypothesis_embedding=self.model_args.corrector_ignore_hypothesis_embedding,
         )
 
