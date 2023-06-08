@@ -77,6 +77,7 @@ def load_dpr_corpus(name: str) -> datasets.Dataset:
 def load_msmarco_corpus_uncached(path: str) -> List[str]:
     assert os.path.exists(path), f"dataset not found: {path}"
     logging.info("Loading MSMarco dataset from path %s", path)
+    # TODO: change to ascii?
     items = open(path, "r", encoding="utf-8").readlines()
     contexts: List[str] = list()
 

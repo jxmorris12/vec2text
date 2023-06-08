@@ -14,6 +14,7 @@ import transformers
 
 import aliases
 import trainers
+from collator import DataCollatorForCorrection
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     CorrectorEncoderModel,
@@ -589,22 +590,21 @@ class CorrectorExperiment(Experiment):
         return "emb-correct-1"
 
     def load_trainer(self) -> transformers.Trainer:
-        # TODO: argparse for this
+        model = self.load_model()
         inversion_trainer = aliases.load_inversion_trainer_from_alias(
             alias=self.training_args.corrector_model_alias,
         )
         return trainers.CorrectorTrainer(
-            model=self.load_model(),
+            model=model,
             inversion_trainer=inversion_trainer,
             args=self.training_args,
+            data_collator=DataCollatorForCorrection(tokenizer=inversion_trainer.model.tokenizer),
         )
 
     def load_model(self) -> torch.nn.Module:
         raise RuntimeError(
-            "Did you mean to launch the CorrectorEncoder experiment instead?"
+            "Deprecated! Did you mean to launch the CorrectorEncoder experiment instead?"
         )
-        encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        return CorrectorModel(encoder_decoder=encoder_decoder)
 
 
 class CorrectorEncoderExperiment(CorrectorExperiment):

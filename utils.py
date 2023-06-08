@@ -1,15 +1,11 @@
 from typing import Callable
 
+import math
 import numpy as np
 import torch
 import tqdm
 import transformers
-
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_fixed,
-)
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 
 def emb(
@@ -111,8 +107,8 @@ def get_manifest_global():
     if manifest_object is None:
         manifest_object = Manifest(
             client_name="openaiembedding",  # defaults to 'text-embedding-ada-002'
-            cache_name="sqlite",
-            cache_connection="/home/jxm3/.manifest/jxm_openai_manifest.sqlite",
+            # cache_name="sqlite",
+            # cache_connection="/home/jxm3/.manifest/jxm_openai_manifest.sqlite",
         )
         # manifest_object.PARAMS = {
         #     'engine': ('model', 'text-embedding-ada-002'),
@@ -122,12 +118,35 @@ def get_manifest_global():
 
 
 @retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
-def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> list:
+def get_embeddings_openai_manifest(text_list, model="text-embedding-ada-002") -> np.ndarray:
     # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
     manifest = get_manifest_global()
+    print(
+        f"running manifest on text_list of length {len(text_list)}, first element '{text_list[0]}'"
+    )
     return np.array(manifest.run(text_list, batch_size=min(len(text_list), 128)))
+
+
+@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
+def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> list:
+    # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
+    #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
+    # TODO: set up a caching system somehow.
+    import openai
+    print(
+        f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'"
+    )
+
+    batches = math.ceil(len(text_list) / 128)
+    outputs = []
+    for batch in range(batches):
+        text_list_batch = text_list[batch * 128 : (batch + 1) * 128]
+        response = openai.Embedding.create(input=text_list_batch, model=model)
+        outputs.extend([e["embedding"] for e in response["data"]])
+    return outputs
+
 
 
 def embed_api(
@@ -138,7 +157,7 @@ def embed_api(
     text_list = embedder_tokenizer.batch_decode(input_ids, skip_special_tokens=True)
 
     if api_name.startswith("text-embedding-ada"):
-        embeddings = get_embeddings_openai(
+        embeddings = get_embeddings_openai_vanilla(
             text_list=text_list,
             model=api_name,
         )

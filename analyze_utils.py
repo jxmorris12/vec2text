@@ -38,8 +38,9 @@ def load_trainer(
     training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
     ########################################################################
     from accelerate.state import PartialState
-    training_args._n_gpu = 1 # Don't load in DDP
-    training_args.local_rank = -1 # Don't load in DDP
+
+    training_args._n_gpu = 1  # Don't load in DDP
+    training_args.local_rank = -1  # Don't load in DDP
     training_args.distributed_state = PartialState()
     ########################################################################
     if do_eval:

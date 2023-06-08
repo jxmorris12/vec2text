@@ -41,6 +41,7 @@ class CorrectorTrainer(BaseTrainer):
         model: Union[CorrectorEncoderModel, CorrectorModel],
         inversion_trainer: InversionTrainer,
         args: TrainingArguments,
+        **kwargs,
     ):
         # Freeze other model params
         freeze_params(inversion_trainer.model)
@@ -53,7 +54,7 @@ class CorrectorTrainer(BaseTrainer):
             args=args,
             train_dataset=self.inversion_trainer.train_dataset,
             eval_dataset=self.inversion_trainer.eval_dataset,
-            data_collator=self.inversion_trainer.data_collator,
+            **kwargs,
         )
         self.tokenizer = self.inversion_trainer.model.tokenizer
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
@@ -88,9 +89,15 @@ class CorrectorTrainer(BaseTrainer):
     def _precompute_hypothesis_and_embedding(
         self, ds_inputs: Dict[str, torch.Tensor], collator=None
     ) -> Dict[str, torch.Tensor]:
-        # inputs = {k: torch.tensor(v) for k, v in ds_inputs.items()}
-        import pdb; pdb.set_trace()
-        inputs = {k: v.to(self.args.device) for k, v in ds_inputs.items()}
+        assert not self.model.training
+        inputs = collator.tokenizer.pad(
+            {k: v for k, v in ds_inputs.items() if k != "labels"},
+            padding=collator.padding,
+            max_length=collator.max_length,
+            pad_to_multiple_of=collator.pad_to_multiple_of,
+            return_tensors=collator.return_tensors,
+        ).to(self.args.device)
+
         (
             frozen_embeddings,
             hypothesis_input_ids,
@@ -98,9 +105,18 @@ class CorrectorTrainer(BaseTrainer):
             hypothesis_embedding,
         ) = self._get_hypothesis_uncached(inputs=inputs)
         ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
-        ds_inputs["hypothesis_input_ids"] = hypothesis_input_ids.cpu()
-        ds_inputs["hypothesis_attention_mask"] = hypothesis_attention_mask.cpu()
         ds_inputs["hypothesis_embedding"] = hypothesis_embedding.cpu()
+        # cut padding so we can batch by length later
+        ds_inputs["hypothesis_input_ids"] = []
+        ds_inputs["hypothesis_attention_mask"] = []
+        for input_ids, attention_mask in zip(
+            hypothesis_input_ids.cpu(), hypothesis_attention_mask.cpu()
+        ):
+            num_tokens = attention_mask.sum()
+            ds_inputs["hypothesis_input_ids"].append(input_ids[:num_tokens])
+            ds_inputs["hypothesis_attention_mask"].append(attention_mask[:num_tokens])
+        print("input_ids[0]:", self.tokenizer.decode(ds_inputs["input_ids"][0]))
+        print("hypothesis_input_ids[0]:", self.tokenizer.decode(ds_inputs["hypothesis_input_ids"][0]))
         return ds_inputs
 
     def _preprocess_dataset(self, dataset: datasets.Dataset) -> datasets.Dataset:
@@ -125,8 +141,8 @@ class CorrectorTrainer(BaseTrainer):
             print(f"Saving hypotheses to path {cache_path}")
             dataset = dataset.map(
                 functools.partial(
-                    self._precompute_hypothesis_and_embedding, 
-                    collator=self.data_collator
+                    self._precompute_hypothesis_and_embedding,
+                    collator=self.data_collator,
                 ),
                 batched=True,
                 batch_size=(self.args.train_batch_size * 4),
@@ -137,16 +153,20 @@ class CorrectorTrainer(BaseTrainer):
             logging.info("Loading hypotheses from path %s", cache_path)
             print(f"Loading hypotheses from path {cache_path}")
             dataset = datasets.load_from_disk(cache_path)
+        dataset.set_format("pt")
         return dataset
 
     def precompute_hypotheses(self) -> None:
+        # TODO: Compare doing this with and without training mode enabled.
         logger.info("Precomputing frozen embedding & hypotheses before training")
         self.train_dataset = self._preprocess_dataset(dataset=self.train_dataset)
         for k, v in self.eval_dataset.items():
             self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
 
     def _inner_training_loop(self, *args, **kwargs):
+        self.model.eval()
         self.precompute_hypotheses()
+        self.model.train()
 
         return super()._inner_training_loop(*args, **kwargs)
 
