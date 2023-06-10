@@ -318,11 +318,12 @@ class TrainingArguments(transformers.TrainingArguments):
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
         self.dataloader_pin_memory = True
-        self.dataloader_num_workers = int(
+        num_workers = int(
             len(os.sched_getaffinity(0)) / torch.cuda.device_count()
         )
-        # print(f"Set train_args.dataloader_num_workers = {self.dataloader_num_workers}")
-        self.dataloader_num_workers = 0 # TMP
+        os.environ["RAYON_RS_NUM_CPUS"] = str(num_workers) # Sets threads for hf tokenizers
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+        self.dataloader_num_workers = num_workers
 
         self.dataloader_drop_last = False
 

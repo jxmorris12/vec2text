@@ -1,6 +1,7 @@
 import json
 import logging
 import os
+import random
 from typing import List, Set
 
 import datasets
@@ -105,10 +106,10 @@ def load_msmarco_corpus(path: str) -> datasets.Dataset:
     logging.info("checking dataset path %s", dataset_path)
 
     if os.path.exists(dataset_path):
-        logging.info("Loading MSMarco dataset %s path %s", dataset_path)
+        logging.info("Loading MSMARCO dataset %s path %s", dataset_path)
         dataset = datasets.load_from_disk(dataset_path)
     else:
-        logging.info("Loading DPR dataset %s from JSON (slow) at path %s", path)
+        logging.info("Loading MSMARCO dataset %s from JSON (slow) at path %s", path)
         corpus = load_msmarco_corpus_uncached(path=path)
         dataset = datasets.Dataset.from_list([{"text": t} for t in corpus])
         os.makedirs(os.path.join(cache_path, "emb_inv_msmarco"), exist_ok=True)
@@ -179,6 +180,84 @@ def retain_dataset_columns(
 ) -> datasets.Dataset:
     column_names_to_remove = [c for c in d.features if c not in allowed_columns]
     return d.remove_columns(column_names_to_remove)
+
+
+def load_beir_corpus(name: str) -> List[str]:
+    from beir import util as beir_util
+    from beir.datasets.data_loader import GenericDataLoader
+
+    #### Download scifact.zip dataset and unzip the dataset
+    beir_datasets_cache_dir = "/home/jxm3/research/retrieval/distractor_exp"
+
+    url = "https://public.ukp.informatik.tu-darmstadt.de/thakur/BEIR/datasets/{}.zip".format(
+        name
+    )
+    out_dir = os.path.join(beir_datasets_cache_dir, "datasets")
+    data_path = beir_util.download_and_unzip(url, out_dir)
+
+    # Limit each corpus to first 100k documents.
+    MAX_N = 100_000
+
+    if name == "cqadupstack":
+        full_corpus = []
+        for folder in ["android",  "english",  "gaming",  "gis",  "mathematica",  "physics",  "programmers",  "stats",  "tex",  "unix",  "webmasters",	"wordpress"]:
+            corpus, _queries, _qrels = GenericDataLoader(data_folder=os.path.join(data_path, folder)).load(split="test")
+            full_corpus.extend([k["text"] for k in corpus.values()])
+        random.shuffle(full_corpus)
+        return full_corpus[:MAX_N]
+    else:
+        corpus, _queries, _qrels = GenericDataLoader(data_folder=data_path).load(split="test")
+        corpus = [k["text"] for k in corpus.values()]
+        return corpus[:MAX_N]
+
+def load_beir_dataset(name: str) -> datasets.Dataset:
+    cache_path = (
+        datasets.config.HF_DATASETS_CACHE
+    )  # something like /home/jxm3/.cache/huggingface/datasets
+    dataset_path = os.path.join(cache_path, "emb_inv_beir", name)
+    print(f"loading BEIR dataset: {name}")
+    if os.path.exists(dataset_path):
+        logging.info("Loading BEIR dataset %s path %s", dataset_path)
+        dataset = datasets.load_from_disk(dataset_path)
+    else:
+        logging.info("Loading BEIR dataset %s from JSON (slow) at path %s", dataset_path)
+        corpus = load_beir_corpus(name=name)
+        dataset = datasets.Dataset.from_list([{"text": t} for t in corpus])
+        os.makedirs(os.path.join(cache_path, "emb_inv_beir"), exist_ok=True)
+        dataset.save_to_disk(dataset_path)
+        logging.info(
+            "Saved BEIR dataset as HF path %s", dataset_path
+        )
+    return dataset
+
+
+def load_beir_datasets() -> datasets.DatasetDict:
+    all_beir_datasets = [
+        ####### public datasets #######
+        "arguana",
+        "climate-fever",
+        "cqadupstack",
+        "dbpedia-entity",
+        "fever",
+        "fiqa",
+        "hotpotqa",
+        "msmarco",
+        "nfcorpus",
+        "nq",
+        "quora",
+        "scidocs",
+        "scifact",
+        "trec-covid",
+        "webis-touche2020",
+        ####### private datasets #######
+        "signal1m",
+        "trec-news",
+        "robust04",
+        "bioasq",
+    ]
+    return datasets.DatasetDict(
+        { k: load_beir_dataset(k) for k in all_beir_datasets }
+    )
 
 
 def load_standard_val_datasets() -> datasets.DatasetDict:

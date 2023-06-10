@@ -16,7 +16,7 @@ transformers.logging.set_verbosity_error()
 #############################################################################
 
 
-def load_trainer(
+def load_experiment_and_trainer(
     checkpoint_folder: str,
     args_str: Optional[str] = None,
     checkpoint: Optional[str] = None,
@@ -55,4 +55,4 @@ def load_trainer(
     trainer._load_from_checkpoint(checkpoint)
     if sanity_decode:
         trainer.sanity_decode()
-    return trainer
+    return experiment, trainer

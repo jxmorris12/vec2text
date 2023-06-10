@@ -18,8 +18,8 @@ all_beir_datasets = [
     "quora",
     "scidocs",
     "scifact",
-    "covid",
-    "touche2020",
+    "trec-covid",
+    "webis-touche2020",
     ####### private datasets #######
     "signal1m",
     "trec-news",
@@ -32,7 +32,7 @@ ACTUALLY_RUN_COMMAND = True
 
 BASE_PYTHON_CMD = """python scripts/evaluate_retrieval_under_noise.py --dataset {dataset} --model {model_name} --noise_level {noise_level}"""
 
-noise_levels = [0, 1e-3]  # , 1e-2, 1e-1, 1]
+noise_levels = [0, 1e-3, 1e-2, 1e-1, 1]  # [0, 1e-3, 1e-2, 1e-1, 1]
 
 
 def run_cmd(cmd: str, job_desc: str):

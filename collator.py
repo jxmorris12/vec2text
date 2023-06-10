@@ -37,7 +37,11 @@ class DataCollatorForCorrection:
             )
 
         padding_side = self.tokenizer.padding_side
-        max_hypothesis_length = max(map(lambda d: len(d["hypothesis_input_ids"]), features))
+
+        if "hypothesis_input_ids" in features[0].keys():
+            max_hypothesis_length = max(map(lambda d: len(d["hypothesis_input_ids"]), features))
+        else:
+            max_hypothesis_length = 0
         hypothesis_features = []
         regular_features = []
         for feature in features:
@@ -62,12 +66,16 @@ class DataCollatorForCorrection:
             pad_to_multiple_of=self.pad_to_multiple_of,
             return_tensors=return_tensors,
         )
-        hypothesis_features = self.tokenizer.pad(
-            hypothesis_features,
-            padding=self.padding,
-            max_length=self.max_length,
-            pad_to_multiple_of=self.pad_to_multiple_of,
-            return_tensors=return_tensors,
-        )
-        hypothesis_features = {f'hypothesis_{k}': v for k,v in hypothesis_features.items()}
-        return {**new_features, **hypothesis_features}
+
+        if max_hypothesis_length > 0:
+            hypothesis_features = self.tokenizer.pad(
+                hypothesis_features,
+                padding=self.padding,
+                max_length=self.max_length,
+                pad_to_multiple_of=self.pad_to_multiple_of,
+                return_tensors=return_tensors,
+            )
+            hypothesis_features = {f'hypothesis_{k}': v for k,v in hypothesis_features.items()}
+            return {**new_features, **hypothesis_features}
+        else:
+            return new_features

@@ -195,8 +195,13 @@ class Experiment(abc.ABC):
 
     @property
     def kwargs_hash(self) -> str:
-        return md5_hash_kwargs(
+        all_args = {
             **vars(self.model_args), **vars(self.data_args), **vars(self.training_args)
+        }
+        all_args.pop("local_rank")
+        # print("all_args:", all_args)
+        return md5_hash_kwargs(
+            **all_args
         )
 
     @property
@@ -255,15 +260,21 @@ class Experiment(abc.ABC):
             # os.environ["WANDB_MODE"] = "disabled"
             # os.environ["WANDB_DISABLED"] = "true"
 
-    @property
     @abc.abstractmethod
     def load_trainer(self) -> transformers.Trainer:
         raise NotImplementedError()
 
-    @property
     @abc.abstractmethod
     def load_model(self) -> torch.nn.Module:
         raise NotImplementedError()
+    
+    def load_tokenizer(self) -> transformers.PreTrainedTokenizer:
+        return transformers.AutoTokenizer.from_pretrained(
+            self.model_args.model_name_or_path,
+            padding=True,
+            truncation="max_length",
+            max_length=self.model_args.max_seq_length,
+        )
 
     def get_collator(
         self, tokenizer: transformers.PreTrainedTokenizer
@@ -328,23 +339,15 @@ class Experiment(abc.ABC):
             )
         ###########################################################################
         return tokenized_datasets
-
-    def _load_val_datasets_uncached(
-        self,
+    
+    def _prepare_val_datasets_dict(self, 
         model: torch.nn.Module,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
-    ) -> datasets.DatasetDict:
-        data_args = self.data_args
-        val_datasets_dict = load_standard_val_datasets()
-        logger.info(
-            "Loaded %d validation datasets: %s",
-            len(val_datasets_dict),
-            val_datasets_dict.keys(),
-        )
-
+        val_datasets_dict: datasets.DatasetDict,
+        ) -> datasets.DatasetDict:
         for name, dataset in val_datasets_dict.items():
-            max_eval_samples = min(len(dataset), data_args.max_eval_samples)
+            max_eval_samples = min(len(dataset), self.data_args.max_eval_samples)
             val_datasets_dict[name] = val_datasets_dict[name].select(
                 range(max_eval_samples)
             )
@@ -364,6 +367,9 @@ class Experiment(abc.ABC):
             batched=True,
             desc="Running tokenizer on dataset",
         )
+        
+        # filter out empty examples (these exist for xsum documents).
+        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
 
         if self.model_args.use_frozen_embeddings_as_input:
             val_datasets_dict = val_datasets_dict.map(
@@ -371,10 +377,26 @@ class Experiment(abc.ABC):
                 batched=True,
                 batch_size=self.training_args.per_device_train_batch_size,
             )
-
-        # filter out empty examples (these exist for xsum documents).
-        val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
         return val_datasets_dict
+
+    def _load_val_datasets_uncached(
+        self,
+        model: torch.nn.Module,
+        tokenizer: transformers.AutoTokenizer,
+        embedder_tokenizer: transformers.AutoTokenizer,
+    ) -> datasets.DatasetDict:
+        data_args = self.data_args
+        val_datasets_dict = load_standard_val_datasets()
+        logger.info(
+            "Loaded %d validation datasets: %s",
+            len(val_datasets_dict),
+            val_datasets_dict.keys(),
+        )
+        return self._prepare_val_datasets_dict(
+            tokenizer=tokenizer,
+            embedder_tokenizer=embedder_tokenizer,
+            val_datasets_dict=val_datasets_dict
+        )
 
     def load_train_and_val_datasets(
         self,
@@ -440,12 +462,7 @@ class InversionExperiment(Experiment):
 
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            padding=True,
-            truncation="max_length",
-            max_length=model_args.max_seq_length,
-        )
+        tokenizer = self.load_tokenizer()
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
             name=model_args.embedder_model_name
         )
@@ -499,12 +516,7 @@ class InversionExperimentNonAutoregressive(Experiment):
 
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            padding=True,
-            truncation="max_length",
-            max_length=model_args.max_seq_length,
-        )
+        tokenizer = self.load_tokenizer()
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
             name=model_args.embedder_model_name
         )
@@ -545,12 +557,7 @@ class InversionExperimentBagOfWords(Experiment):
 
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            model_args.model_name_or_path,
-            padding=True,
-            truncation="max_length",
-            max_length=model_args.max_seq_length,
-        )
+        tokenizer = self.load_tokenizer()
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
             name=model_args.embedder_model_name
         )
@@ -591,7 +598,7 @@ class CorrectorExperiment(Experiment):
 
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
-        inversion_trainer = aliases.load_inversion_trainer_from_alias(
+        _, inversion_trainer = aliases.load_experiment_and_trainer_from_alias(
             alias=self.training_args.corrector_model_alias,
         )
         return trainers.CorrectorTrainer(

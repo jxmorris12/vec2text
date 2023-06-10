@@ -42,6 +42,7 @@ class BaseTrainer(transformers.Trainer):
 
     def sanity_decode(self):
         """Encodes and decodes a string as a sanity check."""
+        self.model.eval()
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
         input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
         print("\tInput to encode ->", input_string)

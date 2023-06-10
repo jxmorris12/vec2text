@@ -133,7 +133,10 @@ class CorrectorTrainer(BaseTrainer):
         root_dir = os.path.normpath(
             os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
         )
-        model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
+        #### TEMP HACK UNTIL I FIGURE OUT WHY INVERSION TRAINER OUTPUT DIR CHANGES IN DDP
+        # model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
+        model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
+        ####
         assert os.path.exists(model_dir)
         cache_path = os.path.join(model_dir, f"{dataset._fingerprint}_hypotheses.cache")
         if not os.path.exists(cache_path):

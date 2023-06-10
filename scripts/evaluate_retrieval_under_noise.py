@@ -28,8 +28,8 @@ all_datasets = [
     "quora",
     "scidocs",
     "scifact",
-    "covid",
-    "touche2020",
+    "trec-covid",
+    "webis-touche2020",
     ####### private datasets #######
     "signal1m",
     "trec-news",

@@ -23,25 +23,25 @@ CHECKPOINT_FOLDERS_DICT = {
     ####################################################################
     ############################# MSMARCO ##############################
     ####################################################################
-    # https://wandb.ai/jack-morris/emb-inv-3/runs/4dc5011fd9be6b1f4dd3f7f4aa351165?workspace=user-jxmorris12
+    # openai hypothesis model:
+    #    https://wandb.ai/jack-morris/emb-inv-3/runs/4dc5011fd9be6b1f4dd3f7f4aa351165?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f",
+    # openai corrector model [training]:
+    # https://wandb.ai/jack-morris/emb-correct-1/runs/b3b83aede945ba412ac6e9eebaf5f0dd/overview?workspace=user-jxmorris12
+    "openai_msmarco__msl128__100epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/d6ec9d5838a4ad3daeba636e5378a8a0",
 }
 
 
-def load_inversion_trainer_from_alias(alias: str):  # -> trainers.InversionTrainer:
+def load_experiment_and_trainer_from_alias(alias: str):  # -> trainers.InversionTrainer:
     import trainers
 
     args_str = ARGS_DICT.get(alias)
     checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
     print(f"loading alias {alias} from {checkpoint_folder}...")
-    trainer = analyze_utils.load_trainer(checkpoint_folder, args_str, do_eval=False)
-    assert isinstance(trainer, trainers.InversionTrainer)
-    return trainer
+    experiment, trainer = analyze_utils.load_experiment_and_trainer(checkpoint_folder, args_str, do_eval=False)
+    return experiment, trainer
 
 
-def load_inversion_model_from_alias(alias: str):  # -> models.InversionModel:
-    import models
-
-    trainer = load_inversion_trainer_from_alias(alias)
-    assert isinstance(trainer.model, models.InversionModel)
+def load_model_from_alias(alias: str):  # -> models.InversionModel:
+    _, trainer = load_experiment_and_trainer_from_alias(alias)
     return trainer.model
