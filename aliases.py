@@ -26,9 +26,11 @@ CHECKPOINT_FOLDERS_DICT = {
     # openai hypothesis model:
     #    https://wandb.ai/jack-morris/emb-inv-3/runs/4dc5011fd9be6b1f4dd3f7f4aa351165?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f",
-    # openai corrector model [training]:
+    # openai corrector model:
     # https://wandb.ai/jack-morris/emb-correct-1/runs/b3b83aede945ba412ac6e9eebaf5f0dd/overview?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/d6ec9d5838a4ad3daeba636e5378a8a0",
+    # openai corrector model [w/ "cheated" / interpolated hypotheses]:
+    "openai_msmarco__msl128__100epoch__correct_cheat": "/home/jxm3/research/retrieval/inversion/saves/45e3f871f91d0fbf54bacb5593434409",
 }
 
 

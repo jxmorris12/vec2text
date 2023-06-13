@@ -148,7 +148,7 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
     return outputs
 
 
-
+@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
 def embed_api(
     input_ids: torch.Tensor,
     embedder_tokenizer: transformers.PreTrainedTokenizer,

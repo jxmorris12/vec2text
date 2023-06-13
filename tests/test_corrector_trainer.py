@@ -18,6 +18,7 @@ def load_trainer(model_args, data_args, training_args) -> CorrectorTrainer:
     training_args.num_train_epochs = 2.0
     training_args.eval_steps = 6400000  # 64
     data_args.max_eval_samples = 64
+    training_args.cheat_on_train_hypotheses = True
     trainer = experiments.experiment_from_args(
         model_args=model_args, data_args=data_args, training_args=training_args
     ).load_trainer()

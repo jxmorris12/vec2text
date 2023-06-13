@@ -229,6 +229,10 @@ class TrainingArguments(transformers.TrainingArguments):
         default="dpr_nq__msl32_beta",
         metadata={"help": "Alias of corrector model to train (defined in aliases.py)"},
     )
+    cheat_on_train_hypotheses: bool = field(
+        default=False, 
+        metadata={"help": "When set, will interpolate true with pred train hypothesis for 'closer' training data"},
+    )
 
     steps_per_epoch: int = field(
         default=500_000,
