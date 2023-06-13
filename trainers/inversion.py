@@ -102,12 +102,16 @@ class InversionTrainer(BaseTrainer):
 
         return output
 
-    # def _remap_state_dict(self, state_dict: Dict) -> Dict:
-    #     """Edit keys posthumously on model load."""
-    #     state_dict["embedding_transform.3.weight"] = state_dict.pop(
-    #         "embedding_transform.2.weight"
-    #     )
-    #     state_dict["embedding_transform.3.bias"] = state_dict.pop(
-    #         "embedding_transform.2.bias"
-    #     )
-    #     return state_dict
+    def _remap_state_dict(self, state_dict: Dict) -> Dict:
+        """Edit keys posthumously on model load."""
+        # Rename keys for backward compatibility w/ model trained before
+        # we added extra dropout to the model
+        if {"embedding_transform.2.weight", "embedding_transform.2.bias"} <= state_dict.keys():
+            print("Renaming keys", {"embedding_transform.2.weight", "embedding_transform.2.bias"}, "for backward compatibility.")
+            state_dict["embedding_transform.3.weight"] = state_dict.pop(
+                "embedding_transform.2.weight"
+            )
+            state_dict["embedding_transform.3.bias"] = state_dict.pop(
+                "embedding_transform.2.bias"
+            )
+        return state_dict

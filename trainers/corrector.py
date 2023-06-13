@@ -182,6 +182,9 @@ class CorrectorTrainer(BaseTrainer):
             self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
 
     def _inner_training_loop(self, *args, **kwargs):
+        # Don't let tokenizers run in parallel mode.
+        os.environ["TOKENIZERS_PARALLELISM"] = "False"
+
         self.model.eval()
         self.precompute_hypotheses()
         self.model.train()
@@ -212,9 +215,16 @@ class CorrectorTrainer(BaseTrainer):
 
         try:
             frozen_embeddings = inputs["frozen_embeddings"]
+            ################################################################################
+            # # print("temp: starting from best hypothesis")
+            # hypothesis_input_ids = inputs["best_hypothesis_input_ids"]
+            # hypothesis_embedding = inputs["best_hypothesis_embedding"]
+            # hypothesis_attention_mask = (hypothesis_input_ids != self.model.encoder_decoder.config.pad_token_id).int()
+            ################################################################################
             hypothesis_input_ids = inputs["hypothesis_input_ids"]
             hypothesis_attention_mask = inputs["hypothesis_attention_mask"]
             hypothesis_embedding = inputs["hypothesis_embedding"]
+            ################################################################################
         except KeyError:
             (
                 frozen_embeddings,
@@ -232,6 +242,7 @@ class CorrectorTrainer(BaseTrainer):
         if (num_recursive_steps_so_far == 0) and (
             self.initial_hypothesis_str is not None
         ):
+            # Support setting a string as the initial hypothesis (for ablations)
             logger.info(f"Using initial hypothesis: {self.initial_hypothesis_str}")
             # If set, uses this string as the hypothesis for step 0 of self-correction
             batch_size = frozen_embeddings.shape[0]
@@ -296,8 +307,29 @@ class CorrectorTrainer(BaseTrainer):
                 ids = torch.cat((ids, pad_tokens), dim=1)
             return ids
 
-        # Track best one we've seen so far.
+        # Re-embed generated text so we can rerank, and track the best we've seen so far.
         hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
+
+        batch_size = frozen_embeddings.shape[0]
+        if gen_text_ids.shape[0] > batch_size:
+            # print("reranking :-)")
+            # print("\t>batch_size:", batch_size)
+            # print("\t>gen_text_ids.shape[0]:", gen_text_ids.shape[0])
+            # This occurs when num_beams and num_return_sequences are both greater
+            # than 1. We rerank examples in the beam according to their closeness
+            # to the ground-truth.
+            beam_width = int(gen_text_ids.shape[0] / batch_size)
+            prev_hypothesis_embedding = inputs["hypothesis_embedding"]
+            distances_per_beam = torch.nn.CosineSimilarity(2)(
+                hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
+                inputs["frozen_embeddings"][:, None, :]
+            )
+            best_idx_in_beam = distances_per_beam.argmax(1)
+            # print("best_idx_in_beam:", best_idx_in_beam)
+            # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
+            hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size), best_idx_in_beam]
+            gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size), best_idx_in_beam]
+
         best_hypothesis_input_ids = inputs.get(
             "best_hypothesis_input_ids", inputs["hypothesis_input_ids"]
         )
@@ -532,3 +564,35 @@ class CorrectorTrainer(BaseTrainer):
 
         logits, labels = None, None
         return loss, logits, labels
+
+
+    def _remap_state_dict(self, state_dict: Dict) -> Dict:
+        """Edit keys posthumously on model load."""
+        # Rename keys for backward compatibility w/ model trained before
+        # we stopped sharing params between the ff layers
+        if {"embedding_transform.3.weight", "embedding_transform.3.bias"} <= state_dict.keys():
+            print("Renaming keys", {"embedding_transform.2.weight", "embedding_transform.2.bias"}, "for backward compatibility.")
+            state_dict["embedding_transform_1.0.weight"] = state_dict.pop(
+                "embedding_transform.0.weight"
+            )
+            state_dict["embedding_transform_1.0.bias"] = state_dict.pop(
+                "embedding_transform.0.bias"
+            )
+            state_dict["embedding_transform_1.3.weight"] = state_dict.pop(
+                "embedding_transform.3.weight"
+            )
+            state_dict["embedding_transform_1.3.bias"] = state_dict.pop(
+                "embedding_transform.3.bias"
+            )
+            #
+            state_dict["embedding_transform_2.0.weight"] = state_dict["embedding_transform_1.0.weight"]
+            state_dict["embedding_transform_2.0.bias"] = state_dict["embedding_transform_1.0.bias"]
+            state_dict["embedding_transform_2.3.weight"] = state_dict["embedding_transform_1.3.weight"]
+            state_dict["embedding_transform_2.3.bias"] = state_dict["embedding_transform_1.3.bias"]
+            #
+            state_dict["embedding_transform_3.0.weight"] = state_dict["embedding_transform_1.0.weight"]
+            state_dict["embedding_transform_3.0.bias"] = state_dict["embedding_transform_1.0.bias"]
+            state_dict["embedding_transform_3.3.weight"] = state_dict["embedding_transform_1.3.weight"]
+            state_dict["embedding_transform_3.3.bias"] = state_dict["embedding_transform_1.3.bias"]
+        return state_dict
+

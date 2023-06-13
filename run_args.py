@@ -326,7 +326,6 @@ class TrainingArguments(transformers.TrainingArguments):
             len(os.sched_getaffinity(0)) / torch.cuda.device_count()
         )
         os.environ["RAYON_RS_NUM_CPUS"] = str(num_workers) # Sets threads for hf tokenizers
-        os.environ["TOKENIZERS_PARALLELISM"] = "false"
         self.dataloader_num_workers = num_workers
 
         self.dataloader_drop_last = False

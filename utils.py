@@ -156,8 +156,10 @@ def embed_api(
 ) -> torch.Tensor:
     text_list = embedder_tokenizer.batch_decode(input_ids, skip_special_tokens=True)
 
+    # get_embeddings_func = get_embeddings_openai_vanilla
+    get_embeddings_func = get_embeddings_openai_manifest
     if api_name.startswith("text-embedding-ada"):
-        embeddings = get_embeddings_openai_vanilla(
+        embeddings = get_embeddings_func(
             text_list=text_list,
             model=api_name,
         )

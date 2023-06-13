@@ -35,6 +35,16 @@ def load_experiment_and_trainer(
         data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
         model_args = torch.load(os.path.join(checkpoint, os.pardir, "model_args.bin"))
 
+    # For batch decoding outputs during evaluation.
+    os.environ["TOKENIZERS_PARALLELISM"] = "True"
+
+    ########################################################################
+    print("> checkpoint:", checkpoint)
+    if checkpoint == "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac/checkpoint-558000":
+        # Special handling for one case of backwards compatibility: set dataset to nq
+        data_args.dataset_name = "nq"
+        print("set dataset to nq")
+
     training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
     ########################################################################
     from accelerate.state import PartialState

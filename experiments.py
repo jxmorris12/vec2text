@@ -33,9 +33,6 @@ from utils import torch_main_worker_finish_first
 os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
 
-# For batch decoding outputs during evaluation.
-os.environ["TOKENIZERS_PARALLELISM"] = "True"
-
 # Don't send telemetry to HF every time we train.
 os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
@@ -393,6 +390,7 @@ class Experiment(abc.ABC):
             val_datasets_dict.keys(),
         )
         return self._prepare_val_datasets_dict(
+            model=model,
             tokenizer=tokenizer,
             embedder_tokenizer=embedder_tokenizer,
             val_datasets_dict=val_datasets_dict
@@ -411,6 +409,8 @@ class Experiment(abc.ABC):
             "use_less_data": self.data_args.use_less_data,
             "embedder_model_api": self.model_args.embedder_model_api,
         }
+
+        print("Loading datasets with TOKENIZERS_PARALLELISM =", os.environ.get("TOKENIZERS_PARALLELISM"))
         ######################################################################
         train_dataset_kwargs = {
             "dataset_name": self.data_args.dataset_name,

@@ -110,15 +110,15 @@ class CorrectorEncoderModel(torch.nn.Module):
         inputs: Dict[str, torch.Tensor],
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
-        if "max_length" not in generation_kwargs:
-            generation_kwargs = copy.copy(
-                generation_kwargs
-            )  # make a copy so we can edit
-            generation_kwargs["max_length"] = inputs.get(
-                "input_ids", inputs["embedder_input_ids"]
-            ).shape[1]
+        # if "max_length" not in generation_kwargs:
+        #     generation_kwargs = copy.copy(
+        #         generation_kwargs
+        #     )  # make a copy so we can edit
+        #     generation_kwargs["max_length"] = inputs.get(
+        #         "input_ids", inputs["embedder_input_ids"]
+        #     ).shape[1]
 
-        # print("CE.generate:", generation_kwargs)
+        print("CE.generate:", generation_kwargs)
 
         inputs_embeds, attention_mask = self.get_encoder_embedding(
             embedding=inputs["frozen_embeddings"],
