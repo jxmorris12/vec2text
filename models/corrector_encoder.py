@@ -109,6 +109,7 @@ class CorrectorEncoderModel(torch.nn.Module):
         self,
         inputs: Dict[str, torch.Tensor],
         generation_kwargs: Dict[str, torch.Tensor],
+        return_dict_in_generate: bool = False,
     ) -> torch.Tensor:
         # if "max_length" not in generation_kwargs:
         #     generation_kwargs = copy.copy(
@@ -131,6 +132,8 @@ class CorrectorEncoderModel(torch.nn.Module):
                 # required: input embeddings
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
+                return_dict_in_generate=return_dict_in_generate,
+                output_scores=return_dict_in_generate,
                 # optional: input IDs (for starting generation).
                 # typically not set unless generating prefixes for
                 # reranking.
@@ -143,6 +146,8 @@ class CorrectorEncoderModel(torch.nn.Module):
                 # required: input embeddings
                 inputs_embeds=inputs_embeds,
                 attention_mask=attention_mask,
+                return_dict_in_generate=return_dict_in_generate,
+                output_scores=return_dict_in_generate,
                 # optional: input IDs (for starting generation).
                 # typically not set unless generating prefixes for
                 # reranking.

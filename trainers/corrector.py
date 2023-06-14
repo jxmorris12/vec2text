@@ -235,7 +235,7 @@ class CorrectorTrainer(BaseTrainer):
         inputs["hypothesis_input_ids"] = hypothesis_input_ids
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
-        print("generating with sequence_beam_width:", (sequence_beam_width or self.sequence_beam_width))
+        # print("generating with sequence_beam_width:", (sequence_beam_width or self.sequence_beam_width))
         return self._generate_with_beam(
             inputs=inputs,
             generation_kwargs=generation_kwargs,
@@ -308,15 +308,35 @@ class CorrectorTrainer(BaseTrainer):
             )
             gen_text_ids = torch.cat((bos_token_ids, gen_text_ids[:, :-1]), dim=1)
         elif self.is_corrector_encoder:
-            gen_text_ids = self.model.generate(
+            outputs = self.model.generate(
                 inputs=inputs,
                 generation_kwargs=generation_kwargs,
+                return_dict_in_generate=True,
             )
+            transition_scores = self.model.encoder_decoder.compute_transition_scores(
+                outputs.sequences, outputs.scores, normalize_logits=True,
+            )
+            gen_text_ids = outputs.sequences
+            # get scores for sequences
+            # https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075
+
+            if 'beam_indices' in outputs:
+                transition_scores = self.model.encoder_decoder.compute_transition_scores(
+                    outputs.sequences, outputs.scores, outputs.beam_indices, normalize_logits=False
+                )
+            else:
+                transition_scores = self.model.encoder_decoder.compute_transition_scores(
+                    outputs.sequences, outputs.scores, normalize_logits=False
+                )
+            length_penalty = self.model.encoder_decoder.generation_config.length_penalty
+            output_length = (transition_scores < 0).sum(1)
+            gen_text_scores = transition_scores.sum(axis=1) / (output_length**length_penalty) # log probs
         else:
             gen_text_ids = self.model.generate(
                 inputs=inputs,
                 generation_kwargs=generation_kwargs,
                 embed_generated_hypothesis_func=self.embed_generated_hypothesis,
+                return_dict_in_generate=False,
             )
             # Don't return <hypothesis><text> upon generation, just return <text>
             gen_text_ids = gen_text_ids[:, max_length:]
@@ -362,7 +382,10 @@ class CorrectorTrainer(BaseTrainer):
                     hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
                     inputs["frozen_embeddings"][:, None, :]
                 )
-                best_idx_in_beam = distances_per_beam.argmax(1)
+                if self.return_best_hypothesis:
+                    best_idx_in_beam = distances_per_beam.argmax(1)
+                else:
+                    best_idx_in_beam = gen_text_scores.reshape((batch_size, beam_width)).argmax(1)
                 # print("best_idx_in_beam:", best_idx_in_beam)
                 # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
                 hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
@@ -386,7 +409,10 @@ class CorrectorTrainer(BaseTrainer):
                     hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
                     frozen_embeddings_per_beam
                 )
-                best_idx_in_beam = distances_per_beam.argmax(1)
+                if self.return_best_hypothesis:
+                    best_idx_in_beam = distances_per_beam.argmax(1)
+                else:
+                    best_idx_in_beam = gen_text_scores.reshape((batch_size, beam_width)).argmax(1)
                 # print("best_idx_in_beam:", best_idx_in_beam)
                 # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
                 hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
@@ -423,14 +449,19 @@ class CorrectorTrainer(BaseTrainer):
                     frozen_embeddings_per_beam,
                 )
 
+                if self.return_best_hypothesis:
+                    scores = distances_per_beam
+                else:
+                    scores = gen_text_scores.reshape((batch_size, beam_width))
+
                 if beam_width == sequence_beam_width:
                     # first time around for sequence-level beam search.
-                    best_idx_in_beam = distances_per_beam.topk(dim=1, k=sequence_beam_width).indices
+                    best_idx_in_beam = scores.topk(dim=1, k=sequence_beam_width).indices
                     hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
                     gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
                 else:
                     # take top *unique* things in beam.
-                    best_idx_in_beam_total = distances_per_beam.topk(dim=1, k=sequence_beam_width*sequence_beam_width).indices
+                    best_idx_in_beam_total = scores.topk(dim=1, k=sequence_beam_width*sequence_beam_width).indices
 
                     hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))
                     gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))
