@@ -380,9 +380,10 @@ class CorrectorTrainer(BaseTrainer):
                     inputs["frozen_embeddings"][:, None, :]
                 )
                 if self.return_best_hypothesis:
-                    best_idx_in_beam = distances_per_beam.argmax(1)
+                    scores = distances_per_beam.argmax(1)
                 else:
-                    best_idx_in_beam = gen_text_scores.reshape((batch_size, beam_width)).argmax(1)
+                    scores = gen_text_scores.reshape((batch_size, beam_width))
+                best_idx_in_beam = scores.argmax(1)
                 hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
                     torch.arange(batch_size), best_idx_in_beam]
                 gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
@@ -403,9 +404,10 @@ class CorrectorTrainer(BaseTrainer):
                     frozen_embeddings_per_beam
                 )
                 if self.return_best_hypothesis:
-                    best_idx_in_beam = distances_per_beam.argmax(1)
+                    scores = distances_per_beam
                 else:
-                    best_idx_in_beam = gen_text_scores.reshape((batch_size, beam_width)).argmax(1)
+                    scores = gen_text_scores.reshape((batch_size, beam_width))
+                best_idx_in_beam = scores.argmax(1)
                 # print("best_idx_in_beam:", best_idx_in_beam)
                 # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
                 hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
@@ -474,6 +476,8 @@ class CorrectorTrainer(BaseTrainer):
                 # print("len(gen_text_ids):", len(gen_text_ids), "len(set(gen_text_ids)):", len(set(self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))))
                 # print("gen_text_ids:", self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))
 
+        # print(f"step {num_recursive_steps_so_far} // scores.mean() = {scores.mean().item():.2f}")
+        print(f"step {num_recursive_steps_so_far} // scores = {scores.max(1).values.tolist()}")
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
