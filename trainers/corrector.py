@@ -66,6 +66,7 @@ class CorrectorTrainer(BaseTrainer):
 
         # Number of steps of self-correction
         self.num_gen_recursive_steps = 1
+        self.sequence_beam_width = 1
 
         # If set, return closest (in embedding space) hypothesis we see during generation
         self.return_best_hypothesis = False
@@ -196,7 +197,7 @@ class CorrectorTrainer(BaseTrainer):
         inputs: Dict,
         generation_kwargs: Dict,
         num_recursive_steps: int = None,
-        num_recursive_steps_so_far: int = 0,
+        sequence_beam_width: int = None,
     ) -> torch.Tensor:
         """Generates text using self-correction.
 
@@ -204,15 +205,10 @@ class CorrectorTrainer(BaseTrainer):
             inputs (Dict[str, torch.Tensor]): inputs for generation, like the input embedding, hypothesis,
                 and hypothesis embedding
             generation_kwargs (Dict): dictionary of parameters for generation, will be passed on to the model
-            num_recursive_steps (int): Number of remaining steps of recursion, used to know when to stop
-            num_recusive_steps_so_far (int): Number of steps of recursion performed so far. This is how we
-                can check if it's the initial hypothesis or not.
+            sequence_beam_width (int): beam width for sequence-level beam search
         Returns:
             generated_ids (torch.Tensor): ids of generated text
         """
-        if num_recursive_steps is None:
-            num_recursive_steps = self.num_gen_recursive_steps
-
         try:
             frozen_embeddings = inputs["frozen_embeddings"]
             ################################################################################
@@ -232,16 +228,52 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_attention_mask,
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
+        
+        # Add beam dimension:
+        #       (batch, ...) -> (batch, beam, ...)
         inputs["frozen_embeddings"] = frozen_embeddings
         inputs["hypothesis_input_ids"] = hypothesis_input_ids
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
+        print("generating with sequence_beam_width:", (sequence_beam_width or self.sequence_beam_width))
+        return self._generate_with_beam(
+            inputs=inputs,
+            generation_kwargs=generation_kwargs,
+            num_recursive_steps=(num_recursive_steps or self.num_gen_recursive_steps),
+            num_recursive_steps_so_far=0,
+            sequence_beam_width=(sequence_beam_width or self.sequence_beam_width),
+        )
+    
+    def _generate_with_beam(
+        self,
+        inputs: Dict,
+        generation_kwargs: Dict,
+        num_recursive_steps: int,
+        num_recursive_steps_so_far: int,
+        sequence_beam_width: int,
+    ) -> torch.Tensor:
+        """Generates text using self-correction.
 
+        Args:
+            inputs (Dict[str, torch.Tensor]): inputs for generation, like the input embedding, hypothesis,
+                and hypothesis embedding
+            generation_kwargs (Dict): dictionary of parameters for generation, will be passed on to the model
+            num_recursive_steps (int): Number of remaining steps of recursion, used to know when to stop
+            num_recusive_steps_so_far (int): Number of steps of recursion performed so far. This is how we
+                can check if it's the initial hypothesis or not.
+            sequence_beam_width (int): beam width for sequence-level beam search
+        Returns:
+            generated_ids (torch.Tensor): ids of generated text
+        """
+        assert num_recursive_steps >= 1
+        frozen_embeddings = inputs["frozen_embeddings"]
+        ################################################################################
         max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
 
-        if (num_recursive_steps_so_far == 0) and (
-            self.initial_hypothesis_str is not None
-        ):
+        generation_kwargs["num_beams"] = sequence_beam_width
+        generation_kwargs["num_return_sequences"] = sequence_beam_width
+
+        if ((num_recursive_steps_so_far == 0) and (self.initial_hypothesis_str is not None)):
             # Support setting a string as the initial hypothesis (for ablations)
             logger.info(f"Using initial hypothesis: {self.initial_hypothesis_str}")
             # If set, uses this string as the hypothesis for step 0 of self-correction
@@ -250,23 +282,23 @@ class CorrectorTrainer(BaseTrainer):
                 self.embedder_tokenizer(
                     [self.initial_hypothesis_str],
                     return_tensors="pt",
-                    max_length=hypothesis_input_ids.shape[1],
+                    max_length=inputs["hypothesis_input_ids"].shape[1],
                     truncation=True,
                     padding="max_length",
                 )["input_ids"]
                 .repeat((batch_size, 1))
                 .to(self.args.device)
             )
-            gen_text_ids = (
-                torch.randint(
-                    low=1,
-                    high=self.embedder_tokenizer.vocab_size,
-                    size=(1, 32),
-                    dtype=torch.long,
-                )
-                .repeat((batch_size, 1))
-                .to(self.args.device)
-            )
+            # gen_text_ids = (
+            #     torch.randint(
+            #         low=1,
+            #         high=self.embedder_tokenizer.vocab_size,
+            #         size=(1, inputs["hypothesis_input_ids"].shape[1]),
+            #         dtype=torch.long,
+            #     )
+            #     .repeat((batch_size, 1))
+            #     .to(self.args.device)
+            # )
             bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
             bos_token_ids = (
                 torch.ones(
@@ -310,65 +342,162 @@ class CorrectorTrainer(BaseTrainer):
         # Re-embed generated text so we can rerank, and track the best we've seen so far.
         hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
 
-        batch_size = frozen_embeddings.shape[0]
+        if num_recursive_steps_so_far == 0:
+            batch_size = frozen_embeddings.shape[0]
+        else:
+            # after the first step, we've already copied frozen embeddings across the beam
+            batch_size = int(frozen_embeddings.shape[0] / sequence_beam_width)
+        
+        # print(">batch_size:", batch_size)
+        # print("frozen_embeddings.shape[0]", frozen_embeddings.shape[0], "gen_text_ids.shape[0]", gen_text_ids.shape[0])
+        # print("num_recursive_steps:", num_recursive_steps)
         if gen_text_ids.shape[0] > batch_size:
-            # print("reranking :-)")
-            # print("\t>batch_size:", batch_size)
-            # print("\t>gen_text_ids.shape[0]:", gen_text_ids.shape[0])
-            # This occurs when num_beams and num_return_sequences are both greater
-            # than 1. We rerank examples in the beam according to their closeness
-            # to the ground-truth.
-            beam_width = int(gen_text_ids.shape[0] / batch_size)
-            prev_hypothesis_embedding = inputs["hypothesis_embedding"]
-            distances_per_beam = torch.nn.CosineSimilarity(2)(
-                hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
-                inputs["frozen_embeddings"][:, None, :]
-            )
-            best_idx_in_beam = distances_per_beam.argmax(1)
-            # print("best_idx_in_beam:", best_idx_in_beam)
-            # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
-            hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size), best_idx_in_beam]
-            gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size), best_idx_in_beam]
+            if (sequence_beam_width == 1):
+                # This occurs when num_beams and num_return_sequences are both greater
+                # than 1. We rerank examples in the beam according to their closeness
+                # to the ground-truth.
+                beam_width = int(gen_text_ids.shape[0] / batch_size)
+                prev_hypothesis_embedding = inputs["hypothesis_embedding"]
+                distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
+                    hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
+                    inputs["frozen_embeddings"][:, None, :]
+                )
+                best_idx_in_beam = distances_per_beam.argmax(1)
+                # print("best_idx_in_beam:", best_idx_in_beam)
+                # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
+                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
+                    torch.arange(batch_size), best_idx_in_beam]
+                gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
+                    torch.arange(batch_size), best_idx_in_beam]
+                # Flatten again so we can do normal operations.
+                import pdb; pdb.set_trace()
+                gen_text_ids = gen_text_ids.reshape((batch_size * sequence_beam_width, -1))
+                hypothesis_embedding = hypothesis_embedding.reshape((batch_size * sequence_beam_width, -1))
+            elif (num_recursive_steps == 1):
+                # Base case for sequence-level beam search.
+                beam_width = int(gen_text_ids.shape[0] / batch_size)
+                prev_hypothesis_embedding = inputs["hypothesis_embedding"]
+                frozen_embeddings_per_beam = (
+                    inputs["frozen_embeddings"]
+                        .repeat((1, sequence_beam_width, 1))
+                        .reshape((batch_size, beam_width, -1))
+                )
+                distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
+                    hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
+                    frozen_embeddings_per_beam
+                )
+                best_idx_in_beam = distances_per_beam.argmax(1)
+                # print("best_idx_in_beam:", best_idx_in_beam)
+                # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
+                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
+                    torch.arange(batch_size), best_idx_in_beam]
+                gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
+                    torch.arange(batch_size), best_idx_in_beam]
+            else:
+                # Now get top things in the beam like normal
+                beam_width = int(gen_text_ids.shape[0] / batch_size)
+                
+                if num_recursive_steps_so_far == 0:
+                    # This is the first return for sequence-level beam search.
+                    # First we have to copy the frozen embedding
+                    inputs["frozen_embeddings"] = (
+                        inputs["frozen_embeddings"][:, None, :]
+                            .repeat((1, sequence_beam_width, 1))
+                            .reshape((batch_size * sequence_beam_width, -1))
+                    )
+                    frozen_embeddings_per_beam = (
+                        inputs["frozen_embeddings"]
+                        .reshape((batch_size, sequence_beam_width, -1))
+                    )
+                else:
+                    frozen_embeddings_per_beam = (
+                        inputs["frozen_embeddings"]
+                            .repeat((1, sequence_beam_width, 1))
+                            .reshape((batch_size, sequence_beam_width*sequence_beam_width, -1))
+                    )
+                assert (beam_width == sequence_beam_width) or (beam_width == sequence_beam_width ** 2)
+                prev_hypothesis_embedding = inputs["hypothesis_embedding"]
 
-        best_hypothesis_input_ids = inputs.get(
-            "best_hypothesis_input_ids", inputs["hypothesis_input_ids"]
-        )
+                distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
+                    hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
+                    frozen_embeddings_per_beam,
+                )
 
-        # Pad everything to max length so we can stack properly.
-        max_hypothesis_length = max(
-            gen_text_ids.shape[1], best_hypothesis_input_ids.shape[1]
-        )
-        gen_text_ids = pad_to_length(
-            gen_text_ids,
-            max_hypothesis_length,
-            self.model.encoder_decoder.config.pad_token_id,
-        )
-        best_hypothesis_input_ids = pad_to_length(
-            best_hypothesis_input_ids,
-            max_hypothesis_length,
-            self.model.encoder_decoder.config.pad_token_id,
-        )
+                if beam_width == sequence_beam_width:
+                    # first time around for sequence-level beam search.
+                    best_idx_in_beam = distances_per_beam.topk(dim=1, k=sequence_beam_width).indices
+                    hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                    gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                else:
+                    # take top *unique* things in beam.
+                    best_idx_in_beam_total = distances_per_beam.topk(dim=1, k=sequence_beam_width*sequence_beam_width).indices
+
+                    hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))
+                    gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))
+                    best_idx_in_beam = []
+                    for batch_idx in range(len(best_idx_in_beam_total)):
+                        gen_text_set = set() # track uniqueness
+                        best_idx_in_beam.append([])
+                        for j in best_idx_in_beam_total[batch_idx].tolist():
+                            gen_text_i = tuple(gen_text_ids[batch_idx, j].tolist())
+                            if gen_text_i not in gen_text_set:
+                                gen_text_set.add(gen_text_i)
+                                best_idx_in_beam[batch_idx].append(j)
+                            if len(best_idx_in_beam[batch_idx]) == sequence_beam_width:
+                                break
+                    best_idx_in_beam = torch.tensor(best_idx_in_beam, device=best_idx_in_beam_total.device)
+                    # now take top unique things
+                    hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                    gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                
+                # Flatten again so we can do normal operations.
+                gen_text_ids = gen_text_ids.reshape((batch_size * sequence_beam_width, -1))
+                hypothesis_embedding = hypothesis_embedding.reshape((batch_size * sequence_beam_width, -1))
+                # print("len(gen_text_ids):", len(gen_text_ids), "len(set(gen_text_ids)):", len(set(self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))))
+                # print("gen_text_ids:", self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))
+
+        # make sure we reshape correctly
+        assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
+        # TODO fix all this logic to take best?
+        # or implement 'early stopping'?
+        # best_hypothesis_input_ids = inputs.get(
+        #     "best_hypothesis_input_ids", inputs["hypothesis_input_ids"]
+        # )
+        # # Pad everything to max length so we can stack properly.
+        # max_hypothesis_length = max(
+        #     gen_text_ids.shape[1], best_hypothesis_input_ids.shape[1]
+        # )
+        # gen_text_ids = pad_to_length(
+        #     gen_text_ids,
+        #     max_hypothesis_length,
+        #     self.model.encoder_decoder.config.pad_token_id,
+        # )
+        # best_hypothesis_input_ids = pad_to_length(
+        #     best_hypothesis_input_ids,
+        #     max_hypothesis_length,
+        #     self.model.encoder_decoder.config.pad_token_id,
+        # )
 
         # Store closest-seen hypothesis.
-        best_hypothesis_embedding = inputs.get(
-            "best_hypothesis_embedding", inputs["hypothesis_embedding"]
-        )
-        best_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(
-            inputs["frozen_embeddings"], best_hypothesis_embedding
-        )
-        new_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(
-            inputs["frozen_embeddings"], hypothesis_embedding
-        )
-        inputs["best_hypothesis_input_ids"] = torch.where(
-            (best_distance < new_distance)[:, None],
-            best_hypothesis_input_ids,
-            gen_text_ids,
-        )
-        inputs["best_hypothesis_embedding"] = torch.where(
-            (best_distance < new_distance)[:, None],
-            best_hypothesis_embedding,
-            hypothesis_embedding,
-        )
+        # best_hypothesis_embedding = inputs.get(
+        #     "best_hypothesis_embedding", inputs["hypothesis_embedding"]
+        # )
+        # best_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(
+        #     inputs["frozen_embeddings"], best_hypothesis_embedding
+        # )
+        # new_distance = 1.0 - torch.nn.CosineSimilarity(dim=1)(
+        #     inputs["frozen_embeddings"], hypothesis_embedding
+        # )
+        # inputs["best_hypothesis_input_ids"] = torch.where(
+        #     (best_distance < new_distance)[:, None],
+        #     best_hypothesis_input_ids,
+        #     gen_text_ids,
+        # )
+        # inputs["best_hypothesis_embedding"] = torch.where(
+        #     (best_distance < new_distance)[:, None],
+        #     best_hypothesis_embedding,
+        #     hypothesis_embedding,
+        # )
 
         if num_recursive_steps == 1:
             if self.return_best_hypothesis:
@@ -381,11 +510,12 @@ class CorrectorTrainer(BaseTrainer):
                 gen_text_ids != self.model.encoder_decoder.config.pad_token_id
             ).int()
             inputs["hypothesis_embedding"] = hypothesis_embedding
-            return self.generate(
+            return self._generate_with_beam(
                 inputs=inputs,
                 generation_kwargs=generation_kwargs,
                 num_recursive_steps=(num_recursive_steps - 1),
                 num_recursive_steps_so_far=num_recursive_steps_so_far + 1,
+                sequence_beam_width=sequence_beam_width,
             )
 
     @property
