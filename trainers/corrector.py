@@ -236,13 +236,28 @@ class CorrectorTrainer(BaseTrainer):
         inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
         inputs["hypothesis_embedding"] = hypothesis_embedding
         # print("generating with sequence_beam_width:", (sequence_beam_width or self.sequence_beam_width))
-        return self._generate_with_beam(
-            inputs=inputs,
-            generation_kwargs=generation_kwargs,
-            num_recursive_steps=(num_recursive_steps or self.num_gen_recursive_steps),
-            num_recursive_steps_so_far=0,
-            sequence_beam_width=(sequence_beam_width or self.sequence_beam_width),
-        )
+
+        num_recursive_steps = num_recursive_steps or self.num_gen_recursive_steps
+        sequence_beam_width = sequence_beam_width or self.sequence_beam_width
+        num_recursive_steps_so_far = 0
+
+        while num_recursive_steps >= 1:
+            gen_text_ids, hypothesis_embedding = self._generate_with_beam(
+                inputs=inputs,
+                generation_kwargs=generation_kwargs,
+                num_recursive_steps=num_recursive_steps,
+                num_recursive_steps_so_far=num_recursive_steps_so_far,
+                sequence_beam_width=sequence_beam_width,
+            )
+            inputs["hypothesis_input_ids"] = gen_text_ids
+            inputs["hypothesis_attention_mask"] = (
+                gen_text_ids != self.model.encoder_decoder.config.pad_token_id
+            ).int()
+            inputs["hypothesis_embedding"] = hypothesis_embedding
+            # step counters
+            num_recursive_steps -= 1
+            num_recursive_steps_so_far += 1
+        return gen_text_ids
     
     def _generate_with_beam(
         self,
@@ -251,7 +266,7 @@ class CorrectorTrainer(BaseTrainer):
         num_recursive_steps: int,
         num_recursive_steps_so_far: int,
         sequence_beam_width: int,
-    ) -> torch.Tensor:
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Generates text using self-correction.
 
         Args:
@@ -314,23 +329,23 @@ class CorrectorTrainer(BaseTrainer):
                 generation_kwargs=generation_kwargs,
                 return_dict_in_generate=True,
             )
-            transition_scores = self.model.encoder_decoder.compute_transition_scores(
-                outputs.sequences, outputs.scores, normalize_logits=True,
-            )
             gen_text_ids = outputs.sequences
             # get scores for sequences
             # https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075
 
             if 'beam_indices' in outputs:
-                transition_scores = self.model.encoder_decoder.compute_transition_scores(
-                    outputs.sequences, outputs.scores, outputs.beam_indices, normalize_logits=False
-                )
+                with torch.no_grad():
+                    transition_scores = self.model.encoder_decoder.compute_transition_scores(
+                        outputs.sequences, outputs.scores, outputs.beam_indices, normalize_logits=True
+                    )
             else:
-                transition_scores = self.model.encoder_decoder.compute_transition_scores(
-                    outputs.sequences, outputs.scores, normalize_logits=False
-                )
+                with torch.no_grad():
+                    transition_scores = self.model.encoder_decoder.compute_transition_scores(
+                        outputs.sequences, outputs.scores, normalize_logits=True
+                    )
             length_penalty = self.model.encoder_decoder.generation_config.length_penalty
             output_length = (transition_scores < 0).sum(1)
+            del outputs.scores
             gen_text_scores = transition_scores.sum(axis=1) / (output_length**length_penalty) # log probs
         else:
             gen_text_ids = self.model.generate(
@@ -350,10 +365,10 @@ class CorrectorTrainer(BaseTrainer):
         else:
             # after the first step, we've already copied frozen embeddings across the beam
             batch_size = int(frozen_embeddings.shape[0] / sequence_beam_width)
-        
-        # print(">batch_size:", batch_size)
-        # print("frozen_embeddings.shape[0]", frozen_embeddings.shape[0], "gen_text_ids.shape[0]", gen_text_ids.shape[0])
-        # print("num_recursive_steps:", num_recursive_steps)
+            
+        # 
+        #   BEAM SEARCH
+        # 
         if gen_text_ids.shape[0] > batch_size:
             if (sequence_beam_width == 1):
                 # This occurs when num_beams and num_return_sequences are both greater
@@ -398,7 +413,7 @@ class CorrectorTrainer(BaseTrainer):
                 gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
                     torch.arange(batch_size), best_idx_in_beam]
             else:
-                # Now get top things in the beam like normal
+                # Now get top things in the beam like normal.
                 beam_width = int(gen_text_ids.shape[0] / batch_size)
                 assert beam_width % sequence_beam_width == 0, "inner beam width must divide sequence beam width"
                 
@@ -433,31 +448,25 @@ class CorrectorTrainer(BaseTrainer):
                 else:
                     scores = gen_text_scores.reshape((batch_size, beam_width))
 
-                if beam_width == sequence_beam_width:
-                    # first time around for sequence-level beam search.
-                    best_idx_in_beam = scores.topk(dim=1, k=sequence_beam_width).indices
-                    hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
-                    gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
-                else:
-                    # take top *unique* things in beam.
-                    best_idx_in_beam_total = scores.topk(dim=1, k=sequence_beam_width*sequence_beam_width).indices
-                    hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))
-                    gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))
-                    best_idx_in_beam = []
-                    for batch_idx in range(len(best_idx_in_beam_total)):
-                        gen_text_set = set() # track uniqueness
-                        best_idx_in_beam.append([])
-                        for j in best_idx_in_beam_total[batch_idx].tolist():
-                            gen_text_i = tuple(gen_text_ids[batch_idx, j].tolist())
-                            if gen_text_i not in gen_text_set:
-                                gen_text_set.add(gen_text_i)
-                                best_idx_in_beam[batch_idx].append(j)
-                            if len(best_idx_in_beam[batch_idx]) == sequence_beam_width:
-                                break
-                    best_idx_in_beam = torch.tensor(best_idx_in_beam, device=best_idx_in_beam_total.device)
-                    # now take top unique things
-                    hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
-                    gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                # take top *unique* things in beam.
+                best_idx_in_beam_total = scores.topk(dim=1, k=beam_width).indices
+                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))
+                gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))
+                best_idx_in_beam = []
+                for batch_idx in range(len(best_idx_in_beam_total)):
+                    gen_text_set = set() # track uniqueness
+                    best_idx_in_beam.append([])
+                    for j in best_idx_in_beam_total[batch_idx].tolist():
+                        gen_text_i = tuple(gen_text_ids[batch_idx, j].tolist())
+                        if gen_text_i not in gen_text_set:
+                            gen_text_set.add(gen_text_i)
+                            best_idx_in_beam[batch_idx].append(j)
+                        if len(best_idx_in_beam[batch_idx]) == sequence_beam_width:
+                            break
+                best_idx_in_beam = torch.tensor(best_idx_in_beam, device=best_idx_in_beam_total.device)
+                # now take top unique things
+                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
                 
                 # Flatten again so we can do normal operations.
                 gen_text_ids = gen_text_ids.reshape((batch_size * sequence_beam_width, -1))
@@ -466,23 +475,9 @@ class CorrectorTrainer(BaseTrainer):
                 # print("gen_text_ids:", self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))
 
         # make sure we reshape correctly
+        # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
-
-        if num_recursive_steps == 1:
-            return gen_text_ids
-        else:
-            inputs["hypothesis_input_ids"] = gen_text_ids
-            inputs["hypothesis_attention_mask"] = (
-                gen_text_ids != self.model.encoder_decoder.config.pad_token_id
-            ).int()
-            inputs["hypothesis_embedding"] = hypothesis_embedding
-            return self._generate_with_beam(
-                inputs=inputs,
-                generation_kwargs=generation_kwargs,
-                num_recursive_steps=(num_recursive_steps - 1),
-                num_recursive_steps_so_far=num_recursive_steps_so_far + 1,
-                sequence_beam_width=sequence_beam_width,
-            )
+        return gen_text_ids, hypothesis_embedding
 
     @property
     def is_corrector_encoder(self):
