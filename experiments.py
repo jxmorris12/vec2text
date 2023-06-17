@@ -37,9 +37,10 @@ os.environ["_WANDB_STARTUP_DEBUG"] = "true"
 os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
+os.environ["TOKENIZERS_PARALLELISM"] = "False"
+
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
-
 
 # We maintain our own cache because huggingface datasets caching
 # doesn't work properly.
@@ -266,12 +267,16 @@ class Experiment(abc.ABC):
         raise NotImplementedError()
     
     def load_tokenizer(self) -> transformers.PreTrainedTokenizer:
-        return transformers.AutoTokenizer.from_pretrained(
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_args.model_name_or_path,
             padding=True,
             truncation="max_length",
             max_length=self.model_args.max_seq_length,
         )
+        # Disable super annoying warning:
+        # https://github.com/huggingface/transformers/issues/22638
+        tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
+        return tokenizer
 
     def get_collator(
         self, tokenizer: transformers.PreTrainedTokenizer
@@ -599,7 +604,7 @@ class CorrectorExperiment(Experiment):
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         _, inversion_trainer = aliases.load_experiment_and_trainer_from_alias(
-            alias=self.training_args.corrector_model_alias,
+            alias=self.training_args.corrector_model_alias, max_seq_length=self.model_args.max_seq_length,
         )
         return trainers.CorrectorTrainer(
             model=model,

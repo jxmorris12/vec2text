@@ -11,7 +11,7 @@ from beir.retrieval import models
 from beir.retrieval.evaluation import EvaluateRetrieval
 from beir.retrieval.search.dense import DenseRetrievalExactSearch as DRES
 
-results_dir = "/home/jxm3/research/retrieval/inversion/results"
+results_dir = "/home/jxm3/research/retrieval/inversion/results_defense"
 datasets_cache_dir = "/home/jxm3/research/retrieval/distractor_exp"
 all_datasets = [
     ####### public datasets #######
@@ -58,11 +58,14 @@ class NoisySentenceBERT(models.SentenceBERT):
         return self._inject_noise(encodings)
 
 
-def evaluate(model_name: str, noise_level: float, dataset: str):
+def evaluate(model_name: str, noise_level: float, dataset: str, max_seq_length: int = None):
     model_name_str = model_name.replace("/", "_").replace("-", "_")
     save_path = os.path.join(
-        results_dir, f"retrieval_noisy__{model_name_str}__{dataset}__{noise_level}.json"
+        results_dir, f"retrieval_noisy__{model_name_str}__{dataset}__{noise_level}"
     )
+    if max_seq_length is not None:
+        save_path += f"__{max_seq_length}"
+    save_path += ".json"
     if os.path.exists(save_path):
         print(f"found experiment cached at {save_path}.")
         return json.load(open(save_path, "r"))
@@ -88,6 +91,10 @@ def evaluate(model_name: str, noise_level: float, dataset: str):
 
     #### Load the SBERT model and retrieve using cosine-similarity
     model = DRES(NoisySentenceBERT(model_name, noise_level=noise_level), batch_size=512)
+
+    if max_seq_length is not None:
+        model.model.q_model.max_seq_length = max_seq_length
+        model.model.doc_model.max_seq_length = max_seq_length
     retriever = EvaluateRetrieval(
         model, score_function="cos_sim"
     )  # or "cos_sim" for cosine similarity
@@ -127,13 +134,18 @@ if __name__ == "__main__":
         default=0.0,
         help="Noise level (default: 0.0)",
     )
-
     parser.add_argument(
         "-d",
         "--dataset",
         type=str,
         default="scifact",
         help="Name of the dataset (default: scifact)",
+    )
+    parser.add_argument(
+        "--max_seq_length",
+        type=int,
+        default=None,
+        help="max sequence length"
     )
 
     args = parser.parse_args()
@@ -149,10 +161,10 @@ if __name__ == "__main__":
         ###########################################################
         all_metrics = []
         for dataset in all_datasets:
-            all_metrics.append(evaluate(args.model, args.noise, dataset))
+            all_metrics.append(evaluate(args.model, args.noise, dataset, max_seq_length=args.max_seq_length))
         ###########################################################
         df = pd.DataFrame(all_metrics)
         df.to_parquet(save_path)
         ###########################################################
     else:
-        evaluate(args.model, args.noise, args.dataset)
+        evaluate(args.model, args.noise, args.dataset, max_seq_length=args.max_seq_length)

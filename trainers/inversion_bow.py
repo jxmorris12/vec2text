@@ -14,7 +14,7 @@ class InversionTrainerBagOfWords(BaseTrainer):
         self.call_embedding_model = self.model.call_embedding_model
 
     def compute_metrics_func(self, eval_preds):
-        return {}  # TODO: fix/implement metrics.
+        return {}  # TODO: implement additional bow metrics.
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)

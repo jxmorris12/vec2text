@@ -137,6 +137,7 @@ class InversionModel(nn.Module):
         else:
             self.embedded_tokens = None
         self.embeddings_from_layer_n = embeddings_from_layer_n
+        self.noise_level = 0
 
     def precompute_whitening_params(self, train_dataloader):
         if not self.whiten_embeddings:
@@ -246,7 +247,7 @@ class InversionModel(nn.Module):
                 device=self.embedder_device,
             )
         elif self.embedder_model_api:
-            return embed_api(
+            embeddings = embed_api(
                 input_ids=input_ids,
                 embedder_tokenizer=self.embedder_tokenizer,
                 api_name=self.embedder_model_api,
@@ -262,6 +263,13 @@ class InversionModel(nn.Module):
                 input_ids=input_ids, attention_mask=attention_mask
             )
             embeddings = self._process_embedder_output(model_output, attention_mask)
+        
+        if self.noise_level > 0:
+            embeddings += (
+                self.noise_level 
+                *
+                torch.randn(embeddings.shape, device=embeddings.device)
+            )
         return embeddings
 
     def embed_and_project(

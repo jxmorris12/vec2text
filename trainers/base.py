@@ -1,3 +1,4 @@
+import collections
 import copy
 import logging
 import os
@@ -7,6 +8,7 @@ import random
 from typing import Dict, List, Tuple
 
 import evaluate
+import nltk
 import numpy as np
 import torch
 import tqdm
@@ -23,6 +25,20 @@ def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
 
+def mean(L: List[float]) -> float:
+    return sum(L) / len(L)
+
+def count_overlapping_ngrams(s1: str, s2: str, n: int) -> int:
+    ngrams_1 = nltk.ngrams(s1, n)
+    ngrams_2 = nltk.ngrams(s2, n)
+    ngram_counts_1 = collections.Counter(ngrams_1)
+    ngram_counts_2 = collections.Counter(ngrams_2)
+    total = 0
+    for ngram, count in ngram_counts_1.items():
+        total += min(count, ngram_counts_2[ngram])
+    return total
+
+
 class BaseTrainer(transformers.Trainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -37,7 +53,7 @@ class BaseTrainer(transformers.Trainer):
             "early_stopping": False,
             "num_beams": 1,
             "do_sample": False,
-            "no_repeat_ngram_size": 3,
+            "no_repeat_ngram_size": 0,
         }
 
     def sanity_decode(self):
@@ -209,17 +225,27 @@ class BaseTrainer(transformers.Trainer):
             return {}
 
         ###########################################################
-        # Compute token, precision, recall.
+
+        # Compute token, precision, recall, and ngram-level metrics.
         precision_sum = 0.0
         recall_sum = 0.0
         f1_sum = 0.0
+        num_overlapping_words = []
+        num_overlapping_bigrams = []
+        num_overlapping_trigrams = []
+        num_true_words = []
+        num_pred_words = []
         for i in range(num_preds):
-            true_words = set(references_ids[i]) - {0, 1, -100}
-            pred_words = set(predictions_ids[i]) - {0, 1, -100}
+            true_words = nltk.tokenize.word_tokenize(references_str[i])
+            pred_words = nltk.tokenize.word_tokenize(predictions_str[i])
+            num_true_words.append(len(true_words))
+            num_pred_words.append(len(pred_words))
 
-            TP = len(true_words & pred_words)
-            FP = len(true_words) - len(true_words & pred_words)
-            FN = len(pred_words) - len(true_words & pred_words)
+            true_words_set = set(true_words)
+            pred_words_set = set(pred_words)
+            TP = len(true_words_set & pred_words_set)
+            FP = len(true_words_set) - len(true_words_set & pred_words_set)
+            FN = len(pred_words_set) - len(true_words_set & pred_words_set)
 
             precision = (TP) / (TP + FP + 1e-20)
             recall = (TP) / (TP + FN + 1e-20)
@@ -233,10 +259,27 @@ class BaseTrainer(transformers.Trainer):
             recall_sum += recall
             f1_sum += f1
 
+            ############################################################
+            num_overlapping_words.append(
+                count_overlapping_ngrams(true_words, pred_words, 1)
+            )
+            num_overlapping_bigrams.append(
+                count_overlapping_ngrams(true_words, pred_words, 2)
+            )
+            num_overlapping_trigrams.append(
+                count_overlapping_ngrams(true_words, pred_words, 3)
+            )
+
+
         set_token_metrics = {
             "token_set_precision": (precision_sum / num_preds),
             "token_set_recall": (recall_sum / num_preds),
             "token_set_f1": (f1_sum / num_preds),
+            "n_ngrams_match_1": mean(num_overlapping_words),
+            "n_ngrams_match_2": mean(num_overlapping_bigrams),
+            "n_ngrams_match_3": mean(num_overlapping_trigrams),
+            "num_true_words": mean(num_true_words),
+            "num_pred_words": mean(num_pred_words),
         }
         ############################################################
         bleu_result = self.metric_bleu.compute(
@@ -311,14 +354,18 @@ class BaseTrainer(transformers.Trainer):
         # Log num tokens.
         num_tokens_metrics = {
             "pred_num_tokens": (
-                preds_sample != self.model.encoder_decoder.config.pad_token_id
+                (preds_sample != self.model.encoder_decoder.config.pad_token_id)
+                &
+                (preds_sample != self.model.encoder_decoder.config.decoder_start_token_id)
             )
             .sum(1)
             .float()
             .mean()
             .item(),
             "true_num_tokens": (
-                preds_sample_labels != self.model.encoder_decoder.config.pad_token_id
+                (preds_sample_labels != self.model.encoder_decoder.config.pad_token_id)
+                &
+                (preds_sample_labels != self.model.encoder_decoder.config.decoder_start_token_id)
             )
             .sum(1)
             .float()
@@ -343,13 +390,14 @@ class BaseTrainer(transformers.Trainer):
             assert preds_sample.shape == preds_sample_labels.shape
 
         with torch.no_grad():
+            pad_token_id = self.model.encoder_decoder.config.pad_token_id
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample,
-                attention_mask=torch.ones_like(preds_sample, device=self.args.device),
+                attention_mask=(preds_sample != pad_token_id).to(self.args.args.device),
             )
             labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels,
-                attention_mask=torch.ones_like(preds_sample_labels),
+                attention_mask=(preds_sample_labels != pad_token_id).to(self.args.device),
             )
             emb_cos_sim = (
                 torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()

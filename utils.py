@@ -123,9 +123,9 @@ def get_embeddings_openai_manifest(text_list, model="text-embedding-ada-002") ->
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
     manifest = get_manifest_global()
-    print(
-        f"running manifest on text_list of length {len(text_list)}, first element '{text_list[0]}'"
-    )
+    # print(
+    #     f"running manifest on text_list of length {len(text_list)}, first element '{text_list[0]}'"
+    # )
     return np.array(manifest.run(text_list, batch_size=min(len(text_list), 128)))
 
 
@@ -143,7 +143,11 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
     outputs = []
     for batch in range(batches):
         text_list_batch = text_list[batch * 128 : (batch + 1) * 128]
-        response = openai.Embedding.create(input=text_list_batch, model=model)
+        response = openai.Embedding.create(
+            input=text_list_batch,
+            model=model,
+            encoding_format="float", # override default base64 encoding...
+        )
         outputs.extend([e["embedding"] for e in response["data"]])
     return outputs
 

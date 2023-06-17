@@ -103,6 +103,7 @@ class CorrectorEncoderModel(torch.nn.Module):
             (ones.repeat(1, 4 + 3 * self.num_repeat_tokens), hypothesis_attention_mask),
             dim=1,
         )
+        # import pdb; pdb.set_trace()
         return (inputs_embeds, attention_mask)
 
     def generate(
@@ -111,13 +112,13 @@ class CorrectorEncoderModel(torch.nn.Module):
         generation_kwargs: Dict[str, torch.Tensor],
         return_dict_in_generate: bool = False,
     ) -> torch.Tensor:
-        # if "max_length" not in generation_kwargs:
-        #     generation_kwargs = copy.copy(
-        #         generation_kwargs
-        #     )  # make a copy so we can edit
-        #     generation_kwargs["max_length"] = inputs.get(
-        #         "input_ids", inputs["embedder_input_ids"]
-        #     ).shape[1]
+        if "max_length" not in generation_kwargs:
+            generation_kwargs = copy.copy(
+                generation_kwargs
+            )  # make a copy so we can edit
+            generation_kwargs["max_length"] = inputs.get(
+                "input_ids", inputs["embedder_input_ids"]
+            ).shape[1]
         # print("CE.generate:", generation_kwargs)
 
         inputs_embeds, attention_mask = self.get_encoder_embedding(

@@ -2,16 +2,17 @@ import itertools
 from datetime import datetime
 
 from slurmpy import Slurm
+import torch
 
-# PYTORCH_CUDA_ALLOC_CONF=max_split_size_mb:512 \
 
 BASE_PYTHON_CMD = """
 NCCL_P2P_LEVEL=NVL \
 LOGLEVEL=DEBUG NCCL_DEBUG=INFO \
 /home/jxm3/.conda/envs/torch/bin/torchrun \
---master_port 0 --nproc_per_node 4 --rdzv-backend=c10d --rdzv-endpoint=localhost:0  \
+--master_port 0 --nproc_per_node {device_count} --rdzv-backend=c10d --rdzv-endpoint=localhost:0  \
 run.py \
 --experiment inversion \
+--dataset_name msmarco \
 --per_device_train_batch_size {batch_size} \
 --per_device_eval_batch_size {batch_size} \
 --max_seq_length {max_seq_length} \
@@ -64,7 +65,7 @@ freeze_strategies = ["none"]
 fake_embedding_with_zeros = [False]
 do_truncation = [False]
 
-ACTUALLY_RUN_COMMAND = True
+ACTUALLY_RUN_COMMAND = False
 
 
 def run_cmd(cmd: str, job_desc: str):
@@ -138,6 +139,8 @@ for args in itertools.product(
         exp_group_name=exp_group_name,
         freeze_strategy=frs,
         truncate=truncate,
+        #
+        device_count=torch.cuda.device_count()
     )
     cmd = cmd.replace("\n", " ")
     job_desc = ".".join(map(str, args))

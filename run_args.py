@@ -189,15 +189,6 @@ class DataArguments:
             "help": "The configuration name of the dataset to use (via the datasets library)."
         },
     )
-    max_train_samples: Optional[int] = field(
-        default=None,
-        metadata={
-            "help": (
-                "For debugging purposes or quicker training, truncate the number of training examples to this "
-                "value if set."
-            )
-        },
-    )
     max_eval_samples: int = field(
         default=1000,
         metadata={
@@ -327,6 +318,7 @@ class TrainingArguments(transformers.TrainingArguments):
         )
         os.environ["RAYON_RS_NUM_CPUS"] = str(num_workers) # Sets threads for hf tokenizers
         self.dataloader_num_workers = num_workers
+        print(f"Set num workers to {num_workers}")
 
         self.dataloader_drop_last = False
 

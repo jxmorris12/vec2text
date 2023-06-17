@@ -30,9 +30,16 @@ all_beir_datasets = [
 model_name = "sentence-transformers/gtr-t5-base"
 ACTUALLY_RUN_COMMAND = True
 
-BASE_PYTHON_CMD = """python scripts/evaluate_retrieval_under_noise.py --dataset {dataset} --model {model_name} --noise_level {noise_level}"""
+BASE_PYTHON_CMD = """
+python scripts/evaluate_retrieval_under_noise.py \
+--dataset {dataset} \
+--model {model_name} \
+--noise_level {noise_level} \
+--max_seq_length {max_seq_length}
+"""
 
 noise_levels = [0, 1e-3, 1e-2, 1e-1, 1]  # [0, 1e-3, 1e-2, 1e-1, 1]
+max_seq_lengths = [32] # [None]
 
 
 def run_cmd(cmd: str, job_desc: str):
@@ -76,12 +83,13 @@ def run_cmd(cmd: str, job_desc: str):
 
 total = 0
 
-for dataset, noise_level in itertools.product(all_beir_datasets, noise_levels):
+for dataset, noise_level, max_seq_length in itertools.product(all_beir_datasets, noise_levels, max_seq_lengths):
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         dataset=dataset,
         model_name=model_name,
         noise_level=noise_level,
+        max_seq_length=max_seq_length,
     )
     run_cmd(cmd=cmd, job_desc="beir_noisy")
 

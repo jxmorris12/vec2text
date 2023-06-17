@@ -17,6 +17,7 @@ def load_trainer(model_args, data_args, training_args) -> CorrectorTrainer:
     ########################################################
     training_args.num_train_epochs = 2.0
     training_args.eval_steps = 6400000  # 64
+    training_args.use_less_data = 1000
     data_args.max_eval_samples = 64
     training_args.cheat_on_train_hypotheses = True
     trainer = experiments.experiment_from_args(
@@ -29,7 +30,7 @@ def load_trainer(model_args, data_args, training_args) -> CorrectorTrainer:
 
 
 def test_trainer():
-    dataset_name = "nq"
+    dataset_name = "msmarco"
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )

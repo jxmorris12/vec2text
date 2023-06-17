@@ -13,17 +13,26 @@ CHECKPOINT_FOLDERS_DICT = {
     ######################## Natural Questions #########################
     ####################################################################
     #  https://wandb.ai/jack-morris/emb-inv-1/runs/ebb31d91810c4b62d2b55b5382e8c7ea/logs?workspace=user-jxmorris12
-    #  (This should be called GTR, not DPR, retained for legacy purposes.)
+    #  (This should be called GTR, not DPR; misnomer retained for legacy purposes.) [loss 1.04]
     "dpr_nq__msl32_beta": "/home/jxm3/research/retrieval/inversion/saves/db66b9c01b644541fedbdcc59c53a285/ebb31d91810c4b62d2b55b5382e8c7ea",
     #  https://wandb.ai/jack-morris/emb-inv-1/runs/dc72e8b9c01bd27b0ed1c2def90bcee5/overview?workspace=user-jxmorris12
     #   (achieves BLEU of 11.7 w/ no_gram_repeats=3)
     "gtr_nq__msl128_beta": "/home/jxm3/research/retrieval/inversion/saves/8631b1c05efebde3077d16c5b99f6d5e/dc72e8b9c01bd27b0ed1c2def90bcee5",
-    #  https://wandb.ai/jack-morris/emb-correct-1/runs/e9430bc73cfd6fb433eb0e5401d4a7ff
+    #  https://wandb.ai/jack-morris/emb-correct-1/runs/e9430bc73cfd6fb433eb0e5401d4a7ff [loss .644]
     "gtr_nq__msl32_beta__correct": "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac",
+    # https://wandb.ai/jack-morris/emb-correct-1/runs/aa389ad434c01b692df796c2e2eb599c?workspace=user-jxmorris12 [loss .82]
+    "gtr_nq__msl32_beta__correct__nofeedback": "/home/jxm3/research/retrieval/inversion/saves/f031f2b69c815cca265dd791473de60a",
     ####################################################################
     ############################# MSMARCO ##############################
     ####################################################################
-    # openai hypothesis model:
+    # gtr hypothesis model (60 epochs trained) [loss 2.04, bleu ~12.7]:
+    #   https://wandb.ai/jack-morris/emb-inv-3/runs/d8319570c0314d95b2a9746f849e6218/overview?workspace=user-jxmorris12
+    "gtr_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/d6312870a6f49dee914198d048ee88f4",
+
+    # openai hypothesis model [sl32] [still training, loss 1.233, bleu 29...] https://wandb.ai/jack-morris/emb-inv-3/runs/25102c82c36f368c4d045174c6714dec/overview?workspace=user-jxmorris12
+    "openai_msmarco__msl32__100epoch": "/home/jxm3/research/retrieval/inversion/saves/9fbb017aa17e87f65b05384ff32112b9",
+
+    # openai hypothesis model [loss 1.8, bleu ~14.5]:
     #    https://wandb.ai/jack-morris/emb-inv-3/runs/4dc5011fd9be6b1f4dd3f7f4aa351165?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f",
     # openai corrector model:
@@ -34,16 +43,16 @@ CHECKPOINT_FOLDERS_DICT = {
 }
 
 
-def load_experiment_and_trainer_from_alias(alias: str):  # -> trainers.InversionTrainer:
+def load_experiment_and_trainer_from_alias(alias: str, max_seq_length: int = None):  # -> trainers.InversionTrainer:
     import trainers
 
     args_str = ARGS_DICT.get(alias)
     checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
     print(f"loading alias {alias} from {checkpoint_folder}...")
-    experiment, trainer = analyze_utils.load_experiment_and_trainer(checkpoint_folder, args_str, do_eval=False)
+    experiment, trainer = analyze_utils.load_experiment_and_trainer(checkpoint_folder, args_str, do_eval=False, max_seq_length=max_seq_length)
     return experiment, trainer
 
 
-def load_model_from_alias(alias: str):  # -> models.InversionModel:
-    _, trainer = load_experiment_and_trainer_from_alias(alias)
+def load_model_from_alias(alias: str, max_seq_length: int = None):
+    _, trainer = load_experiment_and_trainer_from_alias(alias, max_seq_length=max_seq_length)
     return trainer.model

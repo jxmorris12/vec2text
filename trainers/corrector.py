@@ -89,6 +89,34 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
+    def evaluation_loop(
+        self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
+    ) -> transformers.trainer_utils.EvalLoopOutput:
+        """
+        Run evaluation and returns metrics.
+
+        Override to compute ppl from eval loss.
+        """
+        output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
+        metric_key_prefix = kwargs["metric_key_prefix"]
+        # TODO compute some data metrics here too.
+        generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
+        generation_metrics = {
+            f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
+        }
+        if metric_key_prefix == "eval_msmarco":
+            # TODO determine dataset name in a smarter way.
+            logging.info("testing multi-round generation")
+            self.num_gen_recursive_steps = 5
+            multi_round_generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
+            generation_metrics = {
+                f"{metric_key_prefix}_10round_{k}": v for k, v in multi_round_generation_metrics.items()
+            }
+            self.num_gen_recursive_steps = 1
+
+        output.metrics.update(generation_metrics)
+        return output
+
     def _precompute_hypothesis_and_embedding(
         self, ds_inputs: Dict[str, torch.Tensor], collator=None,
         cheat: bool = False
@@ -143,12 +171,11 @@ class CorrectorTrainer(BaseTrainer):
         )
         #### TEMP HACK UNTIL I FIGURE OUT WHY INVERSION TRAINER OUTPUT DIR CHANGES IN DDP
         # model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
-        model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156/"
+        model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
+        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156/"
         assert os.path.exists(model_dir)
         if cheat:
             model_dir = os.path.join(model_dir, "improved_hypotheses")
-        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
-        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156"
         ####
         cache_path = os.path.join(model_dir, f"{dataset._fingerprint}_hypotheses.cache")
         if not os.path.exists(cache_path):
@@ -184,7 +211,7 @@ class CorrectorTrainer(BaseTrainer):
 
     def _inner_training_loop(self, *args, **kwargs):
         # Don't let tokenizers run in parallel mode.
-        os.environ["TOKENIZERS_PARALLELISM"] = "False"
+        # os.environ["TOKENIZERS_PARALLELISM"] = "False"
 
         self.model.eval()
         self.precompute_hypotheses()
@@ -229,6 +256,16 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
         
+        # #####################################################
+        # (
+        #     frozen_embeddings1,
+        #     hypothesis_input_ids1,
+        #     hypothesis_attention_mask2,
+        #     hypothesis_embedding1,
+        # ) = self._get_hypothesis_uncached(inputs=inputs)
+        # import pdb; pdb.set_trace()
+        # #####################################################
+
         # Add beam dimension:
         #       (batch, ...) -> (batch, beam, ...)
         inputs["frozen_embeddings"] = frozen_embeddings
@@ -371,16 +408,14 @@ class CorrectorTrainer(BaseTrainer):
         # 
         if gen_text_ids.shape[0] > batch_size:
             if (sequence_beam_width == 1):
-                # This occurs when num_beams and num_return_sequences are both greater
-                # than 1. We rerank examples in the beam according to their closeness
-                # to the ground-truth.
+                # This is "regular" beam search.
                 beam_width = int(gen_text_ids.shape[0] / batch_size)
                 distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
                     hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
                     inputs["frozen_embeddings"][:, None, :]
                 )
                 if self.return_best_hypothesis:
-                    scores = distances_per_beam.argmax(1)
+                    scores = distances_per_beam
                 else:
                     scores = gen_text_scores.reshape((batch_size, beam_width))
                 best_idx_in_beam = scores.argmax(1)
@@ -476,8 +511,10 @@ class CorrectorTrainer(BaseTrainer):
                 # print("len(gen_text_ids):", len(gen_text_ids), "len(set(gen_text_ids)):", len(set(self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))))
                 # print("gen_text_ids:", self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))
 
-        # print(f"step {num_recursive_steps_so_far} // scores.mean() = {scores.mean().item():.2f}")
-        print(f"step {num_recursive_steps_so_far} // scores = {scores.max(1).values.tolist()}")
+            # print scores for any type of beam search
+            print(f"step {num_recursive_steps_so_far} // scores = {scores.max(1).values.tolist()}")
+            lengths = (gen_text_ids != self.model.encoder_decoder.config.pad_token_id).sum(1)
+            print(f"lengths: {lengths.tolist()}")
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
