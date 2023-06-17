@@ -39,7 +39,7 @@ python scripts/evaluate_retrieval_under_noise.py \
 """
 
 noise_levels = [0, 1e-3, 1e-2, 1e-1, 1]  # [0, 1e-3, 1e-2, 1e-1, 1]
-max_seq_lengths = [32] # [None]
+max_seq_lengths = [32]  # [None]
 
 
 def run_cmd(cmd: str, job_desc: str):
@@ -83,7 +83,9 @@ def run_cmd(cmd: str, job_desc: str):
 
 total = 0
 
-for dataset, noise_level, max_seq_length in itertools.product(all_beir_datasets, noise_levels, max_seq_lengths):
+for dataset, noise_level, max_seq_length in itertools.product(
+    all_beir_datasets, noise_levels, max_seq_lengths
+):
     total += 1
     cmd = BASE_PYTHON_CMD.format(
         dataset=dataset,

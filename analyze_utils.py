@@ -25,7 +25,8 @@ def load_experiment_and_trainer(
     checkpoint: Optional[str] = None,
     do_eval: bool = True,
     sanity_decode: bool = True,
-    max_seq_length: int = None,
+    max_seq_length: Optional[int] = None,
+    use_less_data: Optional[int] = None,
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
@@ -38,17 +39,28 @@ def load_experiment_and_trainer(
     else:
         data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
         model_args = torch.load(os.path.join(checkpoint, os.pardir, "model_args.bin"))
-    
+
     if max_seq_length is not None:
-        print(f"Overwriting max sequence length from {model_args.max_seq_length} to {max_seq_length}")
+        print(
+            f"Overwriting max sequence length from {model_args.max_seq_length} to {max_seq_length}"
+        )
         model_args.max_seq_length = max_seq_length
+
+    if use_less_data is not None:
+        print(
+            f"Overwriting use_less_data from {data_args.use_less_data} to {use_less_data}"
+        )
+        data_args.use_less_data = use_less_data
 
     # For batch decoding outputs during evaluation.
     os.environ["TOKENIZERS_PARALLELISM"] = "True"
 
     ########################################################################
     print("> checkpoint:", checkpoint)
-    if checkpoint == "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac/checkpoint-558000":
+    if (
+        checkpoint
+        == "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac/checkpoint-558000"
+    ):
         # Special handling for one case of backwards compatibility: set dataset to nq
         data_args.dataset_name = "nq"
         print("set dataset to nq")
@@ -76,12 +88,11 @@ def load_experiment_and_trainer(
     return experiment, trainer
 
 
-
 def load_results_from_folder(name: str) -> pd.DataFrame:
     filenames = glob.glob(os.path.join(name, "*.json"))
     data = []
     for f in filenames:
-        d = json.load(open(f, 'r'))
+        d = json.load(open(f, "r"))
         if "_eval_args" in d:
             # unnest args for evaluation
             d.update(d.pop("_eval_args"))

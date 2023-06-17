@@ -221,8 +221,10 @@ class TrainingArguments(transformers.TrainingArguments):
         metadata={"help": "Alias of corrector model to train (defined in aliases.py)"},
     )
     cheat_on_train_hypotheses: bool = field(
-        default=False, 
-        metadata={"help": "When set, will interpolate true with pred train hypothesis for 'closer' training data"},
+        default=False,
+        metadata={
+            "help": "When set, will interpolate true with pred train hypothesis for 'closer' training data"
+        },
     )
 
     steps_per_epoch: int = field(
@@ -313,10 +315,10 @@ class TrainingArguments(transformers.TrainingArguments):
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
         self.dataloader_pin_memory = True
-        num_workers = int(
-            len(os.sched_getaffinity(0)) / torch.cuda.device_count()
-        )
-        os.environ["RAYON_RS_NUM_CPUS"] = str(num_workers) # Sets threads for hf tokenizers
+        num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
+        os.environ["RAYON_RS_NUM_CPUS"] = str(
+            num_workers
+        )  # Sets threads for hf tokenizers
         self.dataloader_num_workers = num_workers
         print(f"Set num workers to {num_workers}")
 

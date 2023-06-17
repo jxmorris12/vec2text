@@ -1,3 +1,5 @@
+# type: ignore
+
 import argparse
 import hashlib
 import json
@@ -6,15 +8,31 @@ from pprint import pprint
 
 import aliases
 
-def create_arg_parser():
-    parser = argparse.ArgumentParser(description='Argument Parser')
 
-    parser.add_argument('alias', type=str, help='Trained model alias from alias.py')
-    parser.add_argument('--num_samples', type=int, default=1000, help='Number of evaluation samples')
-    parser.add_argument('--return_best_hypothesis', type=int, default=0, choices=[0,1], help='Whether to return best hypothesis during generation')
-    parser.add_argument('--num_gen_recursive_steps', type=int, default=1, help='Number of steps for recursive generation')
-    parser.add_argument('--sequence_beam_width', type=int, default=1, help='Sequence-level beam width')
-    parser.add_argument('--beam_width', type=int, default=1, help='Regular beam width')
+def create_arg_parser():
+    parser = argparse.ArgumentParser(description="Argument Parser")
+
+    parser.add_argument("alias", type=str, help="Trained model alias from alias.py")
+    parser.add_argument(
+        "--num_samples", type=int, default=1000, help="Number of evaluation samples"
+    )
+    parser.add_argument(
+        "--return_best_hypothesis",
+        type=int,
+        default=0,
+        choices=[0, 1],
+        help="Whether to return best hypothesis during generation",
+    )
+    parser.add_argument(
+        "--num_gen_recursive_steps",
+        type=int,
+        default=1,
+        help="Number of steps for recursive generation",
+    )
+    parser.add_argument(
+        "--sequence_beam_width", type=int, default=1, help="Sequence-level beam width"
+    )
+    parser.add_argument("--beam_width", type=int, default=1, help="Regular beam width")
 
     return parser
 
@@ -29,20 +47,20 @@ def md5_hash_kwargs(**kwargs) -> str:
 def main(args: argparse.ArgumentParser):
     out_file = os.path.join(
         "/home/jxm3/research/retrieval/inversion/results_evaluation",
-        md5_hash_kwargs(**vars(args)) + ".json"
+        md5_hash_kwargs(**vars(args)) + ".json",
     )
     if os.path.exists(out_file):
         print("file exists:", out_file)
         print("args were:", vars(args))
         print("exiting early :-)")
         exit()
-    
+
     print("return_best_hypothesis:", args.return_best_hypothesis)
-    experiment, trainer = (
-        aliases.load_experiment_and_trainer_from_alias(args.alias)
-    )
+    experiment, trainer = aliases.load_experiment_and_trainer_from_alias(args.alias)
     trainer.model.eval()
-    trainer.args.per_device_eval_batch_size = int(16 / max(args.beam_width, args.sequence_beam_width))
+    trainer.args.per_device_eval_batch_size = int(
+        16 / max(args.beam_width, args.sequence_beam_width)
+    )
     trainer.return_best_hypothesis = bool(args.return_best_hypothesis)
     trainer.num_gen_recursive_steps = args.num_gen_recursive_steps
     trainer.sequence_beam_width = args.sequence_beam_width
@@ -54,17 +72,19 @@ def main(args: argparse.ArgumentParser):
         "no_repeat_ngram_size": 0,
     }
     metrics = trainer.evaluate(
-        eval_dataset=trainer.eval_dataset[experiment.data_args.dataset_name].select(range(args.num_samples))
+        eval_dataset=trainer.eval_dataset[experiment.data_args.dataset_name].select(
+            range(args.num_samples)
+        )
     )
     metrics["_eval_args"] = vars(args)
-    with open(out_file, 'w') as f:
+    with open(out_file, "w") as f:
         json.dump(metrics, f)
-    
+
     pprint(metrics)
     print("wrote metrics to", out_file)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     arg_parser = create_arg_parser()
     args = arg_parser.parse_args()
     main(args=args)

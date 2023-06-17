@@ -1,7 +1,6 @@
 import functools
 import logging
 import os
-import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import datasets
@@ -9,7 +8,7 @@ import torch
 import torch.nn as nn
 import transformers
 
-from models import CorrectorEncoderModel, CorrectorModel
+from models import CorrectorEncoderModel
 from models.logits_processors import EncourageTrueTokensLogitsProcessor
 from models.model_utils import freeze_params
 from run_args import TrainingArguments
@@ -40,7 +39,7 @@ class CorrectorTrainer(BaseTrainer):
 
     def __init__(
         self,
-        model: Union[CorrectorEncoderModel, CorrectorModel],
+        model: CorrectorEncoderModel,
         inversion_trainer: InversionTrainer,
         args: TrainingArguments,
         **kwargs,
@@ -97,29 +96,32 @@ class CorrectorTrainer(BaseTrainer):
 
         Override to compute ppl from eval loss.
         """
-        output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
         metric_key_prefix = kwargs["metric_key_prefix"]
+        output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
         # TODO compute some data metrics here too.
         generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
         generation_metrics = {
             f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
         }
-        if metric_key_prefix == "eval_msmarco":
+        if metric_key_prefix in {"eval_msmarco", "eval_nq"}:
             # TODO determine dataset name in a smarter way.
             logging.info("testing multi-round generation")
             self.num_gen_recursive_steps = 5
-            multi_round_generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
-            generation_metrics = {
-                f"{metric_key_prefix}_10round_{k}": v for k, v in multi_round_generation_metrics.items()
+            multi_round_generation_metrics = self.eval_generation_metrics(
+                dataloader=dataloader
+            )
+            multiround_generation_metrics = {
+                f"{metric_key_prefix}_10round_{k}": v
+                for k, v in multi_round_generation_metrics.items()
             }
+            generation_metrics.update(multiround_generation_metrics)
             self.num_gen_recursive_steps = 1
 
         output.metrics.update(generation_metrics)
         return output
 
     def _precompute_hypothesis_and_embedding(
-        self, ds_inputs: Dict[str, torch.Tensor], collator=None,
-        cheat: bool = False
+        self, ds_inputs: Dict[str, torch.Tensor], collator=None, cheat: bool = False
     ) -> Dict[str, torch.Tensor]:
         assert not self.model.training
         inputs = collator.tokenizer.pad(
@@ -148,13 +150,14 @@ class CorrectorTrainer(BaseTrainer):
             ds_inputs["hypothesis_input_ids"].append(input_ids[:num_tokens])
             ds_inputs["hypothesis_attention_mask"].append(attention_mask[:num_tokens])
         print("input_ids[0]:", self.tokenizer.decode(ds_inputs["input_ids"][0]))
-        print("hypothesis_input_ids[0]:", self.tokenizer.decode(ds_inputs["hypothesis_input_ids"][0]))
+        print(
+            "hypothesis_input_ids[0]:",
+            self.tokenizer.decode(ds_inputs["hypothesis_input_ids"][0]),
+        )
         return ds_inputs
 
     def _preprocess_dataset(
-        self, 
-        dataset: datasets.Dataset,
-        cheat: bool=False
+        self, dataset: datasets.Dataset, cheat: bool = False
     ) -> datasets.Dataset:
         #
         # In each model directory, we store a copy of the dataset with hypotheses
@@ -166,9 +169,9 @@ class CorrectorTrainer(BaseTrainer):
         # Note that the dataset fingerprint changes with calls to select()
         # so we won't overwrite the big dataset files when we use tiny subsets
         # during testing.
-        root_dir = os.path.normpath(
-            os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
-        )
+        # root_dir = os.path.normpath(
+        #     os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
+        # )
         #### TEMP HACK UNTIL I FIGURE OUT WHY INVERSION TRAINER OUTPUT DIR CHANGES IN DDP
         # model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
         model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
@@ -203,8 +206,7 @@ class CorrectorTrainer(BaseTrainer):
         # TODO: Compare doing this with and without training mode enabled.
         logger.info("Precomputing frozen embedding & hypotheses before training")
         self.train_dataset = self._preprocess_dataset(
-            cheat=self.args.cheat_on_train_hypotheses,
-            dataset=self.train_dataset    
+            cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
         )
         for k, v in self.eval_dataset.items():
             self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
@@ -255,7 +257,7 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_attention_mask,
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
-        
+
         # #####################################################
         # (
         #     frozen_embeddings1,
@@ -295,7 +297,7 @@ class CorrectorTrainer(BaseTrainer):
             num_recursive_steps -= 1
             num_recursive_steps_so_far += 1
         return gen_text_ids
-    
+
     def _generate_with_beam(
         self,
         inputs: Dict,
@@ -320,13 +322,15 @@ class CorrectorTrainer(BaseTrainer):
         assert num_recursive_steps >= 1
         frozen_embeddings = inputs["frozen_embeddings"]
         ################################################################################
-        max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
-
-        num_return_sequences = max(sequence_beam_width, generation_kwargs.get("num_beams", 1))
+        num_return_sequences = max(
+            sequence_beam_width, generation_kwargs.get("num_beams", 1)
+        )
         generation_kwargs["num_beams"] = num_return_sequences
         generation_kwargs["num_return_sequences"] = num_return_sequences
 
-        if ((num_recursive_steps_so_far == 0) and (self.initial_hypothesis_str is not None)):
+        if (num_recursive_steps_so_far == 0) and (
+            self.initial_hypothesis_str is not None
+        ):
             # Support setting a string as the initial hypothesis (for ablations)
             logger.info(f"Using initial hypothesis: {self.initial_hypothesis_str}")
             # If set, uses this string as the hypothesis for step 0 of self-correction
@@ -360,7 +364,7 @@ class CorrectorTrainer(BaseTrainer):
                 * bos_token_id
             )
             gen_text_ids = torch.cat((bos_token_ids, gen_text_ids[:, :-1]), dim=1)
-        elif self.is_corrector_encoder:
+        else:
             outputs = self.model.generate(
                 inputs=inputs,
                 generation_kwargs=generation_kwargs,
@@ -370,29 +374,29 @@ class CorrectorTrainer(BaseTrainer):
             # get scores for sequences
             # https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075
 
-            if 'beam_indices' in outputs:
+            if "beam_indices" in outputs:
                 with torch.no_grad():
-                    transition_scores = self.model.encoder_decoder.compute_transition_scores(
-                        outputs.sequences, outputs.scores, outputs.beam_indices, normalize_logits=True
+                    transition_scores = (
+                        self.model.encoder_decoder.compute_transition_scores(
+                            outputs.sequences,
+                            outputs.scores,
+                            outputs.beam_indices,
+                            normalize_logits=True,
+                        )
                     )
             else:
                 with torch.no_grad():
-                    transition_scores = self.model.encoder_decoder.compute_transition_scores(
-                        outputs.sequences, outputs.scores, normalize_logits=True
+                    transition_scores = (
+                        self.model.encoder_decoder.compute_transition_scores(
+                            outputs.sequences, outputs.scores, normalize_logits=True
+                        )
                     )
             length_penalty = self.model.encoder_decoder.generation_config.length_penalty
             output_length = (transition_scores < 0).sum(1)
             del outputs.scores
-            gen_text_scores = transition_scores.sum(axis=1) / (output_length**length_penalty) # log probs
-        else:
-            gen_text_ids = self.model.generate(
-                inputs=inputs,
-                generation_kwargs=generation_kwargs,
-                embed_generated_hypothesis_func=self.embed_generated_hypothesis,
-                return_dict_in_generate=False,
-            )
-            # Don't return <hypothesis><text> upon generation, just return <text>
-            gen_text_ids = gen_text_ids[:, max_length:]
+            gen_text_scores = transition_scores.sum(axis=1) / (
+                output_length**length_penalty
+            )  # log probs
 
         # Re-embed generated text so we can rerank, and track the best we've seen so far.
         hypothesis_embedding = self.embed_generated_hypothesis(input_ids=gen_text_ids)
@@ -402,41 +406,47 @@ class CorrectorTrainer(BaseTrainer):
         else:
             # after the first step, we've already copied frozen embeddings across the beam
             batch_size = int(frozen_embeddings.shape[0] / sequence_beam_width)
-            
-        # 
+
+        #
         #   BEAM SEARCH
-        # 
+        #
         if gen_text_ids.shape[0] > batch_size:
-            if (sequence_beam_width == 1):
+            if sequence_beam_width == 1:
                 # This is "regular" beam search.
                 beam_width = int(gen_text_ids.shape[0] / batch_size)
                 distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
-                    hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
-                    inputs["frozen_embeddings"][:, None, :]
+                    hypothesis_embedding.reshape((batch_size, beam_width, -1)),
+                    inputs["frozen_embeddings"][:, None, :],
                 )
                 if self.return_best_hypothesis:
                     scores = distances_per_beam
                 else:
                     scores = gen_text_scores.reshape((batch_size, beam_width))
                 best_idx_in_beam = scores.argmax(1)
-                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
-                    torch.arange(batch_size), best_idx_in_beam]
+                hypothesis_embedding = hypothesis_embedding.reshape(
+                    (batch_size, beam_width, -1)
+                )[torch.arange(batch_size), best_idx_in_beam]
                 gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
-                    torch.arange(batch_size), best_idx_in_beam]
+                    torch.arange(batch_size), best_idx_in_beam
+                ]
                 # Flatten again so we can do normal operations.
-                gen_text_ids = gen_text_ids.reshape((batch_size * sequence_beam_width, -1))
-                hypothesis_embedding = hypothesis_embedding.reshape((batch_size * sequence_beam_width, -1))
-            elif (num_recursive_steps == 1):
+                gen_text_ids = gen_text_ids.reshape(
+                    (batch_size * sequence_beam_width, -1)
+                )
+                hypothesis_embedding = hypothesis_embedding.reshape(
+                    (batch_size * sequence_beam_width, -1)
+                )
+            elif num_recursive_steps == 1:
                 # Base case for sequence-level beam search.
                 beam_width = int(gen_text_ids.shape[0] / batch_size)
                 frozen_embeddings_per_beam = (
                     inputs["frozen_embeddings"][:, None, :]
-                        .repeat((1, num_return_sequences, 1))
-                        .reshape((batch_size, beam_width, -1))
+                    .repeat((1, num_return_sequences, 1))
+                    .reshape((batch_size, beam_width, -1))
                 )
                 distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
-                    hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
-                    frozen_embeddings_per_beam
+                    hypothesis_embedding.reshape((batch_size, beam_width, -1)),
+                    frozen_embeddings_per_beam,
                 )
                 if self.return_best_hypothesis:
                     scores = distances_per_beam
@@ -445,38 +455,43 @@ class CorrectorTrainer(BaseTrainer):
                 best_idx_in_beam = scores.argmax(1)
                 # print("best_idx_in_beam:", best_idx_in_beam)
                 # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
-                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[
-                    torch.arange(batch_size), best_idx_in_beam]
+                hypothesis_embedding = hypothesis_embedding.reshape(
+                    (batch_size, beam_width, -1)
+                )[torch.arange(batch_size), best_idx_in_beam]
                 gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
-                    torch.arange(batch_size), best_idx_in_beam]
+                    torch.arange(batch_size), best_idx_in_beam
+                ]
             else:
                 # Now get top things in the beam like normal.
                 beam_width = int(gen_text_ids.shape[0] / batch_size)
-                assert beam_width % sequence_beam_width == 0, "inner beam width must divide sequence beam width"
-                
+                assert (
+                    beam_width % sequence_beam_width == 0
+                ), "inner beam width must divide sequence beam width"
+
                 if num_recursive_steps_so_far == 0:
                     # This is the first return for sequence-level beam search.
                     # First we have to copy the frozen embedding
                     frozen_embeddings_per_beam = (
-                        inputs["frozen_embeddings"]
-                        [:, None, :]
+                        inputs["frozen_embeddings"][:, None, :]
                         .repeat((1, num_return_sequences, 1))
                         .reshape((batch_size, num_return_sequences, -1))
                     )
                     inputs["frozen_embeddings"] = (
                         inputs["frozen_embeddings"][:, None, :]
-                            .repeat((1, sequence_beam_width, 1))
-                            .reshape((batch_size * sequence_beam_width, -1))
+                        .repeat((1, sequence_beam_width, 1))
+                        .reshape((batch_size * sequence_beam_width, -1))
                     )
                 else:
                     frozen_embeddings_per_beam = (
                         inputs["frozen_embeddings"][:, None, :]
-                            .repeat((1, num_return_sequences, 1))
-                            .reshape((batch_size, sequence_beam_width * num_return_sequences, -1))
+                        .repeat((1, num_return_sequences, 1))
+                        .reshape(
+                            (batch_size, sequence_beam_width * num_return_sequences, -1)
+                        )
                     )
 
                 distances_per_beam = torch.nn.CosineSimilarity(dim=2)(
-                    hypothesis_embedding.reshape((batch_size, beam_width, -1)), 
+                    hypothesis_embedding.reshape((batch_size, beam_width, -1)),
                     frozen_embeddings_per_beam,
                 )
 
@@ -487,11 +502,13 @@ class CorrectorTrainer(BaseTrainer):
 
                 # take top *unique* things in beam.
                 best_idx_in_beam_total = scores.topk(dim=1, k=beam_width).indices
-                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))
+                hypothesis_embedding = hypothesis_embedding.reshape(
+                    (batch_size, beam_width, -1)
+                )
                 gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))
                 best_idx_in_beam = []
                 for batch_idx in range(len(best_idx_in_beam_total)):
-                    gen_text_set = set() # track uniqueness
+                    gen_text_set = set()  # track uniqueness
                     best_idx_in_beam.append([])
                     for j in best_idx_in_beam_total[batch_idx].tolist():
                         gen_text_i = tuple(gen_text_ids[batch_idx, j].tolist())
@@ -500,29 +517,39 @@ class CorrectorTrainer(BaseTrainer):
                             best_idx_in_beam[batch_idx].append(j)
                         if len(best_idx_in_beam[batch_idx]) == sequence_beam_width:
                             break
-                best_idx_in_beam = torch.tensor(best_idx_in_beam, device=best_idx_in_beam_total.device)
+                best_idx_in_beam = torch.tensor(
+                    best_idx_in_beam, device=best_idx_in_beam_total.device
+                )
                 # now take top unique things
-                hypothesis_embedding = hypothesis_embedding.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
-                gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[torch.arange(batch_size)[:, None], best_idx_in_beam]
-                
+                hypothesis_embedding = hypothesis_embedding.reshape(
+                    (batch_size, beam_width, -1)
+                )[torch.arange(batch_size)[:, None], best_idx_in_beam]
+                gen_text_ids = gen_text_ids.reshape((batch_size, beam_width, -1))[
+                    torch.arange(batch_size)[:, None], best_idx_in_beam
+                ]
+
                 # Flatten again so we can do normal operations.
-                gen_text_ids = gen_text_ids.reshape((batch_size * sequence_beam_width, -1))
-                hypothesis_embedding = hypothesis_embedding.reshape((batch_size * sequence_beam_width, -1))
+                gen_text_ids = gen_text_ids.reshape(
+                    (batch_size * sequence_beam_width, -1)
+                )
+                hypothesis_embedding = hypothesis_embedding.reshape(
+                    (batch_size * sequence_beam_width, -1)
+                )
                 # print("len(gen_text_ids):", len(gen_text_ids), "len(set(gen_text_ids)):", len(set(self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))))
                 # print("gen_text_ids:", self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))
 
             # print scores for any type of beam search
-            print(f"step {num_recursive_steps_so_far} // scores = {scores.max(1).values.tolist()}")
-            lengths = (gen_text_ids != self.model.encoder_decoder.config.pad_token_id).sum(1)
+            print(
+                f"step {num_recursive_steps_so_far} // scores = {scores.max(1).values.tolist()}"
+            )
+            lengths = (
+                gen_text_ids != self.model.encoder_decoder.config.pad_token_id
+            ).sum(1)
             print(f"lengths: {lengths.tolist()}")
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
         return gen_text_ids, hypothesis_embedding
-
-    @property
-    def is_corrector_encoder(self):
-        return isinstance(self.model, CorrectorEncoderModel)
 
     def get_frozen_embeddings(
         self,
@@ -556,7 +583,9 @@ class CorrectorTrainer(BaseTrainer):
             embedder_attention_mask=attention_mask,
         )
 
-    def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor], cheat: bool = False) -> torch.Tensor:
+    def _get_hypothesis_uncached(
+        self, inputs: Dict[str, torch.Tensor], cheat: bool = False
+    ) -> torch.Tensor:
         batch_size, seq_length = inputs["embedder_input_ids"].shape
         fake_embedder_input_ids = torch.ones(
             (batch_size, seq_length), device=self.args.device
@@ -571,7 +600,7 @@ class CorrectorTrainer(BaseTrainer):
                 embedder_input_ids=inputs["embedder_input_ids"],
                 embedder_attention_mask=inputs["embedder_attention_mask"],
             )
-        
+
         generation_kwargs = {
             "early_stopping": False,
             "num_beams": 1,
@@ -580,11 +609,15 @@ class CorrectorTrainer(BaseTrainer):
             "max_length": seq_length,
         }
         if cheat:
-            assert "input_ids" in inputs.keys(), "cannot encourage true tokens for train hypotheses without them set"
+            assert (
+                "input_ids" in inputs.keys()
+            ), "cannot encourage true tokens for train hypotheses without them set"
             true_tokens_logits_processor = EncourageTrueTokensLogitsProcessor(
                 true_input_ids=inputs["input_ids"],
             )
-            generation_kwargs["logits_processor"] = transformers.LogitsProcessorList([true_tokens_logits_processor])
+            generation_kwargs["logits_processor"] = transformers.LogitsProcessorList(
+                [true_tokens_logits_processor]
+            )
             # The following line tells HuggingFace to renormalize
             # generation_kwargs["renormalize_logits"] = True
 
@@ -613,7 +646,7 @@ class CorrectorTrainer(BaseTrainer):
 
     def compute_loss(
         self,
-        model: CorrectorModel,
+        model: CorrectorEncoderModel,
         inputs: Dict[str, torch.Tensor],
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
@@ -633,51 +666,14 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
 
-        if self.is_corrector_encoder:
-            labels = inputs["labels"]
-            outputs = self.model(
-                embedding=frozen_embeddings,
-                hypothesis_embedding=hypothesis_embedding,
-                hypothesis_input_ids=hypothesis_input_ids,
-                hypothesis_attention_mask=hypothesis_attention_mask,
-                labels=labels,
-            )
-        else:
-            shift_right = self.model.encoder_decoder._shift_right
-            # Special training scheme for the decoder-based model
-            if self.model.training and random.random() < 0.5:
-                # Half the time, we feed in a 'null' hypothesis embedding
-                # and train the model to decode good hypotheses. The other
-                # half of the time, we train it to correct its own hypotheses
-                # using 'bad' hypotheses from the previous model.
-                hypothesis_embedding = self.model.null_hypothesis_embedding(
-                    hypothesis_embedding
-                )
-                # Will look like [...label_input_ids, 1] and get right-shifted to
-                # [0, ..input_ids] by the model.
-                decoder_input_ids = shift_right(inputs["labels"])
-                labels = inputs["labels"]
-            else:
-                # Will look like [...hypothesis_input_ids, 1, ...label_ids, 1]
-                # and get right-shifted to [0, ...hypothesis_input_ids, 1, ...label_ids]
-                # by the model.
-                # Do this always during evaluation, and 50% of the time during training.
-                decoder_input_ids = shift_right(
-                    torch.cat((hypothesis_input_ids, inputs["labels"]), dim=1)
-                )
-                empty_tokens = (
-                    torch.ones_like(
-                        hypothesis_input_ids, device=hypothesis_input_ids.device
-                    )
-                    * -100
-                )
-                labels = torch.cat((empty_tokens, inputs["labels"]), dim=1)
-            outputs = self.model(
-                embedding=frozen_embeddings,
-                hypothesis_embedding=hypothesis_embedding,
-                decoder_input_ids=decoder_input_ids,
-                labels=labels,
-            )
+        labels = inputs["labels"]
+        outputs = self.model(
+            embedding=frozen_embeddings,
+            hypothesis_embedding=hypothesis_embedding,
+            hypothesis_input_ids=hypothesis_input_ids,
+            hypothesis_attention_mask=hypothesis_attention_mask,
+            labels=labels,
+        )
         return outputs.loss
 
     def prediction_step(
@@ -697,13 +693,19 @@ class CorrectorTrainer(BaseTrainer):
         logits, labels = None, None
         return loss, logits, labels
 
-
     def _remap_state_dict(self, state_dict: Dict) -> Dict:
         """Edit keys posthumously on model load."""
         # Rename keys for backward compatibility w/ model trained before
         # we stopped sharing params between the ff layers
-        if {"embedding_transform.3.weight", "embedding_transform.3.bias"} <= state_dict.keys():
-            print("Renaming keys", {"embedding_transform.2.weight", "embedding_transform.2.bias"}, "for backward compatibility.")
+        if {
+            "embedding_transform.3.weight",
+            "embedding_transform.3.bias",
+        } <= state_dict.keys():
+            print(
+                "Renaming keys",
+                {"embedding_transform.2.weight", "embedding_transform.2.bias"},
+                "for backward compatibility.",
+            )
             state_dict["embedding_transform_1.0.weight"] = state_dict.pop(
                 "embedding_transform.0.weight"
             )
@@ -717,14 +719,29 @@ class CorrectorTrainer(BaseTrainer):
                 "embedding_transform.3.bias"
             )
             #
-            state_dict["embedding_transform_2.0.weight"] = state_dict["embedding_transform_1.0.weight"]
-            state_dict["embedding_transform_2.0.bias"] = state_dict["embedding_transform_1.0.bias"]
-            state_dict["embedding_transform_2.3.weight"] = state_dict["embedding_transform_1.3.weight"]
-            state_dict["embedding_transform_2.3.bias"] = state_dict["embedding_transform_1.3.bias"]
+            state_dict["embedding_transform_2.0.weight"] = state_dict[
+                "embedding_transform_1.0.weight"
+            ]
+            state_dict["embedding_transform_2.0.bias"] = state_dict[
+                "embedding_transform_1.0.bias"
+            ]
+            state_dict["embedding_transform_2.3.weight"] = state_dict[
+                "embedding_transform_1.3.weight"
+            ]
+            state_dict["embedding_transform_2.3.bias"] = state_dict[
+                "embedding_transform_1.3.bias"
+            ]
             #
-            state_dict["embedding_transform_3.0.weight"] = state_dict["embedding_transform_1.0.weight"]
-            state_dict["embedding_transform_3.0.bias"] = state_dict["embedding_transform_1.0.bias"]
-            state_dict["embedding_transform_3.3.weight"] = state_dict["embedding_transform_1.3.weight"]
-            state_dict["embedding_transform_3.3.bias"] = state_dict["embedding_transform_1.3.bias"]
+            state_dict["embedding_transform_3.0.weight"] = state_dict[
+                "embedding_transform_1.0.weight"
+            ]
+            state_dict["embedding_transform_3.0.bias"] = state_dict[
+                "embedding_transform_1.0.bias"
+            ]
+            state_dict["embedding_transform_3.3.weight"] = state_dict[
+                "embedding_transform_1.3.weight"
+            ]
+            state_dict["embedding_transform_3.3.bias"] = state_dict[
+                "embedding_transform_1.3.bias"
+            ]
         return state_dict
-

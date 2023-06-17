@@ -1,6 +1,6 @@
 from datetime import datetime
-from slurmpy import Slurm
 
+from slurmpy import Slurm
 
 inv_aliases = [
     "dpr_nq__msl32_beta",
@@ -23,6 +23,8 @@ python evaluate_models.py {alias} \
 """
 
 ACTUALLY_RUN_COMMAND = True
+
+
 def run_command(cmd: str, job_desc: str):
     now = datetime.now()
     dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
@@ -66,7 +68,7 @@ def main():
             beam_width=1,
         )
         run_command(command, "evaluate_inversion")
-    
+
     for alias in corr_aliases:
         # single step
         command = base_command.format(
@@ -108,5 +110,5 @@ def main():
                 run_command(command, "evaluate_corrector")
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

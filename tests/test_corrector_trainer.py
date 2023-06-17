@@ -50,8 +50,9 @@ def test_trainer():
     print("train metrics:", train_metrics)
 
     for eval_dataset_name, eval_dataset in trainer.eval_dataset.items():
+        max_len = min(500, len(eval_dataset))
         eval_metrics = trainer.evaluate(
-            eval_dataset=eval_dataset,
+            eval_dataset=eval_dataset.select(range(max_len)),
             ignore_keys=None,
             metric_key_prefix=f"eval_{eval_dataset_name}",
         )

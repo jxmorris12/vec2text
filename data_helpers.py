@@ -200,15 +200,33 @@ def load_beir_corpus(name: str) -> List[str]:
 
     if name == "cqadupstack":
         full_corpus = []
-        for folder in ["android",  "english",  "gaming",  "gis",  "mathematica",  "physics",  "programmers",  "stats",  "tex",  "unix",  "webmasters",	"wordpress"]:
-            corpus, _queries, _qrels = GenericDataLoader(data_folder=os.path.join(data_path, folder)).load(split="test")
+        for folder in [
+            "android",
+            "english",
+            "gaming",
+            "gis",
+            "mathematica",
+            "physics",
+            "programmers",
+            "stats",
+            "tex",
+            "unix",
+            "webmasters",
+            "wordpress",
+        ]:
+            corpus, _queries, _qrels = GenericDataLoader(
+                data_folder=os.path.join(data_path, folder)
+            ).load(split="test")
             full_corpus.extend([k["text"] for k in corpus.values()])
         random.shuffle(full_corpus)
         return full_corpus[:MAX_N]
     else:
-        corpus, _queries, _qrels = GenericDataLoader(data_folder=data_path).load(split="test")
+        corpus, _queries, _qrels = GenericDataLoader(data_folder=data_path).load(
+            split="test"
+        )
         corpus = [k["text"] for k in corpus.values()]
         return corpus[:MAX_N]
+
 
 def load_beir_dataset(name: str) -> datasets.Dataset:
     cache_path = (
@@ -220,14 +238,14 @@ def load_beir_dataset(name: str) -> datasets.Dataset:
         logging.info("Loading BEIR dataset %s path %s", dataset_path)
         dataset = datasets.load_from_disk(dataset_path)
     else:
-        logging.info("Loading BEIR dataset %s from JSON (slow) at path %s", dataset_path)
+        logging.info(
+            "Loading BEIR dataset %s from JSON (slow) at path %s", dataset_path
+        )
         corpus = load_beir_corpus(name=name)
         dataset = datasets.Dataset.from_list([{"text": t} for t in corpus])
         os.makedirs(os.path.join(cache_path, "emb_inv_beir"), exist_ok=True)
         dataset.save_to_disk(dataset_path)
-        logging.info(
-            "Saved BEIR dataset as HF path %s", dataset_path
-        )
+        logging.info("Saved BEIR dataset as HF path %s", dataset_path)
     return dataset
 
 
@@ -255,9 +273,7 @@ def load_beir_datasets() -> datasets.DatasetDict:
         "robust04",
         "bioasq",
     ]
-    return datasets.DatasetDict(
-        { k: load_beir_dataset(k) for k in all_beir_datasets }
-    )
+    return datasets.DatasetDict({k: load_beir_dataset(k) for k in all_beir_datasets})
 
 
 def load_standard_val_datasets() -> datasets.DatasetDict:

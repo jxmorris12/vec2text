@@ -5,7 +5,7 @@ import os
 import random
 
 # import statistics
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
 import evaluate
 import nltk
@@ -25,8 +25,9 @@ def preprocess_logits_for_metrics(logits, labels):
     return logits.argmax(dim=-1)
 
 
-def mean(L: List[float]) -> float:
+def mean(L: Union[List[int], List[float]]) -> float:
     return sum(L) / len(L)
+
 
 def count_overlapping_ngrams(s1: str, s2: str, n: int) -> int:
     ngrams_1 = nltk.ngrams(s1, n)
@@ -270,7 +271,6 @@ class BaseTrainer(transformers.Trainer):
                 count_overlapping_ngrams(true_words, pred_words, 3)
             )
 
-
         set_token_metrics = {
             "token_set_precision": (precision_sum / num_preds),
             "token_set_recall": (recall_sum / num_preds),
@@ -355,8 +355,10 @@ class BaseTrainer(transformers.Trainer):
         num_tokens_metrics = {
             "pred_num_tokens": (
                 (preds_sample != self.model.encoder_decoder.config.pad_token_id)
-                &
-                (preds_sample != self.model.encoder_decoder.config.decoder_start_token_id)
+                & (
+                    preds_sample
+                    != self.model.encoder_decoder.config.decoder_start_token_id
+                )
             )
             .sum(1)
             .float()
@@ -364,8 +366,10 @@ class BaseTrainer(transformers.Trainer):
             .item(),
             "true_num_tokens": (
                 (preds_sample_labels != self.model.encoder_decoder.config.pad_token_id)
-                &
-                (preds_sample_labels != self.model.encoder_decoder.config.decoder_start_token_id)
+                & (
+                    preds_sample_labels
+                    != self.model.encoder_decoder.config.decoder_start_token_id
+                )
             )
             .sum(1)
             .float()
@@ -393,11 +397,13 @@ class BaseTrainer(transformers.Trainer):
             pad_token_id = self.model.encoder_decoder.config.pad_token_id
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample,
-                attention_mask=(preds_sample != pad_token_id).to(self.args.args.device),
+                attention_mask=(preds_sample != pad_token_id).to(self.args.device),
             )
             labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels,
-                attention_mask=(preds_sample_labels != pad_token_id).to(self.args.device),
+                attention_mask=(preds_sample_labels != pad_token_id).to(
+                    self.args.device
+                ),
             )
             emb_cos_sim = (
                 torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()

@@ -1,6 +1,6 @@
+import random
 from typing import Dict
 
-import random
 import torch
 import transformers
 
@@ -149,30 +149,32 @@ class ContrastiveLogitsProcessor(transformers.LogitsProcessor):
         return diff_logits
 
 
-
 ################################################################################
 class EncourageTrueTokensLogitsProcessor(transformers.LogitsProcessor):
     true_input_ids: torch.LongTensor
     gamma: float
+
     def __init__(self, true_input_ids: torch.LongTensor):
         self.true_input_ids = true_input_ids
         self.gamma = 10.0
-        
+
     def __call__(
         self, input_ids: torch.LongTensor, next_token_logits: torch.FloatTensor
     ) -> torch.FloatTensor:
-        vocab_size = next_token_logits.shape[1]
-        
-        true_next_tokens = self.true_input_ids[:, input_ids.shape[1]-1]
-        fake_logits = torch.zeros_like(next_token_logits, device=next_token_logits.device)
+        true_next_tokens = self.true_input_ids[:, input_ids.shape[1] - 1]
+        fake_logits = torch.zeros_like(
+            next_token_logits, device=next_token_logits.device
+        )
         # todo vectorize
         for i in range(input_ids.shape[0]):
             fake_logits[i, true_next_tokens[i]] += random.random()
-        
+
         # gamma = self.gammas[:, None].to(next_token_logits.device)
         gamma = self.gamma
         logits = (next_token_logits + fake_logits * gamma).log_softmax(1)
         # import pdb; pdb.set_trace()
-        
+
         return logits
+
+
 ################################################################################

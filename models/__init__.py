@@ -1,4 +1,3 @@
-from .corrector import CorrectorModel  # noqa: F401
 from .corrector_encoder import CorrectorEncoderModel  # noqa: F401
 from .inversion import InversionModel  # noqa: F401
 from .inversion_bow import InversionModelBagOfWords  # noqa: F401

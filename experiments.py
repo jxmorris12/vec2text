@@ -18,7 +18,6 @@ from collator import DataCollatorForCorrection
 from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     CorrectorEncoderModel,
-    CorrectorModel,
     InversionModel,
     InversionModelBagOfWords,
     InversionModelNonAutoregressive,
@@ -194,13 +193,13 @@ class Experiment(abc.ABC):
     @property
     def kwargs_hash(self) -> str:
         all_args = {
-            **vars(self.model_args), **vars(self.data_args), **vars(self.training_args)
+            **vars(self.model_args),
+            **vars(self.data_args),
+            **vars(self.training_args),
         }
         all_args.pop("local_rank")
         # print("all_args:", all_args)
-        return md5_hash_kwargs(
-            **all_args
-        )
+        return md5_hash_kwargs(**all_args)
 
     @property
     def _is_main_worker(self) -> bool:
@@ -265,7 +264,7 @@ class Experiment(abc.ABC):
     @abc.abstractmethod
     def load_model(self) -> torch.nn.Module:
         raise NotImplementedError()
-    
+
     def load_tokenizer(self) -> transformers.PreTrainedTokenizer:
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_args.model_name_or_path,
@@ -341,13 +340,14 @@ class Experiment(abc.ABC):
             )
         ###########################################################################
         return tokenized_datasets
-    
-    def _prepare_val_datasets_dict(self, 
+
+    def _prepare_val_datasets_dict(
+        self,
         model: torch.nn.Module,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
         val_datasets_dict: datasets.DatasetDict,
-        ) -> datasets.DatasetDict:
+    ) -> datasets.DatasetDict:
         for name, dataset in val_datasets_dict.items():
             max_eval_samples = min(len(dataset), self.data_args.max_eval_samples)
             val_datasets_dict[name] = val_datasets_dict[name].select(
@@ -369,7 +369,7 @@ class Experiment(abc.ABC):
             batched=True,
             desc="Running tokenizer on dataset",
         )
-        
+
         # filter out empty examples (these exist for xsum documents).
         val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
 
@@ -387,7 +387,6 @@ class Experiment(abc.ABC):
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
     ) -> datasets.DatasetDict:
-        data_args = self.data_args
         val_datasets_dict = load_standard_val_datasets()
         logger.info(
             "Loaded %d validation datasets: %s",
@@ -398,7 +397,7 @@ class Experiment(abc.ABC):
             model=model,
             tokenizer=tokenizer,
             embedder_tokenizer=embedder_tokenizer,
-            val_datasets_dict=val_datasets_dict
+            val_datasets_dict=val_datasets_dict,
         )
 
     def load_train_and_val_datasets(
@@ -415,7 +414,10 @@ class Experiment(abc.ABC):
             "embedder_model_api": self.model_args.embedder_model_api,
         }
 
-        print("Loading datasets with TOKENIZERS_PARALLELISM =", os.environ.get("TOKENIZERS_PARALLELISM"))
+        print(
+            "Loading datasets with TOKENIZERS_PARALLELISM =",
+            os.environ.get("TOKENIZERS_PARALLELISM"),
+        )
         ######################################################################
         train_dataset_kwargs = {
             "dataset_name": self.data_args.dataset_name,
@@ -604,13 +606,17 @@ class CorrectorExperiment(Experiment):
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         _, inversion_trainer = aliases.load_experiment_and_trainer_from_alias(
-            alias=self.training_args.corrector_model_alias, max_seq_length=self.model_args.max_seq_length,
+            alias=self.training_args.corrector_model_alias,
+            max_seq_length=self.model_args.max_seq_length,
+            use_less_data=self.data_args.use_less_data,
         )
         return trainers.CorrectorTrainer(
             model=model,
             inversion_trainer=inversion_trainer,
             args=self.training_args,
-            data_collator=DataCollatorForCorrection(tokenizer=inversion_trainer.model.tokenizer),
+            data_collator=DataCollatorForCorrection(
+                tokenizer=inversion_trainer.model.tokenizer
+            ),
         )
 
     def load_model(self) -> torch.nn.Module:

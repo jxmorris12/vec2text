@@ -1,8 +1,8 @@
 import itertools
 from datetime import datetime
 
-from slurmpy import Slurm
 import torch
+from slurmpy import Slurm
 
 BASE_PYTHON_CMD = """
 NCCL_P2P_LEVEL=NVL \
@@ -39,7 +39,9 @@ run.py \
 """
 
 
-models = ["t5-base",]
+models = [
+    "t5-base",
+]
 emb_models = ["gtr_base"]
 
 
@@ -132,7 +134,7 @@ for args in itertools.product(
         exp_group_name=exp_group_name,
         freeze_strategy=frs,
         truncate=truncate,
-        # 
+        #
         device_count=torch.cuda.device_count(),
     )
     cmd = cmd.replace("\n", " ")

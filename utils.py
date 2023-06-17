@@ -1,6 +1,6 @@
+import math
 from typing import Callable
 
-import math
 import numpy as np
 import torch
 import tqdm
@@ -118,7 +118,9 @@ def get_manifest_global():
 
 
 @retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
-def get_embeddings_openai_manifest(text_list, model="text-embedding-ada-002") -> np.ndarray:
+def get_embeddings_openai_manifest(
+    text_list, model="text-embedding-ada-002"
+) -> np.ndarray:
     # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
@@ -135,6 +137,7 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
     import openai
+
     print(
         f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'"
     )
@@ -146,7 +149,7 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
         response = openai.Embedding.create(
             input=text_list_batch,
             model=model,
-            encoding_format="float", # override default base64 encoding...
+            encoding_format="float",  # override default base64 encoding...
         )
         outputs.extend([e["embedding"] for e in response["data"]])
     return outputs

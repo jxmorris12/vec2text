@@ -263,12 +263,10 @@ class InversionModel(nn.Module):
                 input_ids=input_ids, attention_mask=attention_mask
             )
             embeddings = self._process_embedder_output(model_output, attention_mask)
-        
+
         if self.noise_level > 0:
-            embeddings += (
-                self.noise_level 
-                *
-                torch.randn(embeddings.shape, device=embeddings.device)
+            embeddings += self.noise_level * torch.randn(
+                embeddings.shape, device=embeddings.device
             )
         return embeddings
 

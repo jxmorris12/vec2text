@@ -16,8 +16,8 @@ import datasets
 import torch
 import tqdm
 import transformers
-from collator import CustomCollator
 
+from collator import CustomCollator
 from data_helpers import NQ_DEV, load_dpr_corpus
 from models import (
     FREEZE_STRATEGIES,

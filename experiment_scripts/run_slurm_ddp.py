@@ -1,9 +1,8 @@
 import itertools
 from datetime import datetime
 
-from slurmpy import Slurm
 import torch
-
+from slurmpy import Slurm
 
 BASE_PYTHON_CMD = """
 NCCL_P2P_LEVEL=NVL \
@@ -140,7 +139,7 @@ for args in itertools.product(
         freeze_strategy=frs,
         truncate=truncate,
         #
-        device_count=torch.cuda.device_count()
+        device_count=torch.cuda.device_count(),
     )
     cmd = cmd.replace("\n", " ")
     job_desc = ".".join(map(str, args))
