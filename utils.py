@@ -119,7 +119,7 @@ def get_manifest_global():
     return manifest_object
 
 
-@retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
+@retry(wait=wait_fixed(1), stop=stop_after_attempt(15))
 def get_embeddings_openai_manifest(
     text_list, model="text-embedding-ada-002"
 ) -> np.ndarray:
@@ -141,6 +141,8 @@ def get_embeddings_openai_vanilla_multithread(text_list, model="text-embedding-a
 
     batches = math.ceil(len(text_list) / 128)
     outputs = []
+
+    assert min(map(len, text_list)) > 0, "can't embed an empty sequence"
     
     def process_batch(batch):
         text_list_batch = text_list[batch * 128: (batch + 1) * 128]

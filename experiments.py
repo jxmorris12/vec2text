@@ -37,6 +37,7 @@ os.environ["HF_DATASETS_OFFLINE"] = "1"
 os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 os.environ["TOKENIZERS_PARALLELISM"] = "False"
+# os.environ["TOKENIZERS_PARALLELISM"] = "True"
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
@@ -332,14 +333,17 @@ class Experiment(abc.ABC):
             "idx", range(len(tokenized_datasets["train"]))
         )
         ###########################################################################
-        if self.model_args.use_frozen_embeddings_as_input:
-            tokenized_datasets = tokenized_datasets.map(
-                functools.partial(embed_dataset_batch, model),
-                batched=True,
-                batch_size=self.training_args.per_device_train_batch_size,
-            )
+        # if self.model_args.use_frozen_embeddings_as_input:
+        #     precompute_batch_size = self.training_args.per_device_train_batch_size
+        #     # precompute_batch_size = 8192
+        #     print(f"Precomputing embeddings with batch size: {precompute_batch_size}]")
+        #     tokenized_datasets = tokenized_datasets.map(
+        #         functools.partial(embed_dataset_batch, model),
+        #         batched=True,
+        #         batch_size=precompute_batch_size,
+        #     )
         ###########################################################################
-        max_eval_samples = min(len(tokenized_datasets["validation"], self.data_args.max_eval_samples))
+        max_eval_samples = min(len(tokenized_datasets["validation"]), self.data_args.max_eval_samples)
         tokenized_datasets["validation"] = (
             tokenized_datasets["validation"] .select(
                 range(max_eval_samples)

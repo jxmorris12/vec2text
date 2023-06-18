@@ -48,7 +48,8 @@ class CorrectorEncoderModel(torch.nn.Module):
         self.ignore_hypothesis_embedding = ignore_hypothesis_embedding
         # TODO argparse; default to 0?
         # self.training_embedding_noise_level = 0
-        self.training_embedding_noise_level = 1e-2 # adding for openai...
+        self.training_embedding_noise_level = 1e-3 # adding for openai...
+        # self.training_embedding_noise_level = 1e-2 # adding for openai...
         print(f"Corrector encoder noise level {self.training_embedding_noise_level}")
 
     def get_encoder_embedding(

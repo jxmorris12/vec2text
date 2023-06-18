@@ -19,15 +19,25 @@ from .inversion import InversionTrainer
 
 logger = logging.getLogger(__name__)
 
-def choose_random_tokens(tokens: torch.Tensor, pad_token_id: int) -> torch.Tensor:
+def choose_random_tokens(tokens: torch.Tensor, max_len: int, pad_token_id: int) -> torch.Tensor:
     bos_token_id = pad_token_id # true for t5
-    tokens, eos_token = tokens[:-1], tokens[-1].item()
+    total_n_tokens = (tokens != pad_token_id).int().sum() - 1
+    tokens, eos_token = tokens[:total_n_tokens], tokens[total_n_tokens].item()
     assert eos_token == 1 # correct format for t5
-    total_n_tokens = (tokens != pad_token_id).int().sum()
-    n_chosen_tokens = random.randint(1, total_n_tokens)
-    start_idx = random.randint(0, total_n_tokens - n_chosen_tokens)
+    min_n_tokens = 5
+    if total_n_tokens < min_n_tokens:
+        n_chosen_tokens = total_n_tokens
+        start_idx = 0
+    else:
+        n_chosen_tokens = random.randint(min_n_tokens, total_n_tokens)
+        start_idx = random.randint(0, total_n_tokens - n_chosen_tokens)
     new_tokens = [bos_token_id] + tokens[start_idx:start_idx+n_chosen_tokens].tolist()
-    new_tokens += [pad_token_id] * (len(tokens) - n_chosen_tokens)
+    new_tokens += [pad_token_id] * (max_len - n_chosen_tokens - 1)
+
+    if len(new_tokens) != max_len:
+        import pdb; pdb.set_trace()
+    
+    assert len(new_tokens) == max_len
     return torch.tensor(new_tokens, device=tokens.device, dtype=tokens.dtype)
 
 class CorrectorTrainer(BaseTrainer):
@@ -225,10 +235,10 @@ class CorrectorTrainer(BaseTrainer):
             self.train_dataset = self._preprocess_dataset(
                 cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
             )
+            for k, v in self.eval_dataset.items():
+                self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
         else:
             pass # otherwise: don't precompute anything :-)
-        for k, v in self.eval_dataset.items():
-            self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
 
     def _inner_training_loop(self, *args, **kwargs):
         # Don't let tokenizers run in parallel mode.
@@ -652,9 +662,10 @@ class CorrectorTrainer(BaseTrainer):
                 generation_kwargs=generation_kwargs,
             )
         else:
+            max_len = max(map(len, inputs["input_ids"]))
             hypothesis_input_ids = torch.stack([
                 choose_random_tokens(
-                    input_ids, self.model.encoder_decoder.config.pad_token_id
+                    input_ids, max_len, self.model.encoder_decoder.config.pad_token_id
                 ) for input_ids in inputs["input_ids"]
             ])
             print(f"hypothesis_source = {self.hypothesis_source}")
