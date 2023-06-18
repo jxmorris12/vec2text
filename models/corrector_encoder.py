@@ -46,6 +46,10 @@ class CorrectorEncoderModel(torch.nn.Module):
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
         )
         self.ignore_hypothesis_embedding = ignore_hypothesis_embedding
+        # TODO argparse; default to 0?
+        # self.training_embedding_noise_level = 0
+        self.training_embedding_noise_level = 1e-2 # adding for openai...
+        print(f"Corrector encoder noise level {self.training_embedding_noise_level}")
 
     def get_encoder_embedding(
         self,
@@ -58,7 +62,16 @@ class CorrectorEncoderModel(torch.nn.Module):
         assert embedding.shape == (batch_size, self.embedder_dim)
         assert hypothesis_embedding.shape == (batch_size, self.embedder_dim)
 
+        if (self.training) and (self.training_embedding_noise_level > 0):
+            embedding += self.training_embedding_noise_level * torch.randn(
+                embedding.shape, device=embedding.device
+            )
+            hypothesis_embedding += self.training_embedding_noise_level * torch.randn(
+                hypothesis_embedding.shape, device=hypothesis_embedding.device
+            )
+
         if self.ignore_hypothesis_embedding:
+            # For "No Feedback" ablation
             hypothesis_embedding = embedding
 
         diff_embedding = embedding - hypothesis_embedding

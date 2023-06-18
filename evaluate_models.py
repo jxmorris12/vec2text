@@ -7,6 +7,7 @@ import os
 from pprint import pprint
 
 import aliases
+from data_helpers import load_beir_datasets
 
 
 def create_arg_parser():
@@ -14,7 +15,7 @@ def create_arg_parser():
 
     parser.add_argument("alias", type=str, help="Trained model alias from alias.py")
     parser.add_argument(
-        "--num_samples", type=int, default=1000, help="Number of evaluation samples"
+        "--num_samples", type=int, default=500, help="Number of evaluation samples"
     )
     parser.add_argument(
         "--return_best_hypothesis",
@@ -33,6 +34,7 @@ def create_arg_parser():
         "--sequence_beam_width", type=int, default=1, help="Sequence-level beam width"
     )
     parser.add_argument("--beam_width", type=int, default=1, help="Regular beam width")
+    parser.add_argument("--dataset", type=str, default=None, help="Dataset (if not regular val)")
 
     return parser
 
@@ -71,10 +73,21 @@ def main(args: argparse.ArgumentParser):
         "do_sample": False,
         "no_repeat_ngram_size": 0,
     }
-    metrics = trainer.evaluate(
-        eval_dataset=trainer.eval_dataset[experiment.data_args.dataset_name].select(
-            range(args.num_samples)
+
+    if args.dataset:
+        # load dataset
+        beir = load_beir_datasets()
+        beir = experiment._prepare_val_datasets_dict(
+            model=trainer.inversion_trainer.model,
+            val_datasets_dict=beir,
+            tokenizer=trainer.tokenizer,
+            embedder_tokenizer=trainer.embedder_tokenizer,
         )
+        eval_dataset = beir[args.dataset]
+    else:
+        eval_dataset = trainer.eval_dataset[experiment.data_args.dataset_name]
+    metrics = trainer.evaluate(
+        eval_dataset=eval_dataset.select(range(args.num_samples))
     )
     metrics["_eval_args"] = vars(args)
     with open(out_file, "w") as f:

@@ -53,7 +53,7 @@ def load_experiment_and_trainer(
         data_args.use_less_data = use_less_data
 
     # For batch decoding outputs during evaluation.
-    os.environ["TOKENIZERS_PARALLELISM"] = "True"
+    # os.environ["TOKENIZERS_PARALLELISM"] = "True"
 
     ########################################################################
     print("> checkpoint:", checkpoint)

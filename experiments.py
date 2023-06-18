@@ -339,6 +339,17 @@ class Experiment(abc.ABC):
                 batch_size=self.training_args.per_device_train_batch_size,
             )
         ###########################################################################
+        max_eval_samples = min(len(tokenized_datasets["validation"], self.data_args.max_eval_samples))
+        tokenized_datasets["validation"] = (
+            tokenized_datasets["validation"] .select(
+                range(max_eval_samples)
+            )
+        )
+        tokenized_datasets["validation"] = tokenized_datasets["validation"] .add_column(
+            "idx", range(len(tokenized_datasets["validation"]))
+        )
+        tokenized_datasets["validation"] .set_format("pt")
+        ###########################################################################
         return tokenized_datasets
 
     def _prepare_val_datasets_dict(
@@ -414,6 +425,7 @@ class Experiment(abc.ABC):
             "embedder_model_api": self.model_args.embedder_model_api,
         }
 
+        # os.environ["TOKENIZERS_PARALLELISM"] = "True"
         print(
             "Loading datasets with TOKENIZERS_PARALLELISM =",
             os.environ.get("TOKENIZERS_PARALLELISM"),
@@ -456,8 +468,8 @@ class Experiment(abc.ABC):
             )
             val_datasets_dict.save_to_disk(val_dataset_path)
         ######################################################################
-        train_dataset = train_datasets["train"]
         val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
+        train_dataset = train_datasets["train"]
 
         return (train_dataset, val_datasets_dict)
 

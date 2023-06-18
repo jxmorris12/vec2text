@@ -97,10 +97,10 @@ class InversionModel(nn.Module):
             # Hard-code OpenAI embedding dim
             self.embedder_dim = 1536
             bottleneck_dim = 1536
-        elif use_frozen_embeddings_as_input:
-            # temp hack to set fixed sentence embedding size to 512.
-            # TODO do this in a smarter way (figure it out from data? or make it an arg.)
-            self.embedder_dim = 512
+        # elif use_frozen_embeddings_as_input:
+        #     # temp hack to set fixed sentence embedding size to 512 for luar.
+        #     # TODO do this in a smarter way (figure it out from data? or make it an arg.)
+        #     self.embedder_dim = 512
         elif isinstance(self.embedder, SentenceTransformer):
             self.embedder_dim = self.embedder.get_sentence_embedding_dimension()
         else:

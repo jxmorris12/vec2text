@@ -28,8 +28,8 @@ CHECKPOINT_FOLDERS_DICT = {
     # gtr hypothesis model (60 epochs trained) [loss 2.04, bleu ~12.7]:
     #   https://wandb.ai/jack-morris/emb-inv-3/runs/d8319570c0314d95b2a9746f849e6218/overview?workspace=user-jxmorris12
     "gtr_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/d6312870a6f49dee914198d048ee88f4",
-    # openai hypothesis model [sl32] [still training, loss 1.233, bleu 29...] https://wandb.ai/jack-morris/emb-inv-3/runs/25102c82c36f368c4d045174c6714dec/overview?workspace=user-jxmorris12
-    "openai_msmarco__msl32__100epoch": "/home/jxm3/research/retrieval/inversion/saves/9fbb017aa17e87f65b05384ff32112b9",
+    # openai hypothesis model [sl32] [still training, loss 1.233, bleu 29...] https://wandb.ai/jack-morris/emb-inv-3/runs/9b5d4aac9b16dad6d4a8c65cbc1a8859?workspace=user-jxmorris12
+    "openai_msmarco__msl32__100epoch": "/home/jxm3/research/retrieval/inversion/saves/61becf9bb1d627272cd1923ac4871e73",
     # openai hypothesis model [loss 1.8, bleu ~14.5]:
     #    https://wandb.ai/jack-morris/emb-inv-3/runs/4dc5011fd9be6b1f4dd3f7f4aa351165?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f",

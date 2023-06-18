@@ -38,8 +38,10 @@ python scripts/evaluate_retrieval_under_noise.py \
 --max_seq_length {max_seq_length}
 """
 
-noise_levels = [0, 1e-3, 1e-2, 1e-1, 1]  # [0, 1e-3, 1e-2, 1e-1, 1]
-max_seq_lengths = [32]  # [None]
+# noise_levels = [0, 1e-3, 1e-2, 1e-1, 1]  # [0, 1e-3, 1e-2, 1e-1, 1]
+# max_seq_lengths = [32]  # [None]
+noise_levels = [0]
+max_seq_lengths = [128]
 
 
 def run_cmd(cmd: str, job_desc: str):

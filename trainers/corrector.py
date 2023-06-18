@@ -1,6 +1,7 @@
 import functools
 import logging
 import os
+import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import datasets
@@ -18,6 +19,16 @@ from .inversion import InversionTrainer
 
 logger = logging.getLogger(__name__)
 
+def choose_random_tokens(tokens: torch.Tensor, pad_token_id: int) -> torch.Tensor:
+    bos_token_id = pad_token_id # true for t5
+    tokens, eos_token = tokens[:-1], tokens[-1].item()
+    assert eos_token == 1 # correct format for t5
+    total_n_tokens = (tokens != pad_token_id).int().sum()
+    n_chosen_tokens = random.randint(1, total_n_tokens)
+    start_idx = random.randint(0, total_n_tokens - n_chosen_tokens)
+    new_tokens = [bos_token_id] + tokens[start_idx:start_idx+n_chosen_tokens].tolist()
+    new_tokens += [pad_token_id] * (len(tokens) - n_chosen_tokens)
+    return torch.tensor(new_tokens, device=tokens.device, dtype=tokens.dtype)
 
 class CorrectorTrainer(BaseTrainer):
     """Trains an encoder model to generate embeddings that recursively correct of an
@@ -88,6 +99,8 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
+        self.hypothesis_source = "random_deletion" # ["model", "random_deletion"]
+
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
     ) -> transformers.trainer_utils.EvalLoopOutput:
@@ -98,20 +111,19 @@ class CorrectorTrainer(BaseTrainer):
         """
         metric_key_prefix = kwargs["metric_key_prefix"]
         output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
-        # TODO compute some data metrics here too.
         generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
         generation_metrics = {
             f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
         }
         if metric_key_prefix in {"eval_msmarco", "eval_nq"}:
             # TODO determine dataset name in a smarter way.
-            logging.info("testing multi-round generation")
-            self.num_gen_recursive_steps = 5
+            n_rounds = 5
+            self.num_gen_recursive_steps = n_rounds
             multi_round_generation_metrics = self.eval_generation_metrics(
                 dataloader=dataloader
             )
             multiround_generation_metrics = {
-                f"{metric_key_prefix}_10round_{k}": v
+                f"{metric_key_prefix}_{n_rounds}round_{k}": v
                 for k, v in multi_round_generation_metrics.items()
             }
             generation_metrics.update(multiround_generation_metrics)
@@ -184,6 +196,10 @@ class CorrectorTrainer(BaseTrainer):
         if not os.path.exists(cache_path):
             logging.info("Computing hypotheses to save to path %s", cache_path)
             print(f"Saving hypotheses to path {cache_path}")
+
+            if torch.cuda.device_count() > 1:
+                raise RuntimeError("Hypothesis precomputing not implemented in DDP.")
+
             dataset = dataset.map(
                 functools.partial(
                     self._precompute_hypothesis_and_embedding,
@@ -205,9 +221,12 @@ class CorrectorTrainer(BaseTrainer):
     def precompute_hypotheses(self) -> None:
         # TODO: Compare doing this with and without training mode enabled.
         logger.info("Precomputing frozen embedding & hypotheses before training")
-        self.train_dataset = self._preprocess_dataset(
-            cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
-        )
+        if self.hypothesis_source == "model": # ["model", "random_deletion"]
+            self.train_dataset = self._preprocess_dataset(
+                cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
+            )
+        else:
+            pass # otherwise: don't precompute anything :-)
         for k, v in self.eval_dataset.items():
             self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
 
@@ -545,7 +564,7 @@ class CorrectorTrainer(BaseTrainer):
             lengths = (
                 gen_text_ids != self.model.encoder_decoder.config.pad_token_id
             ).sum(1)
-            print(f"lengths: {lengths.tolist()}")
+            # print(f"lengths: {lengths.tolist()}")
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
@@ -601,36 +620,44 @@ class CorrectorTrainer(BaseTrainer):
                 embedder_attention_mask=inputs["embedder_attention_mask"],
             )
 
-        generation_kwargs = {
-            "early_stopping": False,
-            "num_beams": 1,
-            "do_sample": False,
-            "no_repeat_ngram_size": 0,
-            "max_length": seq_length,
-        }
-        if cheat:
-            assert (
-                "input_ids" in inputs.keys()
-            ), "cannot encourage true tokens for train hypotheses without them set"
-            true_tokens_logits_processor = EncourageTrueTokensLogitsProcessor(
-                true_input_ids=inputs["input_ids"],
-            )
-            generation_kwargs["logits_processor"] = transformers.LogitsProcessorList(
-                [true_tokens_logits_processor]
-            )
-            # The following line tells HuggingFace to renormalize
-            # generation_kwargs["renormalize_logits"] = True
+        if self.hypothesis_source == "model":
+            generation_kwargs = {
+                "early_stopping": False,
+                "num_beams": 1,
+                "do_sample": False,
+                "no_repeat_ngram_size": 0,
+                "max_length": seq_length,
+            }
+            if cheat:
+                assert (
+                    "input_ids" in inputs.keys()
+                ), "cannot encourage true tokens for train hypotheses without them set"
+                true_tokens_logits_processor = EncourageTrueTokensLogitsProcessor(
+                    true_input_ids=inputs["input_ids"],
+                )
+                generation_kwargs["logits_processor"] = transformers.LogitsProcessorList(
+                    [true_tokens_logits_processor]
+                )
+                # The following line tells HuggingFace to renormalize
+                # generation_kwargs["renormalize_logits"] = True
 
-        # TODO: support generated outputs of varying length.
-        # TODO consider other (multiple?) hypothesis generation conditions.
-        hypothesis_input_ids = self.inversion_trainer.model.generate(
-            inputs={
-                "embedder_input_ids": fake_embedder_input_ids,
-                "embedder_attention_mask": fake_embedder_attention_mask,
-                "frozen_embeddings": frozen_embeddings,
-            },
-            generation_kwargs=generation_kwargs,
-        )
+            # TODO: support generated outputs of varying length.
+            # TODO consider other (multiple?) hypothesis generation conditions.
+            hypothesis_input_ids = self.inversion_trainer.model.generate(
+                inputs={
+                    "embedder_input_ids": fake_embedder_input_ids,
+                    "embedder_attention_mask": fake_embedder_attention_mask,
+                    "frozen_embeddings": frozen_embeddings,
+                },
+                generation_kwargs=generation_kwargs,
+            )
+        else:
+            hypothesis_input_ids = torch.stack([
+                choose_random_tokens(
+                    input_ids, self.model.encoder_decoder.config.pad_token_id
+                ) for input_ids in inputs["input_ids"]
+            ])
+            print(f"hypothesis_source = {self.hypothesis_source}")
         hypothesis_attention_mask = (
             hypothesis_input_ids != self.model.encoder_decoder.config.pad_token_id
         )
