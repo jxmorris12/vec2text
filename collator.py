@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Optional, Union
 
 import numpy as np
+import torch
 import transformers
 
 
@@ -72,6 +73,17 @@ class DataCollatorForCorrection:
             regular_features.append(
                 {k: v for k, v in feature.items() if not k.startswith("hypothesis_")}
             )
+
+            # manage for backwards compatibility
+            if "hypothesis_input_ids" in feature.keys():
+                # add eos token magically
+                if feature["hypothesis_input_ids"][-1] != [1]:
+                    d = feature["hypothesis_input_ids"].device
+                    t = feature["hypothesis_input_ids"].dtype
+                    one = torch.tensor([1], device=d, dtype=t)
+                    feature["hypothesis_input_ids"] = torch.cat([feature["hypothesis_input_ids"], one], 0)
+                    feature["hypothesis_attention_mask"] = torch.cat([feature["hypothesis_attention_mask"], one], 0)
+            
             hypothesis_features.append(
                 {
                     k.replace("hypothesis_", ""): v

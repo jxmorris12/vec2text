@@ -306,6 +306,12 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_attention_mask,
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
+        
+        # Make sure everything has an EOS token (this is for backwards compatibility)
+        print("[1] (hypothesis_input_ids == 1).sum():", (hypothesis_input_ids == 1).sum())
+        zero = torch.tensor(0, dtype=torch.long, device=hypothesis_input_ids.device)
+        hypothesis_attention_mask = torch.where(hypothesis_input_ids == 1, zero, hypothesis_attention_mask)
+        hypothesis_input_ids = torch.where(hypothesis_input_ids == 1, zero, hypothesis_input_ids)
 
         # #####################################################
         # (

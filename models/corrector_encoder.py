@@ -63,12 +63,6 @@ class CorrectorEncoderModel(torch.nn.Module):
         assert embedding.shape == (batch_size, self.embedder_dim)
         assert hypothesis_embedding.shape == (batch_size, self.embedder_dim)
 
-        # print("[1] (hypothesis_input_ids == 1).sum():", (hypothesis_input_ids == 1).sum())
-        # zero = torch.tensor(0, dtype=torch.long, device=hypothesis_input_ids.device)
-        # hypothesis_attention_mask = torch.where(hypothesis_input_ids == 1, zero, hypothesis_attention_mask)
-        # hypothesis_input_ids = torch.where(hypothesis_input_ids == 1, zero, hypothesis_input_ids)
-        # print("[2] (hypothesis_input_ids == 1).sum():", (hypothesis_input_ids == 1).sum())
-
         if (self.training) and (self.training_embedding_noise_level > 0):
             embedding += self.training_embedding_noise_level * torch.randn(
                 embedding.shape, device=embedding.device
