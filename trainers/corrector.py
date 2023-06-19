@@ -31,14 +31,32 @@ def choose_random_tokens(tokens: torch.Tensor, max_len: int, pad_token_id: int) 
     else:
         n_chosen_tokens = random.randint(min_n_tokens, total_n_tokens)
         start_idx = random.randint(0, total_n_tokens - n_chosen_tokens)
-    new_tokens = [bos_token_id] + tokens[start_idx:start_idx+n_chosen_tokens].tolist()
+    
+    new_tokens = [bos_token_id] + tokens[start_idx:start_idx+n_chosen_tokens].tolist() + [eos_token]
     new_tokens += [pad_token_id] * (max_len - n_chosen_tokens - 1)
 
-    if len(new_tokens) != max_len:
-        import pdb; pdb.set_trace()
-    
+    new_tokens = new_tokens[:max_len]
     assert len(new_tokens) == max_len
     return torch.tensor(new_tokens, device=tokens.device, dtype=tokens.dtype)
+
+def random_mixup(tokens1: torch.Tensor, tokens2: torch.Tensor, max_len: int, pad_token_id: int) -> torch.Tensor:
+    tokens1 = choose_random_tokens(tokens1, max_len, pad_token_id)
+    tokens2 = choose_random_tokens(tokens2, max_len, pad_token_id)
+
+    total_n_tokens_1 = (tokens1 != pad_token_id).int().sum() - 1
+    total_n_tokens_2 = (tokens2 != pad_token_id).int().sum() - 1
+
+    split_idx = random.randint(1, total_n_tokens_1)
+    eos_token = torch.tensor([1], dtype=tokens1.dtype, device=tokens1.device)
+    new_tokens = torch.cat((tokens1[:split_idx], tokens2[1:total_n_tokens_2+1], tokens1[split_idx:], eos_token))
+
+    # pad and truncate once more
+    if len(new_tokens) > max_len:
+        new_tokens = new_tokens[:max_len]
+    elif len(new_tokens) < max_len:
+        new_tokens += [pad_token_id] * len(new_tokens)
+    
+    return torch.tensor(new_tokens, device=tokens1.device, dtype=tokens1.dtype)
 
 class CorrectorTrainer(BaseTrainer):
     """Trains an encoder model to generate embeddings that recursively correct of an
@@ -109,7 +127,7 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
-        self.hypothesis_source = "random_deletion" # ["model", "random_deletion"]
+        self.hypothesis_source = "random_mixup" # ["model", "random_deletion", "random_mixup"]
 
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
@@ -630,7 +648,7 @@ class CorrectorTrainer(BaseTrainer):
                 embedder_attention_mask=inputs["embedder_attention_mask"],
             )
 
-        if self.hypothesis_source == "model":
+        if (not self.model.training) or self.hypothesis_source == "model":
             generation_kwargs = {
                 "early_stopping": False,
                 "num_beams": 1,
@@ -661,6 +679,15 @@ class CorrectorTrainer(BaseTrainer):
                 },
                 generation_kwargs=generation_kwargs,
             )
+        elif self.hypothesis_source == "random_mixup":
+            max_len = max(map(len, inputs["input_ids"]))
+            batch_input_ids1 = inputs["input_ids"]
+            batch_input_ids2 = batch_input_ids1[torch.randperm(len(batch_input_ids1))]
+            hypothesis_input_ids = torch.stack([
+                random_mixup(
+                    input_ids1, input_ids2, max_len, self.model.encoder_decoder.config.pad_token_id
+                ) for input_ids1, input_ids2 in zip(batch_input_ids1, batch_input_ids2)
+            ])
         else:
             max_len = max(map(len, inputs["input_ids"]))
             hypothesis_input_ids = torch.stack([

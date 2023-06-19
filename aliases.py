@@ -38,6 +38,9 @@ CHECKPOINT_FOLDERS_DICT = {
     "openai_msmarco__msl128__100epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/d6ec9d5838a4ad3daeba636e5378a8a0",
     # openai corrector model [w/ "cheated" / interpolated hypotheses]:
     "openai_msmarco__msl128__100epoch__correct_cheat": "/home/jxm3/research/retrieval/inversion/saves/45e3f871f91d0fbf54bacb5593434409",
+
+    #  openai hypothesis model [training]
+    "openai_msmarco__msl128__correct__random_deletion": "/home/jxm3/research/retrieval/inversion/saves/03a702c091debd146cdc78b6ebeedf94",
 }
 
 

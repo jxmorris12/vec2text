@@ -137,7 +137,7 @@ def get_embeddings_openai_manifest(
 def get_embeddings_openai_vanilla_multithread(text_list, model="text-embedding-ada-002") -> list:
     import openai
 
-    print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
+    # print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
 
     batches = math.ceil(len(text_list) / 128)
     outputs = []
@@ -169,9 +169,7 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
     import openai
-    print(
-        f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'"
-    )
+    # print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
     batches = math.ceil(len(text_list) / 128)
     outputs = []
     for batch in range(batches):
