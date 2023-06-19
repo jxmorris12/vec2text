@@ -56,7 +56,7 @@ def random_mixup(tokens1: torch.Tensor, tokens2: torch.Tensor, max_len: int, pad
     elif len(new_tokens) < max_len:
         new_tokens += [pad_token_id] * len(new_tokens)
     
-    return torch.tensor(new_tokens, device=tokens1.device, dtype=tokens1.dtype)
+    return new_tokens
 
 class CorrectorTrainer(BaseTrainer):
     """Trains an encoder model to generate embeddings that recursively correct of an
@@ -127,7 +127,8 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
-        self.hypothesis_source = "random_mixup" # ["model", "random_deletion", "random_mixup"]
+        # self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
+        self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
 
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
@@ -139,10 +140,6 @@ class CorrectorTrainer(BaseTrainer):
         """
         metric_key_prefix = kwargs["metric_key_prefix"]
         output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
-        generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
-        generation_metrics = {
-            f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
-        }
         if metric_key_prefix in {"eval_msmarco", "eval_nq"}:
             # TODO determine dataset name in a smarter way.
             n_rounds = 5
@@ -154,10 +151,9 @@ class CorrectorTrainer(BaseTrainer):
                 f"{metric_key_prefix}_{n_rounds}round_{k}": v
                 for k, v in multi_round_generation_metrics.items()
             }
-            generation_metrics.update(multiround_generation_metrics)
+            output.metrics.update(multiround_generation_metrics)
             self.num_gen_recursive_steps = 1
 
-        output.metrics.update(generation_metrics)
         return output
 
     def _precompute_hypothesis_and_embedding(
@@ -187,8 +183,8 @@ class CorrectorTrainer(BaseTrainer):
             hypothesis_input_ids.cpu(), hypothesis_attention_mask.cpu()
         ):
             num_tokens = attention_mask.sum()
-            ds_inputs["hypothesis_input_ids"].append(input_ids[:num_tokens])
-            ds_inputs["hypothesis_attention_mask"].append(attention_mask[:num_tokens])
+            ds_inputs["hypothesis_input_ids"].append(input_ids[:num_tokens+1])
+            ds_inputs["hypothesis_attention_mask"].append(attention_mask[:num_tokens+1])
         print("input_ids[0]:", self.tokenizer.decode(ds_inputs["input_ids"][0]))
         print(
             "hypothesis_input_ids[0]:",
@@ -249,6 +245,12 @@ class CorrectorTrainer(BaseTrainer):
     def precompute_hypotheses(self) -> None:
         # TODO: Compare doing this with and without training mode enabled.
         logger.info("Precomputing frozen embedding & hypotheses before training")
+        # self.train_dataset = self._preprocess_dataset(
+        #     cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
+        # )
+        # for k, v in self.eval_dataset.items():
+        #     self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
+        # print("done precomputing")
         if self.hypothesis_source == "model": # ["model", "random_deletion"]
             self.train_dataset = self._preprocess_dataset(
                 cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
@@ -608,7 +610,8 @@ class CorrectorTrainer(BaseTrainer):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        return frozen_embeddings
+        # print("frozen_embeddings =>", self.args.device)
+        return frozen_embeddings.to(self.args.device)
 
     def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Embeds a generated hypothesis. Has to remove EOS token and add BOS token
@@ -717,6 +720,7 @@ class CorrectorTrainer(BaseTrainer):
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
+        # print("inputs =>", {k: v.device for k,v in inputs.items()})
 
         try:
             frozen_embeddings = inputs["frozen_embeddings"]
