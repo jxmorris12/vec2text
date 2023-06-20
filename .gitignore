@@ -5,6 +5,7 @@ __pycache__/
 
 embeddings/
 logs/
+msmarco_msl128_hypotheses/
 results/
 saves/
 slurm-scripts/
