@@ -142,7 +142,10 @@ def get_embeddings_openai_vanilla_multithread(text_list, model="text-embedding-a
     batches = math.ceil(len(text_list) / 128)
     outputs = []
 
-    assert min(map(len, text_list)) > 0, "can't embed an empty sequence"
+    for i in range(len(text_list)):
+        if len(text_list[i]) == 0:
+            print(f"warning: set element {i} to a random sequence")
+            text_list[i] = "random sequence"
     
     def process_batch(batch):
         text_list_batch = text_list[batch * 128: (batch + 1) * 128]

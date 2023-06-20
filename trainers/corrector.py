@@ -110,18 +110,18 @@ class CorrectorTrainer(BaseTrainer):
         self.return_best_hypothesis = False
 
         # Initialize our model with pre-trained model params
-        missing_keys, unexpected_keys = self.model.load_state_dict(
-            self.inversion_trainer.model.state_dict(), strict=False
-        )
-        self.model.embedding_transform_1.load_state_dict(
-            self.inversion_trainer.model.embedding_transform.state_dict(),
-        )
-        self.model.embedding_transform_2.load_state_dict(
-            self.inversion_trainer.model.embedding_transform.state_dict(),
-        )
-        self.model.embedding_transform_3.load_state_dict(
-            self.inversion_trainer.model.embedding_transform.state_dict(),
-        )
+        # missing_keys, unexpected_keys = self.model.load_state_dict(
+        #     self.inversion_trainer.model.state_dict(), strict=False
+        # )
+        # self.model.embedding_transform_1.load_state_dict(
+        #     self.inversion_trainer.model.embedding_transform.state_dict(),
+        # )
+        # self.model.embedding_transform_2.load_state_dict(
+        #     self.inversion_trainer.model.embedding_transform.state_dict(),
+        # )
+        # self.model.embedding_transform_3.load_state_dict(
+        #     self.inversion_trainer.model.embedding_transform.state_dict(),
+        # )
 
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
@@ -129,6 +129,13 @@ class CorrectorTrainer(BaseTrainer):
 
         # self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
         self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
+
+        # loading 2-hour-trained model from msl128 openai model 6/19 evening. just saving
+        # a bit of time.
+        # weights_path = "/home/jxm3/research/retrieval/inversion/saves/77efb581ba0c09c78e419f3cda52f1f7/checkpoint-16000/pytorch_model.bin"
+        # state_dict = torch.load(weights_path)
+        # self.model.load_state_dict(state_dict)
+        # print("loaded weights =>", weights_path)
 
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
@@ -141,7 +148,6 @@ class CorrectorTrainer(BaseTrainer):
         metric_key_prefix = kwargs["metric_key_prefix"]
         output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
         if metric_key_prefix in {"eval_msmarco", "eval_nq"}:
-            # TODO determine dataset name in a smarter way.
             n_rounds = 5
             self.num_gen_recursive_steps = n_rounds
             multi_round_generation_metrics = self.eval_generation_metrics(
@@ -306,12 +312,6 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_attention_mask,
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
-        
-        # Make sure everything has an EOS token (this is for backwards compatibility)
-        print("[1] (hypothesis_input_ids == 1).sum():", (hypothesis_input_ids == 1).sum())
-        zero = torch.tensor(0, dtype=torch.long, device=hypothesis_input_ids.device)
-        hypothesis_attention_mask = torch.where(hypothesis_input_ids == 1, zero, hypothesis_attention_mask)
-        hypothesis_input_ids = torch.where(hypothesis_input_ids == 1, zero, hypothesis_input_ids)
 
         # #####################################################
         # (
@@ -590,8 +590,6 @@ class CorrectorTrainer(BaseTrainer):
                 hypothesis_embedding = hypothesis_embedding.reshape(
                     (batch_size * sequence_beam_width, -1)
                 )
-                # print("len(gen_text_ids):", len(gen_text_ids), "len(set(gen_text_ids)):", len(set(self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))))
-                # print("gen_text_ids:", self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True))
 
             # print scores for any type of beam search
             print(
@@ -724,6 +722,7 @@ class CorrectorTrainer(BaseTrainer):
         inputs: Dict[str, torch.Tensor],
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
+        self.args.eval_steps = 4000
         """Computes contrastive loss using model generations and real text."""
         batch_size, seq_length = inputs["input_ids"].shape
         # print("inputs =>", {k: v.device for k,v in inputs.items()})

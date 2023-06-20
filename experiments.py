@@ -475,6 +475,10 @@ class Experiment(abc.ABC):
         val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
         train_dataset = train_datasets["train"]
 
+        for key in val_datasets_dict:
+            new_length = min(len(val_datasets_dict[key]), self.data_args.max_eval_samples)
+            val_datasets_dict[key] = val_datasets_dict[key].select(range(new_length))
+
         return (train_dataset, val_datasets_dict)
 
 
