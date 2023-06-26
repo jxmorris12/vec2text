@@ -15,7 +15,7 @@ def create_arg_parser():
 
     parser.add_argument("alias", type=str, help="Trained model alias from alias.py")
     parser.add_argument(
-        "--num_samples", type=int, default=500, help="Number of evaluation samples"
+        "--num_samples", type=int, default=200, help="Number of evaluation samples"
     )
     parser.add_argument(
         "--return_best_hypothesis",
@@ -61,7 +61,7 @@ def main(args: argparse.ArgumentParser):
     experiment, trainer = aliases.load_experiment_and_trainer_from_alias(args.alias)
     trainer.model.eval()
     trainer.args.per_device_eval_batch_size = int(
-        16 / max(args.beam_width, args.sequence_beam_width)
+        8 / max(args.beam_width, args.sequence_beam_width)
     )
     trainer.return_best_hypothesis = bool(args.return_best_hypothesis)
     trainer.num_gen_recursive_steps = args.num_gen_recursive_steps

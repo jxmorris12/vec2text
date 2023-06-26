@@ -129,13 +129,18 @@ class CorrectorTrainer(BaseTrainer):
 
         # self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
         self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
+        # loading 90-hour-trained model from msl128 openai model. hoping to save a bit of time.
+        weights_path = "/home/jxm3/research/retrieval/inversion/saves/b14331afd21d1a02d275172ae4eba92d/checkpoint-1248000/pytorch_model.bin"
+        state_dict = torch.load(weights_path)
+        self.model.load_state_dict(state_dict)
+        print("loaded model weights =>", weights_path)
 
-        # loading 2-hour-trained model from msl128 openai model 6/19 evening. just saving
-        # a bit of time.
-        # weights_path = "/home/jxm3/research/retrieval/inversion/saves/77efb581ba0c09c78e419f3cda52f1f7/checkpoint-16000/pytorch_model.bin"
-        # state_dict = torch.load(weights_path)
-        # self.model.load_state_dict(state_dict)
-        # print("loaded weights =>", weights_path)
+    # def _load_optimizer_and_scheduler(self, checkpoint):
+    #     # TEMP:
+    #     optimizer_path = "/home/jxm3/research/retrieval/inversion/saves/fb22c8720407de76ee139df80a83ff65/checkpoint-120000/optimizer.pt"
+    #     optimizer_state = torch.load(optimizer_path, map_location="cpu")
+    #     self.optimizer.load_state_dict(optimizer_state)
+    #     print("loaded  optimizer =>", optimizer_path)
 
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
@@ -235,7 +240,7 @@ class CorrectorTrainer(BaseTrainer):
                     cheat=cheat,
                 ),
                 batched=True,
-                batch_size=(self.args.train_batch_size * 4),
+                batch_size=(self.args.train_batch_size * 2),
                 desc="Precomputing hypotheses for data",
             )
             dataset.save_to_disk(cache_path)
@@ -261,9 +266,19 @@ class CorrectorTrainer(BaseTrainer):
         #     self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
         # print("done precomputing")
         if self.hypothesis_source == "model": # ["model", "random_deletion"]
-            self.train_dataset, train_cache_path = self._preprocess_dataset(
-                cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
-            )
+            # self.train_dataset, train_cache_path = self._preprocess_dataset(
+            #     cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
+            # )
+            # ###########################################################################
+            # # Temporary hack: load explicit dataset explicitly from disk
+            # # This is MSMARCO, sequence length 128, precomputed with OpenAI embeddings
+            # # + hypotheses
+            print("Loading full train dataset...")
+            train_cache_path = "/home/jxm3/research/retrieval/inversion/msmarco_msl128_hypotheses/msmarco_full.cache"
+            self.train_dataset = datasets.Dataset.load_from_disk(train_cache_path)
+            print("Loaded!")
+            # ###########################################################################
+
             for k, v in self.eval_dataset.items():
                 self.eval_dataset[k], _ = self._preprocess_dataset(dataset=v)
         else:
@@ -339,8 +354,10 @@ class CorrectorTrainer(BaseTrainer):
         sequence_beam_width = sequence_beam_width or self.sequence_beam_width
         num_recursive_steps_so_far = 0
 
+        total_best_scores_seen = None # Track best scores for early stopping
+
         while num_recursive_steps >= 1:
-            gen_text_ids, hypothesis_embedding = self._generate_with_beam(
+            gen_text_ids, hypothesis_embedding, best_scores = self._generate_with_beam(
                 inputs=inputs,
                 generation_kwargs=generation_kwargs,
                 num_recursive_steps=num_recursive_steps,
@@ -355,6 +372,13 @@ class CorrectorTrainer(BaseTrainer):
             # step counters
             num_recursive_steps -= 1
             num_recursive_steps_so_far += 1
+            # early stopping
+            if best_scores is not None:
+                if (total_best_scores_seen is not None) and torch.isclose(best_scores, total_best_scores_seen, atol=1e-3):
+                    print("scores stopped increasing! stopping early after", num_recursive_steps_so_far, "steps")
+                    break
+                best_scores = total_best_scores_seen
+
         return gen_text_ids
 
     def _generate_with_beam(
@@ -381,11 +405,12 @@ class CorrectorTrainer(BaseTrainer):
         assert num_recursive_steps >= 1
         frozen_embeddings = inputs["frozen_embeddings"]
         ################################################################################
-        num_return_sequences = max(
-            sequence_beam_width, generation_kwargs.get("num_beams", 1)
-        )
-        generation_kwargs["num_beams"] = num_return_sequences
-        generation_kwargs["num_return_sequences"] = num_return_sequences
+        if not generation_kwargs["do_sample"]:
+            num_return_sequences = max(
+                sequence_beam_width, generation_kwargs.get("num_beams", 1)
+            )
+            generation_kwargs["num_beams"] = num_return_sequences
+            generation_kwargs["num_return_sequences"] = num_return_sequences
 
         if (num_recursive_steps_so_far == 0) and (
             self.initial_hypothesis_str is not None
@@ -466,6 +491,7 @@ class CorrectorTrainer(BaseTrainer):
             # after the first step, we've already copied frozen embeddings across the beam
             batch_size = int(frozen_embeddings.shape[0] / sequence_beam_width)
 
+        best_scores = None
         #
         #   BEAM SEARCH
         #
@@ -596,8 +622,9 @@ class CorrectorTrainer(BaseTrainer):
                 )
 
             # print scores for any type of beam search
+            best_scores = scores.max(1).values.cpu()
             print(
-                f"step {num_recursive_steps_so_far} // scores = {scores.max(1).values.tolist()}"
+                f"step {num_recursive_steps_so_far} // scores = {best_scores.tolist()}"
             )
             lengths = (
                 gen_text_ids != self.model.encoder_decoder.config.pad_token_id
@@ -606,7 +633,7 @@ class CorrectorTrainer(BaseTrainer):
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
-        return gen_text_ids, hypothesis_embedding
+        return gen_text_ids, hypothesis_embedding, best_scores
 
     def get_frozen_embeddings(
         self,
@@ -726,10 +753,9 @@ class CorrectorTrainer(BaseTrainer):
         inputs: Dict[str, torch.Tensor],
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
-        self.args.eval_steps = 4000
         """Computes contrastive loss using model generations and real text."""
+        # self.args.eval_steps = 4000
         batch_size, seq_length = inputs["input_ids"].shape
-        # print("inputs =>", {k: v.device for k,v in inputs.items()})
 
         try:
             frozen_embeddings = inputs["frozen_embeddings"]

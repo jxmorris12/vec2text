@@ -26,18 +26,13 @@ def run_cmd(cmd: str, job_desc: str):
         slurm = Slurm(
             job_name,
             slurm_kwargs={
-                "partition": "gpu,rush",
-                "gres": "gpu:a6000:1",
-                # "gres": "gpu:1",
-                # "constraint": "a40|3090|a6000|a5000|a100-40",
+                "partition": "gpu",
+                "gres": "gpu:1",
+                "constraint": "gpu-high|gpu-mid",
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                # "nodelist": "rush-compute-02",
-                # "time": "24:00:00",
-                # "time": "72:00:00",
-                "time": "168:00:00",  # 168 hours --> 1 week
-                # "time": "504:00:00",  # 504 hours --> 3 weeks
+                "time": "96:00:00",  # 168 hours --> 1 week
             },
             slurm_flags=[
                 "requeue",
@@ -52,7 +47,7 @@ def run_cmd(cmd: str, job_desc: str):
     print("\n\n")
 
 MSMARCO_LENGTH = 8_753_404
-N_SHARDS = 32
+N_SHARDS = 64
 
 shard_length = math.ceil(MSMARCO_LENGTH / N_SHARDS)
 start_idxs = []

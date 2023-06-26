@@ -29,7 +29,7 @@ all_beir_datasets = [
 
 base_command = """
 python evaluate_models.py {alias} \
---num_samples 500 \
+--num_samples 200 \
 --return_best_hypothesis {return_best_hypothesis} \
 --num_gen_recursive_steps {num_gen_recursive_steps} \
 --sequence_beam_width {sequence_beam_width} \
@@ -53,13 +53,13 @@ def run_command(cmd: str, job_desc: str):
         slurm = Slurm(
             job_name,
             slurm_kwargs={
-                "partition": "gpu", # rush,gpu
+                "partition": "gpu",
                 "gres": "gpu:1",
-                "constraint": "gpu-high",
+                "constraint": "gpu-high|gpu-mid",
                 "ntasks": 1,
-                "cpus-per-task": 1,
-                "mem": "32G",
-                "time": "48:00:00",
+                "cpus-per-task": 4,
+                "mem": "48G",
+                "time": "24:00:00", 
             },
             slurm_flags=[
                 "requeue",
