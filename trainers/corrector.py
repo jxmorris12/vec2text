@@ -130,10 +130,11 @@ class CorrectorTrainer(BaseTrainer):
         # self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
         self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
         # loading 90-hour-trained model from msl128 openai model. hoping to save a bit of time.
-        weights_path = "/home/jxm3/research/retrieval/inversion/saves/b14331afd21d1a02d275172ae4eba92d/checkpoint-1248000/pytorch_model.bin"
-        state_dict = torch.load(weights_path)
-        self.model.load_state_dict(state_dict)
-        print("loaded model weights =>", weights_path)
+        # weights_path = "/home/jxm3/research/retrieval/inversion/saves/8124d6f7da2a100ee180cddce0464295/checkpoint-40000/pytorch_model.bin"
+        # weights_path = "/home/jxm3/research/retrieval/inversion/saves/1ee3a579ee3c94cdd7496ca25e2cf8e3/checkpoint-40000/pytorch_model.bin"
+        # state_dict = torch.load(weights_path)
+        # self.model.load_state_dict(state_dict)
+        # print("loaded model weights =>", weights_path)
 
     # def _load_optimizer_and_scheduler(self, checkpoint):
     #     # TEMP:
@@ -292,6 +293,7 @@ class CorrectorTrainer(BaseTrainer):
         self.model.eval()
         self.precompute_hypotheses()
         self.model.train()
+        self.inversion_trainer.model.cpu() # Shouldn't need this anymore, hopefully
 
         return super()._inner_training_loop(*args, **kwargs)
 

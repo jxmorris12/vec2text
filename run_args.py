@@ -259,7 +259,8 @@ class TrainingArguments(transformers.TrainingArguments):
             "required": False,
             "help": "Which experiment to run (defines model, loss func, dataset...) ",
             "choices": [
-                "inversion",
+                "inversion", # our model: projects and feeds to encoder-decoder
+                "inversion_decoder", # baseline: use single embedding as input to a decoder
                 "inversion_bow",
                 "inversion_na",
                 "reranking",
@@ -311,6 +312,7 @@ class TrainingArguments(transformers.TrainingArguments):
     include_inputs_for_metrics: bool = True
 
     def __post_init__(self):
+        super().__post_init__()
         self.report_to = (
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
@@ -337,4 +339,9 @@ class TrainingArguments(transformers.TrainingArguments):
         self.group_by_length = True
         self.length_column_name = "length"
 
+        self.load_best_model_at_end = True
+        self.metric_for_best_model = "msmarco_loss" # TODO Populate this from data_args so works with any dataset.
+        self.greater_is_better = False
+
+        self.do_eval = False
         # self.ddp_backend = "gloo"
