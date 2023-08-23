@@ -49,13 +49,26 @@ class BaseTrainer(transformers.Trainer):
         self.metric_bleu = evaluate.load("sacrebleu")
         self.metric_bertscore = evaluate.load("bertscore")
         self.metric_rouge = evaluate.load("rouge")
-        self.metric_meteor = evaluate.load("meteor")
         self.gen_kwargs = {
             "early_stopping": False,
             "num_beams": 1,
             "do_sample": False,
             "no_repeat_ngram_size": 0,
         }
+    
+    @property
+    def pad_token_id(self) -> int:
+        try:
+            return self.model.encoder_decoder.config.pad_token_id
+        except AttributeError:
+            return self.tokenizer.pad_token_id
+        
+    @property
+    def bos_token_id(self) -> int:
+        try:
+            return self.model.encoder_decoder.decoder_start_token_id
+        except:
+            return self.tokenizer.bos_token_id
 
     def sanity_decode(self):
         """Encodes and decodes a string as a sanity check."""
@@ -140,7 +153,7 @@ class BaseTrainer(transformers.Trainer):
                         dtype=torch.long,
                         device=generated_text.device,
                     )
-                    * self.model.encoder_decoder.config.pad_token_id
+                    * self.pad_token_id
                 )
                 generated_text = torch.cat((generated_text, pad_tokens), dim=1)
 
@@ -154,7 +167,7 @@ class BaseTrainer(transformers.Trainer):
                         dtype=torch.long,
                         device=true_input_ids.device,
                     )
-                    * self.model.encoder_decoder.config.pad_token_id
+                    * self.pad_token_id
                 )
                 true_input_ids = torch.cat((true_input_ids, pad_tokens), dim=1)
 
@@ -285,9 +298,6 @@ class BaseTrainer(transformers.Trainer):
         bleu_result = self.metric_bleu.compute(
             predictions=predictions_str, references=references_str
         )
-        meteor_result = self.metric_meteor.compute(
-            predictions=predictions_str, references=references_str
-        )
         rouge_result = self.metric_rouge.compute(
             predictions=predictions_str, references=references_str
         )
@@ -297,7 +307,6 @@ class BaseTrainer(transformers.Trainer):
         exact_matches = (np.array(predictions_str) == np.array(references_str)).mean()
         gen_metrics = {
             "bleu_score": bleu_result["score"],
-            "meteor_score": meteor_result["meteor"],
             "rouge_score": rouge_result[
                 "rouge1"
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
@@ -354,10 +363,10 @@ class BaseTrainer(transformers.Trainer):
         # Log num tokens.
         num_tokens_metrics = {
             "pred_num_tokens": (
-                (preds_sample != self.model.encoder_decoder.config.pad_token_id)
+                (preds_sample != self.pad_token_id)
                 & (
                     preds_sample
-                    != self.model.encoder_decoder.config.decoder_start_token_id
+                    != self.bos_token_id
                 )
             )
             .sum(1)
@@ -365,10 +374,10 @@ class BaseTrainer(transformers.Trainer):
             .mean()
             .item(),
             "true_num_tokens": (
-                (preds_sample_labels != self.model.encoder_decoder.config.pad_token_id)
+                (preds_sample_labels != self.pad_token_id)
                 & (
                     preds_sample_labels
-                    != self.model.encoder_decoder.config.decoder_start_token_id
+                    != self.model.decoder_start_token_id
                 )
             )
             .sum(1)
@@ -394,7 +403,7 @@ class BaseTrainer(transformers.Trainer):
             assert preds_sample.shape == preds_sample_labels.shape
 
         with torch.no_grad():
-            pad_token_id = self.model.encoder_decoder.config.pad_token_id
+            pad_token_id = self.pad_token_id
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample,
                 attention_mask=(preds_sample != pad_token_id).to(self.args.device),

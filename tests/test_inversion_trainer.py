@@ -89,9 +89,9 @@ def test_trainer_decoder():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(
         args=DEFAULT_ARGS
     )
-    model_args.use_frozen_embeddings_as_input = True
+    model_args.use_frozen_embeddings_as_input = False
     data_args.dataset_name = dataset_name
-    training_args.inversion_decoder = "inversion_decoder"
+    training_args.experiment = "inversion_decoder_only"
     trainer = load_trainer(
         model_args=model_args, data_args=data_args, training_args=training_args
     )
@@ -104,6 +104,8 @@ def test_trainer_decoder():
     assert metrics["train_loss"] > 0
 
     print("metrics:", metrics)
+
+    
 # def test_trainer_luar_data():
 #     parser = transformers.HfArgumentParser(
 #         (ModelArguments, DataArguments, TrainingArguments)

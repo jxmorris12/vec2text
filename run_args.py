@@ -311,8 +311,13 @@ class TrainingArguments(transformers.TrainingArguments):
 
     include_inputs_for_metrics: bool = True
 
+
+    def __setattr__(self, name, value):
+        super(transformers.TrainingArguments, self).__setattr__(name, value)
+
     def __post_init__(self):
         super().__post_init__()
+        self._frozen = True
         self.report_to = (
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )

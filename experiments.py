@@ -19,6 +19,7 @@ from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     CorrectorEncoderModel,
     InversionModel,
+    InversionModelDecoderOnly,
     InversionModelBagOfWords,
     InversionModelNonAutoregressive,
     load_embedder_and_tokenizer,
@@ -277,6 +278,10 @@ class Experiment(abc.ABC):
             truncation="max_length",
             max_length=self.model_args.max_seq_length,
         )
+
+        if tokenizer.pad_token is None:
+            tokenizer.pad_token = tokenizer.eos_token
+
         # Disable super annoying warning:
         # https://github.com/huggingface/transformers/issues/22638
         tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
@@ -340,7 +345,7 @@ class Experiment(abc.ABC):
         if self.model_args.use_frozen_embeddings_as_input:
             precompute_batch_size = self.training_args.per_device_train_batch_size
             # precompute_batch_size = 8192
-            print(f"Precomputing embeddings with batch size: {precompute_batch_size}]")
+            print(f"[Precomputing embeddings with batch size: {precompute_batch_size}]")
             tokenized_datasets = tokenized_datasets.map(
                 functools.partial(embed_dataset_batch, model),
                 batched=True,
@@ -540,6 +545,27 @@ class InversionExperiment(Experiment):
         )
 
 
+class InversionExperimentDecoderOnly(InversionExperiment):
+
+    def load_model(self) -> torch.nn.Module:
+        model_args = self.model_args
+        self.model_args.model_name_or_path = "gpt2"
+
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=model_args.embedder_model_name
+        )
+        return InversionModelDecoderOnly(
+            embedder=embedder,
+            embedder_tokenizer=embedder_tokenizer,
+            embedder_model_api=model_args.embedder_model_api,
+            tokenizer=self.load_tokenizer(),
+            decoder=transformers.AutoModelForCausalLM.from_pretrained(self.model_args.model_name_or_path),
+            embedder_no_grad=model_args.embedder_no_grad,
+            embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
+            use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
+        )
+
+
 class InversionExperimentNonAutoregressive(Experiment):
     @property
     def _wandb_project_name(self) -> str:
@@ -667,6 +693,7 @@ class CorrectorEncoderExperiment(CorrectorExperiment):
 
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
+    "inversion_decoder_only": InversionExperimentDecoderOnly,
     "corrector": CorrectorExperiment,
     "corrector_encoder": CorrectorEncoderExperiment,
     #
