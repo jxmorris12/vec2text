@@ -377,7 +377,7 @@ class BaseTrainer(transformers.Trainer):
                 (preds_sample_labels != self.pad_token_id)
                 & (
                     preds_sample_labels
-                    != self.model.decoder_start_token_id
+                    != self.bos_token_id
                 )
             )
             .sum(1)
@@ -403,14 +403,28 @@ class BaseTrainer(transformers.Trainer):
             assert preds_sample.shape == preds_sample_labels.shape
 
         with torch.no_grad():
+            preds_sample_retokenized = (
+                self.embedder_tokenizer(
+                    decoded_preds,
+                    padding=True,
+                    truncation=False,
+                    return_tensors='pt')['input_ids'].to(preds_sample.device)
+            )
             pad_token_id = self.pad_token_id
             preds_emb = self.call_embedding_model(
-                input_ids=preds_sample,
-                attention_mask=(preds_sample != pad_token_id).to(self.args.device),
+                input_ids=preds_sample_retokenized,
+                attention_mask=(preds_sample_retokenized != pad_token_id).to(self.args.device),
+            )
+            preds_sample_labels_retokenized = (
+                self.embedder_tokenizer(
+                    decoded_labels,
+                    padding=True,
+                    truncation=False,
+                    return_tensors='pt')['input_ids'].to(preds_sample.device)
             )
             labels_emb = self.call_embedding_model(
-                input_ids=preds_sample_labels,
-                attention_mask=(preds_sample_labels != pad_token_id).to(
+                input_ids=preds_sample_labels_retokenized,
+                attention_mask=(preds_sample_labels_retokenized != pad_token_id).to(
                     self.args.device
                 ),
             )
