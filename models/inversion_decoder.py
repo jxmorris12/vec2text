@@ -204,8 +204,10 @@ class InversionModelDecoderOnly(InversionModel):
             embedder_attention_mask=embedder_attention_mask,
             frozen_embeddings=frozen_embeddings,
         )
+
+        input_embeddings_table = self.decoder.get_input_embeddings()
         inputs_embeds = torch.cat(
-            (embed_inputs_embeds, self.decoder.transformer.wte(input_ids)), dim=1)
+            (embed_inputs_embeds, input_embeddings_table(input_ids)), dim=1)
         attention_mask = torch.cat(
             (embed_attention_mask, attention_mask), dim=1
         )

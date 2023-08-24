@@ -62,6 +62,11 @@ class Experiment(abc.ABC):
         data_args: DataArguments,
         training_args: TrainingArguments,
     ):
+        # Interactions between args handled here:
+        training_args.metric_for_best_model = f"{data_args.dataset_name}_loss"
+
+        logger.info("Save checkpoints according to metric_for_best_model %s:", training_args.metric_for_best_model)
+
         # Save all args.
         self.model_args = model_args
         self.data_args = data_args
@@ -322,6 +327,8 @@ class Experiment(abc.ABC):
                 new_length = min(len(raw_datasets[key]), data_args.use_less_data)
                 raw_datasets[key] = raw_datasets[key].select(range(new_length))
 
+        print("using fast tokenizers:", tokenizer.is_fast, embedder_tokenizer.is_fast)
+
         tokenized_datasets = raw_datasets.map(
             tokenize_function(
                 tokenizer,
@@ -549,17 +556,23 @@ class InversionExperimentDecoderOnly(InversionExperiment):
 
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
-        self.model_args.model_name_or_path = "gpt2"
 
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
             name=model_args.embedder_model_name
         )
+
+        if "t5" in model_args.model_name_or_path:
+            # special handling for loading decoder of t5 (just decoder from encoder-decoder model).
+            decoder = transformers.T5ForConditionalGeneration.from_pretrained(model_args.model_name_or_path)
+        else:
+            decoder = transformers.AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
+
         return InversionModelDecoderOnly(
             embedder=embedder,
             embedder_tokenizer=embedder_tokenizer,
             embedder_model_api=model_args.embedder_model_api,
             tokenizer=self.load_tokenizer(),
-            decoder=transformers.AutoModelForCausalLM.from_pretrained(self.model_args.model_name_or_path),
+            decoder=decoder,
             embedder_no_grad=model_args.embedder_no_grad,
             embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
             use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,

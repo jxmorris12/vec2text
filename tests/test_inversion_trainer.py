@@ -89,6 +89,7 @@ def test_trainer_decoder():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(
         args=DEFAULT_ARGS
     )
+    model_args.model_name_or_path = "t5-base"
     model_args.use_frozen_embeddings_as_input = False
     data_args.dataset_name = dataset_name
     training_args.experiment = "inversion_decoder_only"

@@ -35,7 +35,7 @@ class ModelArguments:
         ###
         ## huggingface.co/facebook/dpr-ctx_encoder-single-nq-base
         ###
-        default="dpr",
+        default="gtr_base",
         metadata={
             "help": "Model to get embeddings from (locally)",
             "choices": MODEL_NAMES,
@@ -183,12 +183,6 @@ class DataArguments:
             "help": "The name of the dataset to use (via the datasets library).",
         },
     )
-    dataset_config_name: Optional[str] = field(
-        default="corpus",
-        metadata={
-            "help": "The configuration name of the dataset to use (via the datasets library)."
-        },
-    )
     max_eval_samples: int = field(
         default=1000,
         metadata={
@@ -260,7 +254,7 @@ class TrainingArguments(transformers.TrainingArguments):
             "help": "Which experiment to run (defines model, loss func, dataset...) ",
             "choices": [
                 "inversion", # our model: projects and feeds to encoder-decoder
-                "inversion_decoder", # baseline: use single embedding as input to a decoder
+                "inversion_decoder_only", # baseline: use single embedding as input to a decoder
                 "inversion_bow",
                 "inversion_na",
                 "reranking",
@@ -345,7 +339,6 @@ class TrainingArguments(transformers.TrainingArguments):
         self.length_column_name = "length"
 
         self.load_best_model_at_end = True
-        self.metric_for_best_model = "msmarco_loss" # TODO Populate this from data_args so works with any dataset.
         self.greater_is_better = False
 
         self.do_eval = False
