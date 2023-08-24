@@ -34,7 +34,9 @@ def create_arg_parser():
         "--sequence_beam_width", type=int, default=1, help="Sequence-level beam width"
     )
     parser.add_argument("--beam_width", type=int, default=1, help="Regular beam width")
-    parser.add_argument("--dataset", type=str, default=None, help="Dataset (if not regular val)")
+    parser.add_argument(
+        "--dataset", type=str, default=None, help="Dataset (if not regular val)"
+    )
 
     return parser
 

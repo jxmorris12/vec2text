@@ -1,12 +1,11 @@
 import math
+from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 import numpy as np
 import torch
 import tqdm
 import transformers
-
-from concurrent.futures import ThreadPoolExecutor
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 
@@ -134,7 +133,9 @@ def get_embeddings_openai_manifest(
 
 
 @retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
-def get_embeddings_openai_vanilla_multithread(text_list, model="text-embedding-ada-002") -> list:
+def get_embeddings_openai_vanilla_multithread(
+    text_list, model="text-embedding-ada-002"
+) -> list:
     import openai
 
     # print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
@@ -146,23 +147,23 @@ def get_embeddings_openai_vanilla_multithread(text_list, model="text-embedding-a
         if len(text_list[i]) == 0:
             print(f"warning: set element {i} to a random sequence")
             text_list[i] = "random sequence"
-    
+
     def process_batch(batch):
-        text_list_batch = text_list[batch * 128: (batch + 1) * 128]
+        text_list_batch = text_list[batch * 128 : (batch + 1) * 128]
         response = openai.Embedding.create(
             input=text_list_batch,
             model=model,
             encoding_format="float",
         )
         return [e["embedding"] for e in response["data"]]
-    
+
     with ThreadPoolExecutor() as executor:
         batch_indices = range(batches)
         results = executor.map(process_batch, batch_indices)
-        
+
         for result in results:
             outputs.extend(result)
-    
+
     return outputs
 
 
@@ -172,6 +173,7 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
     import openai
+
     # print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
     batches = math.ceil(len(text_list) / 128)
     outputs = []

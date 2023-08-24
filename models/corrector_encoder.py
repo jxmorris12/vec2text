@@ -48,9 +48,9 @@ class CorrectorEncoderModel(torch.nn.Module):
         self.ignore_hypothesis_embedding = ignore_hypothesis_embedding
         # TODO argparse; default to 0?
         # self.training_embedding_noise_level = 0
-        self.training_embedding_noise_level = 1e-5 # adding for openai...
+        self.training_embedding_noise_level = 1e-5  # adding for openai...
         # self.training_embedding_noise_level = 1e-2 # adding for openai...
-        self.use_ln = True # TODO argparse / test.
+        self.use_ln = True  # TODO argparse / test.
         if self.use_ln:
             self.layernorm = nn.LayerNorm(self.encoder_hidden_dim)
         print(f"Corrector encoder noise level {self.training_embedding_noise_level}")

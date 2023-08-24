@@ -11,7 +11,6 @@ from sentence_transformers import SentenceTransformer
 from utils import embed_all_tokens, embed_api
 
 from . import InversionModel
-
 from .model_utils import (
     EMBEDDING_TRANSFORM_STRATEGIES,
     device,
@@ -81,7 +80,9 @@ class InversionModelDecoderOnly(InversionModel):
         self.embedder_no_grad = embedder_no_grad
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
         self.bottleneck_dim = bottleneck_dim
-        self.embedding_transform = nn.Linear(self.embedder_dim, self.decoder.config.hidden_size)
+        self.embedding_transform = nn.Linear(
+            self.embedder_dim, self.decoder.config.hidden_size
+        )
         ######################################################
         self.tokenizer = tokenizer
         self.embedder_tokenizer = embedder_tokenizer
@@ -198,7 +199,7 @@ class InversionModelDecoderOnly(InversionModel):
         if labels is not None:
             input_ids = input_ids[:, :-1]
             attention_mask = attention_mask[:, :-1]
-        
+
         embed_inputs_embeds, embed_attention_mask = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,
             embedder_attention_mask=embedder_attention_mask,
@@ -207,10 +208,9 @@ class InversionModelDecoderOnly(InversionModel):
 
         input_embeddings_table = self.decoder.get_input_embeddings()
         inputs_embeds = torch.cat(
-            (embed_inputs_embeds, input_embeddings_table(input_ids)), dim=1)
-        attention_mask = torch.cat(
-            (embed_attention_mask, attention_mask), dim=1
+            (embed_inputs_embeds, input_embeddings_table(input_ids)), dim=1
         )
+        attention_mask = torch.cat((embed_attention_mask, attention_mask), dim=1)
 
         return self.decoder(
             inputs_embeds=inputs_embeds,

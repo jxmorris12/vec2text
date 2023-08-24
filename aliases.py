@@ -30,10 +30,8 @@ CHECKPOINT_FOLDERS_DICT = {
     "gtr_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/d6312870a6f49dee914198d048ee88f4",
     # openai hypothesis model [sl32] [still training, loss 1.233, bleu 29...] https://wandb.ai/jack-morris/emb-inv-3/runs/9b5d4aac9b16dad6d4a8c65cbc1a8859?workspace=user-jxmorris12
     "openai_msmarco__msl32__100epoch": "/home/jxm3/research/retrieval/inversion/saves/61becf9bb1d627272cd1923ac4871e73",
-
     # openai corrector model [sl32] [loss 0.77, bleu 45]
     "openai_msmarco__msl32__100epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/7758f43e621db8ee718306f31139e3b0",
-
     # openai hypothesis model [loss 1.8, bleu ~14.5]:
     #    https://wandb.ai/jack-morris/emb-inv-3/runs/4dc5011fd9be6b1f4dd3f7f4aa351165?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f",

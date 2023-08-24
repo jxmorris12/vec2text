@@ -2,7 +2,6 @@ from datetime import datetime
 
 from slurmpy import Slurm
 
-
 all_beir_datasets = [
     ####### public datasets #######
     "arguana",
@@ -59,7 +58,7 @@ def run_command(cmd: str, job_desc: str):
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                "time": "24:00:00", 
+                "time": "24:00:00",
             },
             slurm_flags=[
                 "requeue",

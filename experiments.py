@@ -19,8 +19,8 @@ from data_helpers import dataset_from_args, load_standard_val_datasets
 from models import (
     CorrectorEncoderModel,
     InversionModel,
-    InversionModelDecoderOnly,
     InversionModelBagOfWords,
+    InversionModelDecoderOnly,
     InversionModelNonAutoregressive,
     load_embedder_and_tokenizer,
     load_encoder_decoder,
@@ -65,7 +65,10 @@ class Experiment(abc.ABC):
         # Interactions between args handled here:
         training_args.metric_for_best_model = f"{data_args.dataset_name}_loss"
 
-        logger.info("Save checkpoints according to metric_for_best_model %s:", training_args.metric_for_best_model)
+        logger.info(
+            "Save checkpoints according to metric_for_best_model %s:",
+            training_args.metric_for_best_model,
+        )
 
         # Save all args.
         self.model_args = model_args
@@ -359,16 +362,16 @@ class Experiment(abc.ABC):
                 batch_size=precompute_batch_size,
             )
         ###########################################################################
-        max_eval_samples = min(len(tokenized_datasets["validation"]), self.data_args.max_eval_samples)
-        tokenized_datasets["validation"] = (
-            tokenized_datasets["validation"] .select(
-                range(max_eval_samples)
-            )
+        max_eval_samples = min(
+            len(tokenized_datasets["validation"]), self.data_args.max_eval_samples
         )
-        tokenized_datasets["validation"] = tokenized_datasets["validation"] .add_column(
+        tokenized_datasets["validation"] = tokenized_datasets["validation"].select(
+            range(max_eval_samples)
+        )
+        tokenized_datasets["validation"] = tokenized_datasets["validation"].add_column(
             "idx", range(len(tokenized_datasets["validation"]))
         )
-        tokenized_datasets["validation"] .set_format("pt")
+        tokenized_datasets["validation"].set_format("pt")
         ###########################################################################
         return tokenized_datasets
 
@@ -492,7 +495,9 @@ class Experiment(abc.ABC):
         train_dataset = train_datasets["train"]
 
         for key in val_datasets_dict:
-            new_length = min(len(val_datasets_dict[key]), self.data_args.max_eval_samples)
+            new_length = min(
+                len(val_datasets_dict[key]), self.data_args.max_eval_samples
+            )
             val_datasets_dict[key] = val_datasets_dict[key].select(range(new_length))
 
         return (train_dataset, val_datasets_dict)
@@ -553,7 +558,6 @@ class InversionExperiment(Experiment):
 
 
 class InversionExperimentDecoderOnly(InversionExperiment):
-
     def load_model(self) -> torch.nn.Module:
         model_args = self.model_args
 
@@ -563,9 +567,13 @@ class InversionExperimentDecoderOnly(InversionExperiment):
 
         if "t5" in model_args.model_name_or_path:
             # special handling for loading decoder of t5 (just decoder from encoder-decoder model).
-            decoder = transformers.T5ForConditionalGeneration.from_pretrained(model_args.model_name_or_path)
+            decoder = transformers.T5ForConditionalGeneration.from_pretrained(
+                model_args.model_name_or_path
+            )
         else:
-            decoder = transformers.AutoModelForCausalLM.from_pretrained(model_args.model_name_or_path)
+            decoder = transformers.AutoModelForCausalLM.from_pretrained(
+                model_args.model_name_or_path
+            )
 
         return InversionModelDecoderOnly(
             embedder=embedder,

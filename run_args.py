@@ -253,8 +253,8 @@ class TrainingArguments(transformers.TrainingArguments):
             "required": False,
             "help": "Which experiment to run (defines model, loss func, dataset...) ",
             "choices": [
-                "inversion", # our model: projects and feeds to encoder-decoder
-                "inversion_decoder_only", # baseline: use single embedding as input to a decoder
+                "inversion",  # our model: projects and feeds to encoder-decoder
+                "inversion_decoder_only",  # baseline: use single embedding as input to a decoder
                 "inversion_bow",
                 "inversion_na",
                 "reranking",
@@ -304,7 +304,6 @@ class TrainingArguments(transformers.TrainingArguments):
     )
 
     include_inputs_for_metrics: bool = True
-
 
     def __setattr__(self, name, value):
         super(transformers.TrainingArguments, self).__setattr__(name, value)

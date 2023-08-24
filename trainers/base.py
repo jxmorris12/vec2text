@@ -55,14 +55,14 @@ class BaseTrainer(transformers.Trainer):
             "do_sample": False,
             "no_repeat_ngram_size": 0,
         }
-    
+
     @property
     def pad_token_id(self) -> int:
         try:
             return self.model.encoder_decoder.config.pad_token_id
         except AttributeError:
             return self.tokenizer.pad_token_id
-        
+
     @property
     def bos_token_id(self) -> int:
         try:
@@ -364,10 +364,7 @@ class BaseTrainer(transformers.Trainer):
         num_tokens_metrics = {
             "pred_num_tokens": (
                 (preds_sample != self.pad_token_id)
-                & (
-                    preds_sample
-                    != self.bos_token_id
-                )
+                & (preds_sample != self.bos_token_id)
             )
             .sum(1)
             .float()
@@ -375,10 +372,7 @@ class BaseTrainer(transformers.Trainer):
             .item(),
             "true_num_tokens": (
                 (preds_sample_labels != self.pad_token_id)
-                & (
-                    preds_sample_labels
-                    != self.bos_token_id
-                )
+                & (preds_sample_labels != self.bos_token_id)
             )
             .sum(1)
             .float()
@@ -403,25 +397,19 @@ class BaseTrainer(transformers.Trainer):
             assert preds_sample.shape == preds_sample_labels.shape
 
         with torch.no_grad():
-            preds_sample_retokenized = (
-                self.embedder_tokenizer(
-                    decoded_preds,
-                    padding=True,
-                    truncation=False,
-                    return_tensors='pt')['input_ids'].to(preds_sample.device)
-            )
+            preds_sample_retokenized = self.embedder_tokenizer(
+                decoded_preds, padding=True, truncation=False, return_tensors="pt"
+            )["input_ids"].to(preds_sample.device)
             pad_token_id = self.pad_token_id
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample_retokenized,
-                attention_mask=(preds_sample_retokenized != pad_token_id).to(self.args.device),
+                attention_mask=(preds_sample_retokenized != pad_token_id).to(
+                    self.args.device
+                ),
             )
-            preds_sample_labels_retokenized = (
-                self.embedder_tokenizer(
-                    decoded_labels,
-                    padding=True,
-                    truncation=False,
-                    return_tensors='pt')['input_ids'].to(preds_sample.device)
-            )
+            preds_sample_labels_retokenized = self.embedder_tokenizer(
+                decoded_labels, padding=True, truncation=False, return_tensors="pt"
+            )["input_ids"].to(preds_sample.device)
             labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels_retokenized,
                 attention_mask=(preds_sample_labels_retokenized != pad_token_id).to(

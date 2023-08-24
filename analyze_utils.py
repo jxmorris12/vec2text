@@ -61,7 +61,7 @@ def load_experiment_and_trainer(
         checkpoint
         == "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac/checkpoint-558000"
     ):
-        # Special handling for one case of backwards compatibility: 
+        # Special handling for one case of backwards compatibility:
         #   set dataset (which used to be empty) to nq
         data_args.dataset_name = "nq"
         print("set dataset to nq")
@@ -73,7 +73,7 @@ def load_experiment_and_trainer(
     training_args._n_gpu = 1  # Don't load in DDP
     training_args.local_rank = -1  # Don't load in DDP
     training_args.distributed_state = PartialState()
-    training_args.deepspeed_plugin = None # For backwards compatibility
+    training_args.deepspeed_plugin = None  # For backwards compatibility
     ########################################################################
     if do_eval:
         print("Loading trainer for analysis – setting --do_eval=1")

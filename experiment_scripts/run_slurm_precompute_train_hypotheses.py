@@ -1,5 +1,5 @@
-import math
 import itertools
+import math
 from datetime import datetime
 
 from slurmpy import Slurm
@@ -11,8 +11,9 @@ python precompute_train_hypotheses.py \
 """
 
 
-
 ACTUALLY_RUN_COMMAND = True
+
+
 def run_cmd(cmd: str, job_desc: str):
     now = datetime.now()
     dt_string = now.strftime("%d/%m/%Y %H:%M:%S")
@@ -46,6 +47,7 @@ def run_cmd(cmd: str, job_desc: str):
     ##
     print("\n\n")
 
+
 MSMARCO_LENGTH = 8_753_404
 N_SHARDS = 64
 
@@ -55,8 +57,8 @@ start_idxs = []
 for i in range(N_SHARDS):
     start_idx = i * shard_length
     cmd = BASE_PYTHON_CMD.format(
-        start_idx = i * shard_length,
-        num_samples = shard_length,
+        start_idx=i * shard_length,
+        num_samples=shard_length,
     )
     cmd = cmd.replace("\n", " ")
     job_desc = ".".join(map(str, ["msmarco_precompute", start_idx, shard_length]))

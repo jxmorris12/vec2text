@@ -83,7 +83,7 @@ class DataCollatorForCorrection:
             #         one = torch.tensor([1], device=d, dtype=t)
             #         feature["hypothesis_input_ids"] = torch.cat([feature["hypothesis_input_ids"], one], 0)
             #         feature["hypothesis_attention_mask"] = torch.cat([feature["hypothesis_attention_mask"], one], 0)
-            
+
             hypothesis_features.append(
                 {
                     k.replace("hypothesis_", ""): v

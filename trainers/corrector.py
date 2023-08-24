@@ -19,11 +19,14 @@ from .inversion import InversionTrainer
 
 logger = logging.getLogger(__name__)
 
-def choose_random_tokens(tokens: torch.Tensor, max_len: int, pad_token_id: int) -> torch.Tensor:
-    bos_token_id = pad_token_id # true for t5
+
+def choose_random_tokens(
+    tokens: torch.Tensor, max_len: int, pad_token_id: int
+) -> torch.Tensor:
+    bos_token_id = pad_token_id  # true for t5
     total_n_tokens = (tokens != pad_token_id).int().sum() - 1
     tokens, eos_token = tokens[:total_n_tokens], tokens[total_n_tokens].item()
-    assert eos_token == 1 # correct format for t5
+    assert eos_token == 1  # correct format for t5
     min_n_tokens = 5
     if total_n_tokens < min_n_tokens:
         n_chosen_tokens = total_n_tokens
@@ -31,15 +34,22 @@ def choose_random_tokens(tokens: torch.Tensor, max_len: int, pad_token_id: int) 
     else:
         n_chosen_tokens = random.randint(min_n_tokens, total_n_tokens)
         start_idx = random.randint(0, total_n_tokens - n_chosen_tokens)
-    
-    new_tokens = [bos_token_id] + tokens[start_idx:start_idx+n_chosen_tokens].tolist() + [eos_token]
+
+    new_tokens = (
+        [bos_token_id]
+        + tokens[start_idx : start_idx + n_chosen_tokens].tolist()
+        + [eos_token]
+    )
     new_tokens += [pad_token_id] * (max_len - n_chosen_tokens - 1)
 
     new_tokens = new_tokens[:max_len]
     assert len(new_tokens) == max_len
     return torch.tensor(new_tokens, device=tokens.device, dtype=tokens.dtype)
 
-def random_mixup(tokens1: torch.Tensor, tokens2: torch.Tensor, max_len: int, pad_token_id: int) -> torch.Tensor:
+
+def random_mixup(
+    tokens1: torch.Tensor, tokens2: torch.Tensor, max_len: int, pad_token_id: int
+) -> torch.Tensor:
     tokens1 = choose_random_tokens(tokens1, max_len, pad_token_id)
     tokens2 = choose_random_tokens(tokens2, max_len, pad_token_id)
 
@@ -48,15 +58,23 @@ def random_mixup(tokens1: torch.Tensor, tokens2: torch.Tensor, max_len: int, pad
 
     split_idx = random.randint(1, total_n_tokens_1)
     eos_token = torch.tensor([1], dtype=tokens1.dtype, device=tokens1.device)
-    new_tokens = torch.cat((tokens1[:split_idx], tokens2[1:total_n_tokens_2+1], tokens1[split_idx:], eos_token))
+    new_tokens = torch.cat(
+        (
+            tokens1[:split_idx],
+            tokens2[1 : total_n_tokens_2 + 1],
+            tokens1[split_idx:],
+            eos_token,
+        )
+    )
 
     # pad and truncate once more
     if len(new_tokens) > max_len:
         new_tokens = new_tokens[:max_len]
     elif len(new_tokens) < max_len:
         new_tokens += [pad_token_id] * len(new_tokens)
-    
+
     return new_tokens
+
 
 class CorrectorTrainer(BaseTrainer):
     """Trains an encoder model to generate embeddings that recursively correct of an
@@ -128,7 +146,7 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
         # self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
-        self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
+        self.hypothesis_source = "model"  # ["model", "random_deletion", "random_mixup"]
         # loading 90-hour-trained model from msl128 openai model. hoping to save a bit of time.
         # weights_path = "/home/jxm3/research/retrieval/inversion/saves/8124d6f7da2a100ee180cddce0464295/checkpoint-40000/pytorch_model.bin"
         # weights_path = "/home/jxm3/research/retrieval/inversion/saves/1ee3a579ee3c94cdd7496ca25e2cf8e3/checkpoint-40000/pytorch_model.bin"
@@ -195,8 +213,10 @@ class CorrectorTrainer(BaseTrainer):
             hypothesis_input_ids.cpu(), hypothesis_attention_mask.cpu()
         ):
             num_tokens = attention_mask.sum()
-            ds_inputs["hypothesis_input_ids"].append(input_ids[:num_tokens+1])
-            ds_inputs["hypothesis_attention_mask"].append(attention_mask[:num_tokens+1])
+            ds_inputs["hypothesis_input_ids"].append(input_ids[: num_tokens + 1])
+            ds_inputs["hypothesis_attention_mask"].append(
+                attention_mask[: num_tokens + 1]
+            )
         print("input_ids[0]:", self.tokenizer.decode(ds_inputs["input_ids"][0]))
         print(
             "hypothesis_input_ids[0]:",
@@ -266,7 +286,7 @@ class CorrectorTrainer(BaseTrainer):
         # for k, v in self.eval_dataset.items():
         #     self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
         # print("done precomputing")
-        if self.hypothesis_source == "model": # ["model", "random_deletion"]
+        if self.hypothesis_source == "model":  # ["model", "random_deletion"]
             # self.train_dataset, train_cache_path = self._preprocess_dataset(
             #     cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
             # )
@@ -283,7 +303,7 @@ class CorrectorTrainer(BaseTrainer):
             for k, v in self.eval_dataset.items():
                 self.eval_dataset[k], _ = self._preprocess_dataset(dataset=v)
         else:
-            pass # otherwise: don't precompute anything :-)
+            pass  # otherwise: don't precompute anything :-)
         return train_cache_path
 
     def _inner_training_loop(self, *args, **kwargs):
@@ -293,7 +313,7 @@ class CorrectorTrainer(BaseTrainer):
         self.model.eval()
         self.precompute_hypotheses()
         self.model.train()
-        self.inversion_trainer.model.cpu() # Shouldn't need this anymore, hopefully
+        self.inversion_trainer.model.cpu()  # Shouldn't need this anymore, hopefully
 
         return super()._inner_training_loop(*args, **kwargs)
 
@@ -356,7 +376,7 @@ class CorrectorTrainer(BaseTrainer):
         sequence_beam_width = sequence_beam_width or self.sequence_beam_width
         num_recursive_steps_so_far = 0
 
-        total_best_scores_seen = None # Track best scores for early stopping
+        total_best_scores_seen = None  # Track best scores for early stopping
 
         while num_recursive_steps >= 1:
             gen_text_ids, hypothesis_embedding, best_scores = self._generate_with_beam(
@@ -376,8 +396,14 @@ class CorrectorTrainer(BaseTrainer):
             num_recursive_steps_so_far += 1
             # early stopping
             if best_scores is not None:
-                if (total_best_scores_seen is not None) and torch.isclose(best_scores, total_best_scores_seen, atol=1e-3):
-                    print("scores stopped increasing! stopping early after", num_recursive_steps_so_far, "steps")
+                if (total_best_scores_seen is not None) and torch.isclose(
+                    best_scores, total_best_scores_seen, atol=1e-3
+                ):
+                    print(
+                        "scores stopped increasing! stopping early after",
+                        num_recursive_steps_so_far,
+                        "steps",
+                    )
                     break
                 best_scores = total_best_scores_seen
 
@@ -703,9 +729,9 @@ class CorrectorTrainer(BaseTrainer):
                 true_tokens_logits_processor = EncourageTrueTokensLogitsProcessor(
                     true_input_ids=inputs["input_ids"],
                 )
-                generation_kwargs["logits_processor"] = transformers.LogitsProcessorList(
-                    [true_tokens_logits_processor]
-                )
+                generation_kwargs[
+                    "logits_processor"
+                ] = transformers.LogitsProcessorList([true_tokens_logits_processor])
                 # The following line tells HuggingFace to renormalize
                 # generation_kwargs["renormalize_logits"] = True
 
@@ -723,18 +749,31 @@ class CorrectorTrainer(BaseTrainer):
             max_len = max(map(len, inputs["input_ids"]))
             batch_input_ids1 = inputs["input_ids"]
             batch_input_ids2 = batch_input_ids1[torch.randperm(len(batch_input_ids1))]
-            hypothesis_input_ids = torch.stack([
-                random_mixup(
-                    input_ids1, input_ids2, max_len, self.model.encoder_decoder.config.pad_token_id
-                ) for input_ids1, input_ids2 in zip(batch_input_ids1, batch_input_ids2)
-            ])
+            hypothesis_input_ids = torch.stack(
+                [
+                    random_mixup(
+                        input_ids1,
+                        input_ids2,
+                        max_len,
+                        self.model.encoder_decoder.config.pad_token_id,
+                    )
+                    for input_ids1, input_ids2 in zip(
+                        batch_input_ids1, batch_input_ids2
+                    )
+                ]
+            )
         else:
             max_len = max(map(len, inputs["input_ids"]))
-            hypothesis_input_ids = torch.stack([
-                choose_random_tokens(
-                    input_ids, max_len, self.model.encoder_decoder.config.pad_token_id
-                ) for input_ids in inputs["input_ids"]
-            ])
+            hypothesis_input_ids = torch.stack(
+                [
+                    choose_random_tokens(
+                        input_ids,
+                        max_len,
+                        self.model.encoder_decoder.config.pad_token_id,
+                    )
+                    for input_ids in inputs["input_ids"]
+                ]
+            )
             print(f"hypothesis_source = {self.hypothesis_source}")
         hypothesis_attention_mask = (
             hypothesis_input_ids != self.model.encoder_decoder.config.pad_token_id
