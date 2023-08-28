@@ -11,6 +11,7 @@ MODEL_NAMES = [
     "dpr",
     "gtr_base",
     "gtr_base__random_init",
+    "medicalai/ClinicalBERT",
     "gtr_large",
     "ance_tele",
     "dpr_st",
@@ -137,6 +138,13 @@ def load_embedder_and_tokenizer(name: str):
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             "sentence-transformers/paraphrase-distilroberta-base-v1"
+        )
+    elif name == "medicalai/ClinicalBERT":
+        model = transformers.AutoModel.from_pretrained(
+            "medicalai/ClinicalBERT", **model_kwargs
+        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            "medicalai/ClinicalBERT"
         )
     else:
         raise ValueError(f"unknown embedder {name}")

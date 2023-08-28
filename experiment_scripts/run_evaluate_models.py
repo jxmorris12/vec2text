@@ -4,13 +4,14 @@ from slurmpy import Slurm
 
 inv_aliases = [
     "dpr_nq__msl32_beta",
+    "openai_msmarco__msl32__100epoch",
     "openai_msmarco__msl128__100epoch",
 ]
 
 corr_aliases = [
     "gtr_nq__msl32_beta__correct",
-    "openai_msmarco__msl128__100epoch__correct",
-    "openai_msmarco__msl128__100epoch__correct_cheat",
+    "openai_msmarco__msl32__100epoch__correct",
+    "openai_msmarco__msl128__200epoch__correct",
 ]
 
 base_command = """
@@ -38,12 +39,12 @@ def run_command(cmd: str, job_desc: str):
         slurm = Slurm(
             job_name,
             slurm_kwargs={
-                "partition": "rush,gpu",
+                "partition": "rush,gpu", # ,gpu",
                 "gres": "gpu:a6000:1",
                 "ntasks": 1,
                 "cpus-per-task": 4,
                 "mem": "48G",
-                "time": "48:00:00",
+                "time": "12:00:00",
             },
             slurm_flags=[
                 "requeue",
@@ -79,7 +80,7 @@ def main():
             beam_width=1,
         )
         run_command(command, "evaluate_corrector")
-        for num_steps in [10, 50]:
+        for num_steps in [20, 50]:
             for return_best_hypothesis in [0, 1]:
                 # 10 steps
                 command = base_command.format(

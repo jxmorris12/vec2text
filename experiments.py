@@ -92,17 +92,17 @@ class Experiment(abc.ABC):
 
         # if self.training_args.should_log:
         # The default of training_args.log_level is passive, so we set log level at info here to have that default.
-        # transformers.utils.logging.set_verbosity_info()
+        transformers.utils.logging.set_verbosity_error()
 
         # For debugging
-        transformers.logging.set_verbosity_debug()
+        # transformers.logging.set_verbosity_debug()
 
-        log_level = self.training_args.get_process_log_level()
-        logger.setLevel(log_level)
-        datasets.utils.logging.set_verbosity(log_level)
-        transformers.utils.logging.set_verbosity(log_level)
-        transformers.utils.logging.enable_default_handler()
-        transformers.utils.logging.enable_explicit_format()
+        # log_level = self.training_args.get_process_log_level()
+        # logger.setLevel(log_level)
+        # datasets.utils.logging.set_verbosity(log_level)
+        # transformers.utils.logging.set_verbosity(log_level)
+        # transformers.utils.logging.enable_default_handler()
+        # transformers.utils.logging.enable_explicit_format()
 
     def run(self):
         if self.training_args.do_eval:
@@ -689,14 +689,6 @@ class CorrectorExperiment(Experiment):
                 tokenizer=inversion_trainer.model.tokenizer
             ),
         )
-
-    def load_model(self) -> torch.nn.Module:
-        raise RuntimeError(
-            "Deprecated! Did you mean to launch the CorrectorEncoder experiment instead?"
-        )
-
-
-class CorrectorEncoderExperiment(CorrectorExperiment):
     def load_model(self) -> torch.nn.Module:
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
         if self.model_args.embedder_model_api:
@@ -712,11 +704,13 @@ class CorrectorEncoderExperiment(CorrectorExperiment):
         )
 
 
+
+
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "inversion_decoder_only": InversionExperimentDecoderOnly,
     "corrector": CorrectorExperiment,
-    "corrector_encoder": CorrectorEncoderExperiment,
+    "corrector_encoder": CorrectorExperiment, # backwards-compatible; does same thing as just 'corrector'
     #
     "inversion_bow": InversionExperimentBagOfWords,
     "inversion_na": InversionExperimentNonAutoregressive,

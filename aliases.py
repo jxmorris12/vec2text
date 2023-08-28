@@ -22,6 +22,9 @@ CHECKPOINT_FOLDERS_DICT = {
     "gtr_nq__msl32_beta__correct": "/home/jxm3/research/retrieval/inversion/saves/47d9c149a8e827d0609abbeefdfd89ac",
     # https://wandb.ai/jack-morris/emb-correct-1/runs/aa389ad434c01b692df796c2e2eb599c?workspace=user-jxmorris12 [loss .82]
     "gtr_nq__msl32_beta__correct__nofeedback": "/home/jxm3/research/retrieval/inversion/saves/f031f2b69c815cca265dd791473de60a",
+    # https://wandb.ai/jack-morris/emb-inv-3/runs/35f5983783e5d6c7613aa14b84af1ff6/overview?workspace=
+    "clinicalbert_nq__msl32": "/home/jxm3/research/retrieval/inversion/saves/01c63decd9009f5961504b52a96cd324",
+
     ####################################################################
     ############################# MSMARCO ##############################
     ####################################################################
@@ -38,13 +41,10 @@ CHECKPOINT_FOLDERS_DICT = {
     # openai corrector model:
     # https://wandb.ai/jack-morris/emb-correct-1/runs/b3b83aede945ba412ac6e9eebaf5f0dd/overview?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/d6ec9d5838a4ad3daeba636e5378a8a0",
-    # openai corrector model [w/ "cheated" / interpolated hypotheses]:
-    "openai_msmarco__msl128__100epoch__correct_cheat": "/home/jxm3/research/retrieval/inversion/saves/45e3f871f91d0fbf54bacb5593434409",
-    #  openai hypothesis model random deletion [training - failed]
-    "openai_msmarco__msl128__correct__random_deletion": "/home/jxm3/research/retrieval/inversion/saves/03a702c091debd146cdc78b6ebeedf94",
-    #  openai hypothesis model random mixup [training]
-    #       https://wandb.ai/jack-morris/emb-correct-1/runs/c5e26bf0a5460b65b602aeb02ef5cbe0/overview?workspace=user-jxmorris12
-    "openai_msmarco__Msl128__correct__random_mixup": "/home/jxm3/research/retrieval/inversion/saves/fe10bff5ce754a8a876e1233508a1580",
+
+    # openai corrector model trained for a lot longer:
+    # https://wandb.ai/jack-morris/emb-correct-1/runs/5c1f59956a46e62e8f26f778e167348a/overview?workspace=user-jxmorris12
+    "openai_msmarco__msl128__200epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/c7be16d4af952eea8046a02a9d2a2113",
 }
 
 

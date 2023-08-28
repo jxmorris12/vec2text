@@ -154,13 +154,6 @@ class CorrectorTrainer(BaseTrainer):
         # self.model.load_state_dict(state_dict)
         # print("loaded model weights =>", weights_path)
 
-    # def _load_optimizer_and_scheduler(self, checkpoint):
-    #     # TEMP:
-    #     optimizer_path = "/home/jxm3/research/retrieval/inversion/saves/fb22c8720407de76ee139df80a83ff65/checkpoint-120000/optimizer.pt"
-    #     optimizer_state = torch.load(optimizer_path, map_location="cpu")
-    #     self.optimizer.load_state_dict(optimizer_state)
-    #     print("loaded  optimizer =>", optimizer_path)
-
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
     ) -> transformers.trainer_utils.EvalLoopOutput:
@@ -237,10 +230,13 @@ class CorrectorTrainer(BaseTrainer):
         # Note that the dataset fingerprint changes with calls to select()
         # so we won't overwrite the big dataset files when we use tiny subsets
         # during testing.
-        # root_dir = os.path.normpath(
-        #     os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
-        # )
-        model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
+        root_dir = os.path.normpath(
+            os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
+        )
+        model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
+        # print("model_dir:", model_dir)
+        model_dir = "/home/jxm3/research/retrieval/inversion/saves/01c63decd9009f5961504b52a96cd324/df9d8d8dfa2ed7ebc7c0aeac61835b82"
+        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
         # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156/"
         assert os.path.exists(model_dir)
         if cheat:
@@ -251,8 +247,8 @@ class CorrectorTrainer(BaseTrainer):
             logging.info("Computing hypotheses to save to path %s", cache_path)
             print(f"Saving hypotheses to path {cache_path}")
 
-            if torch.cuda.device_count() > 1:
-                raise RuntimeError("Hypothesis precomputing not implemented in DDP.")
+            # if torch.cuda.device_count() > 1:
+            #     raise RuntimeError("Hypothesis precomputing not implemented in DDP.")
 
             dataset = dataset.map(
                 functools.partial(
@@ -287,17 +283,17 @@ class CorrectorTrainer(BaseTrainer):
         #     self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
         # print("done precomputing")
         if self.hypothesis_source == "model":  # ["model", "random_deletion"]
-            # self.train_dataset, train_cache_path = self._preprocess_dataset(
-            #     cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
-            # )
+            self.train_dataset, train_cache_path = self._preprocess_dataset(
+                cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
+            )
             # ###########################################################################
             # # Temporary hack: load explicit dataset explicitly from disk
             # # This is MSMARCO, sequence length 128, precomputed with OpenAI embeddings
             # # + hypotheses
-            print("Loading full train dataset...")
-            train_cache_path = "/home/jxm3/research/retrieval/inversion/msmarco_msl128_hypotheses/msmarco_full.cache"
-            self.train_dataset = datasets.Dataset.load_from_disk(train_cache_path)
-            print("Loaded!")
+            # print("Loading full train dataset [MSMARCO // 128 // OpenAI]...")
+            # train_cache_path = "/home/jxm3/research/retrieval/inversion/msmarco_msl128_hypotheses/msmarco_full.cache"
+            # self.train_dataset = datasets.Dataset.load_from_disk(train_cache_path)
+            # print("Loaded!")
             # ###########################################################################
 
             for k, v in self.eval_dataset.items():
@@ -313,7 +309,8 @@ class CorrectorTrainer(BaseTrainer):
         self.model.eval()
         self.precompute_hypotheses()
         self.model.train()
-        self.inversion_trainer.model.cpu()  # Shouldn't need this anymore, hopefully
+        self.inversion_trainer.model.to(next(self.model.parameters()).device)
+        # self.inversion_trainer.model.cpu()  # Shouldn't need this anymore, hopefully
 
         return super()._inner_training_loop(*args, **kwargs)
 
@@ -651,9 +648,9 @@ class CorrectorTrainer(BaseTrainer):
 
             # print scores for any type of beam search
             best_scores = scores.max(1).values.cpu()
-            print(
-                f"step {num_recursive_steps_so_far} // scores = {best_scores.tolist()}"
-            )
+            # print(
+            #     f"step {num_recursive_steps_so_far} // scores = {best_scores.tolist()}"
+            # )
             lengths = (
                 gen_text_ids != self.model.encoder_decoder.config.pad_token_id
             ).sum(1)

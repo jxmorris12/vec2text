@@ -84,7 +84,14 @@ def load_experiment_and_trainer(
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
     trainer.model._keys_to_ignore_on_save = []
-    trainer._load_from_checkpoint(checkpoint)
+    try:
+        trainer._load_from_checkpoint(checkpoint)
+    except RuntimeError:
+        # backwards compatibility from adding/removing layernorm
+        trainer.model.use_ln = False
+        trainer.model.layernorm = None
+        # try again without trying to load layernorm
+        trainer._load_from_checkpoint(checkpoint)
     if sanity_decode:
         trainer.sanity_decode()
     return experiment, trainer

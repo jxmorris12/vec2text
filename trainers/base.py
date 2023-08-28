@@ -10,6 +10,7 @@ from typing import Dict, List, Tuple, Union
 import evaluate
 import nltk
 import numpy as np
+import scipy.stats
 import torch
 import tqdm
 import transformers
@@ -23,6 +24,9 @@ def preprocess_logits_for_metrics(logits, labels):
         # like past_key_values, but logits always come first
         logits = logits[0]
     return logits.argmax(dim=-1)
+
+def sem(L: List[float]) -> float:
+    return scipy.stats.sem(np.array(L))
 
 
 def mean(L: Union[List[int], List[float]]) -> float:
@@ -89,7 +93,7 @@ class BaseTrainer(transformers.Trainer):
             generation_kwargs=gen_kwargs,
         )
         print("\tDecoded output shape -> ", regenerated.shape)
-        output_string = self.embedder_tokenizer.decode(
+        output_string = self.tokenizer.decode(
             regenerated.flatten(), skip_special_tokens=True
         )
         print("\tDecoded output ->", output_string)
@@ -249,6 +253,7 @@ class BaseTrainer(transformers.Trainer):
         num_overlapping_trigrams = []
         num_true_words = []
         num_pred_words = []
+        f1s = []
         for i in range(num_preds):
             true_words = nltk.tokenize.word_tokenize(references_str[i])
             pred_words = nltk.tokenize.word_tokenize(predictions_str[i])
@@ -268,10 +273,10 @@ class BaseTrainer(transformers.Trainer):
                 f1 = (2 * precision * recall) / (precision + recall + 1e-20)
             except ZeroDivisionError:
                 f1 = 0.0
+            f1s.append(f1)
 
             precision_sum += precision
             recall_sum += recall
-            f1_sum += f1
 
             ############################################################
             num_overlapping_words.append(
@@ -287,7 +292,8 @@ class BaseTrainer(transformers.Trainer):
         set_token_metrics = {
             "token_set_precision": (precision_sum / num_preds),
             "token_set_recall": (recall_sum / num_preds),
-            "token_set_f1": (f1_sum / num_preds),
+            "token_set_f1": mean(f1s),
+            "token_set_f1_sem": sem(f1s),
             "n_ngrams_match_1": mean(num_overlapping_words),
             "n_ngrams_match_2": mean(num_overlapping_bigrams),
             "n_ngrams_match_3": mean(num_overlapping_trigrams),
@@ -295,23 +301,26 @@ class BaseTrainer(transformers.Trainer):
             "num_pred_words": mean(num_pred_words),
         }
         ############################################################
-        bleu_result = self.metric_bleu.compute(
-            predictions=predictions_str, references=references_str
-        )
+        bleu_results = np.array([
+            self.metric_bleu.compute(predictions=[p], references=[r])["score"] for p, r in zip(predictions_str, references_str)
+        ])
         rouge_result = self.metric_rouge.compute(
             predictions=predictions_str, references=references_str
         )
+        self.bleu_results = bleu_results # store bleu results in case we want to use them later for t-tests
         # bertscore_result = self.metric_bertscore.compute(
         #     predictions=predictions_str, references=references_str, lang="en"
         # )
-        exact_matches = (np.array(predictions_str) == np.array(references_str)).mean()
+        exact_matches = (np.array(predictions_str) == np.array(references_str))
         gen_metrics = {
-            "bleu_score": bleu_result["score"],
+            "bleu_score": bleu_results.mean(),
+            "bleu_score_sem": sem(bleu_results),
             "rouge_score": rouge_result[
                 "rouge1"
             ],  # ['rouge1', 'rouge2', 'rougeL', 'rougeLsum']
             # "bert_score": statistics.fmean(bertscore_result["f1"]),
-            "exact_match": exact_matches,
+            "exact_match": mean(exact_matches),
+            "exact_match_sem": sem(exact_matches),
         }
         return {**set_token_metrics, **gen_metrics}
 
@@ -416,10 +425,11 @@ class BaseTrainer(transformers.Trainer):
                     self.args.device
                 ),
             )
-            emb_cos_sim = (
-                torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb).mean().item()
-            )
-            sim_result = {"emb_cos_sim": emb_cos_sim}
+            emb_cos_sims = torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb)
+            sim_result = {
+                "emb_cos_sim": emb_cos_sims.mean().item(),
+                "emb_cos_sim_sem": sem(emb_cos_sims.cpu().numpy()),
+            }
 
         # Store stuff for access later.
         self.preds_emb = preds_emb.cpu()
