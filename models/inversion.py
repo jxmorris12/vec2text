@@ -268,6 +268,7 @@ class InversionModel(nn.Module):
             embeddings += self.noise_level * torch.randn(
                 embeddings.shape, device=embeddings.device
             )
+
         return embeddings
 
     def embed_and_project(

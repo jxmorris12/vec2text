@@ -406,6 +406,7 @@ class BaseTrainer(transformers.Trainer):
             assert preds_sample.shape == preds_sample_labels.shape
 
         with torch.no_grad():
+            # self.inversion_trainer.model.noise_level = 0.0
             preds_sample_retokenized = self.embedder_tokenizer(
                 decoded_preds, padding=True, truncation=False, return_tensors="pt"
             )["input_ids"].to(preds_sample.device)
