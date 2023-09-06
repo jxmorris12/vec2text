@@ -7,6 +7,7 @@ import torch.nn as nn
 import transformers
 from sentence_transformers import SentenceTransformer
 
+from vec2text.models.config import InversionConfig
 from vec2text.utils import embed_all_tokens
 
 from . import InversionModel
@@ -42,6 +43,7 @@ class InversionModelDecoderOnly(InversionModel):
 
     def __init__(
         self,
+        config: InversionConfig,
         embedder: nn.Module,
         embedder_tokenizer: transformers.PreTrainedTokenizer,
         decoder: transformers.AutoModelForSeq2SeqLM,
@@ -56,7 +58,7 @@ class InversionModelDecoderOnly(InversionModel):
         bottleneck_dim: int = 768,  # 128,
         token_decode_alpha: Optional[float] = None,
     ):
-        super(InversionModel, self).__init__()
+        super(InversionModel, self).__init__(config=config)
         self.embedder = embedder
         self.decoder = decoder  # .to_bettertransformer()
 

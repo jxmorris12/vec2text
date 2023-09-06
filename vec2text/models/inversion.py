@@ -8,6 +8,7 @@ import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
 
+from vec2text.models.config import InversionConfig
 from vec2text.models.model_utils import (
     EMBEDDING_TRANSFORM_STRATEGIES,
     FREEZE_STRATEGIES,
@@ -24,7 +25,7 @@ logger = logging.getLogger(__name__)
 # TODO: can we make this class a HF pretrained model so it works nicely with
 # .push_to_hub(), etc.?
 # TODO: Need config to subclass transformers.PreTrainedModel.
-class InversionModel(nn.Module):
+class InversionModel(transformers.PreTrainedModel):
     """A class of model that conditions on embeddings from a pre-trained sentence embedding model
     to decode text autoregressively.
     """
@@ -48,6 +49,7 @@ class InversionModel(nn.Module):
 
     def __init__(
         self,
+        config: InversionConfig,
         embedder: nn.Module,
         embedder_tokenizer: transformers.PreTrainedTokenizer,
         encoder_decoder: transformers.AutoModelForSeq2SeqLM,
@@ -67,7 +69,8 @@ class InversionModel(nn.Module):
         token_decode_alpha: Optional[float] = None,
         embeddings_from_layer_n: Optional[int] = None,
     ):
-        super().__init__()
+        print("config:", type(config))
+        super().__init__(config=config)
         self.embedder = embedder
         self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         if encoder_decoder_lora:

@@ -1,6 +1,11 @@
 import argparse
 
-from vec2text.run_args import load_model_from_alias
+from huggingface_hub import login as huggingface_login
+
+from vec2text.aliases import load_model_from_alias
+
+huggingface_login()
+
 
 def main():
     parser = argparse.ArgumentParser(description="Alias Converter")
@@ -12,7 +17,6 @@ def main():
 
     model = load_model_from_alias(args.alias)
     model.push_to_hub(args.new_alias)
-    
 
 
 if __name__ == "__main__":

@@ -5,6 +5,8 @@ import torch
 import torch.nn as nn
 import transformers
 
+from vec2text.models.config import InversionConfig
+
 
 class CorrectorEncoderModel(torch.nn.Module):
     """Embeds text and concats with a provided embedding.
@@ -16,13 +18,14 @@ class CorrectorEncoderModel(torch.nn.Module):
 
     def __init__(
         self,
+        config: InversionConfig,
         encoder_decoder: transformers.PreTrainedModel,
         embedder_dim: int = 768,
         num_repeat_tokens: int = 16,
         bottleneck_dim: int = 768,
         ignore_hypothesis_embedding: bool = False,
     ):
-        super().__init__()
+        super().__init__(config=config)
         self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens

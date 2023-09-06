@@ -7,5 +7,5 @@ setup(
     author="Jack Morris",
     author_email="jxm3@cornell.edu",
     packages=find_packages(),
-    install_requires=open("requirements.txt").readlines(),
+    install_requires=[],  # open("requirements.txt").readlines(),
 )

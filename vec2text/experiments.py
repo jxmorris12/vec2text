@@ -24,6 +24,7 @@ from vec2text.models import (
     load_embedder_and_tokenizer,
     load_encoder_decoder,
 )
+from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 from vec2text.tokenize_data import embed_dataset_batch, tokenize_function
 from vec2text.utils import torch_main_worker_finish_first
@@ -81,6 +82,14 @@ class Experiment(abc.ABC):
         # Set up output_dir and wandb.
         self._setup_logging()
         self._consider_init_wandb()
+
+    @property
+    def config(self) -> InversionConfig:
+        return InversionConfig(
+            **vars(self.data_args),
+            **vars(self.model_args),
+            **vars(self.training_args),
+        )
 
     def _setup_logging(self) -> None:
         logging.basicConfig(
@@ -514,6 +523,7 @@ class InversionExperiment(Experiment):
             name=model_args.embedder_model_name
         )
         return InversionModel(
+            config=self.config,
             embedder=embedder,
             embedder_tokenizer=embedder_tokenizer,
             embedder_model_api=model_args.embedder_model_api,
@@ -575,6 +585,7 @@ class InversionExperimentDecoderOnly(InversionExperiment):
             )
 
         return InversionModelDecoderOnly(
+            config=self.config,
             embedder=embedder,
             embedder_tokenizer=embedder_tokenizer,
             embedder_model_api=model_args.embedder_model_api,
@@ -601,6 +612,7 @@ class InversionExperimentNonAutoregressive(Experiment):
             model_args.model_name_or_path,
         ).encoder
         return InversionModelNonAutoregressive(
+            config=self.config,
             embedder=embedder,
             encoder=encoder,
             embedder_tokenizer=embedder_tokenizer,
@@ -642,6 +654,7 @@ class InversionExperimentBagOfWords(Experiment):
             model_args.model_name_or_path,
         ).encoder
         return InversionModelBagOfWords(
+            config=self.config,
             embedder=embedder,
             encoder=encoder,
             embedder_tokenizer=embedder_tokenizer,
@@ -697,6 +710,7 @@ class CorrectorExperiment(Experiment):
             embedder_dim = 768
 
         return CorrectorEncoderModel(
+            config=self.config,
             encoder_decoder=encoder_decoder,
             embedder_dim=embedder_dim,
             bottleneck_dim=embedder_dim,
