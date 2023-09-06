@@ -12,8 +12,7 @@ import datasets
 import torch
 import transformers
 
-from vec2text import aliases
-from vec2text import trainers
+from vec2text import aliases, trainers
 from vec2text.collator import DataCollatorForCorrection
 from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
 from vec2text.models import (
@@ -440,12 +439,12 @@ class Experiment(abc.ABC):
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
     ):
-        dataset_kwargs = {
+        dataset_kwargs: Dict[str, str] = {
             "model_name": self.model_args.model_name_or_path,
             "embedder_name": self.model_args.embedder_model_name,
-            "max_seq_length": self.model_args.max_seq_length,
-            "use_less_data": self.data_args.use_less_data,
-            "embedder_model_api": self.model_args.embedder_model_api,
+            "max_seq_length": str(self.model_args.max_seq_length),
+            "use_less_data": str(self.data_args.use_less_data),
+            "embedder_model_api": str(self.model_args.embedder_model_api),
         }
 
         # os.environ["TOKENIZERS_PARALLELISM"] = "True"
@@ -689,6 +688,7 @@ class CorrectorExperiment(Experiment):
                 tokenizer=inversion_trainer.model.tokenizer
             ),
         )
+
     def load_model(self) -> torch.nn.Module:
         encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
         if self.model_args.embedder_model_api:
@@ -704,13 +704,11 @@ class CorrectorExperiment(Experiment):
         )
 
 
-
-
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "inversion_decoder_only": InversionExperimentDecoderOnly,
     "corrector": CorrectorExperiment,
-    "corrector_encoder": CorrectorExperiment, # backwards-compatible; does same thing as just 'corrector'
+    "corrector_encoder": CorrectorExperiment,  # backwards-compatible; does same thing as just 'corrector'
     #
     "inversion_bow": InversionExperimentBagOfWords,
     "inversion_na": InversionExperimentNonAutoregressive,

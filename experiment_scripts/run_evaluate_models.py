@@ -39,7 +39,7 @@ def run_command(cmd: str, job_desc: str):
         slurm = Slurm(
             job_name,
             slurm_kwargs={
-                "partition": "rush,gpu", # ,gpu",
+                "partition": "rush,gpu",  # ,gpu",
                 "gres": "gpu:a6000:1",
                 "ntasks": 1,
                 "cpus-per-task": 4,

@@ -143,9 +143,7 @@ def load_embedder_and_tokenizer(name: str):
         model = transformers.AutoModel.from_pretrained(
             "medicalai/ClinicalBERT", **model_kwargs
         )
-        tokenizer = transformers.AutoTokenizer.from_pretrained(
-            "medicalai/ClinicalBERT"
-        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
     else:
         raise ValueError(f"unknown embedder {name}")
 

@@ -1,3 +1,7 @@
+"""This script precomputes hypotheses for the MSMARCO dataset in parallel. This allowed
+us to embed all 8M documents in just an hour or two by making many calls to OpenAI api
+at the same time.
+"""
 import itertools
 import math
 from datetime import datetime
@@ -52,7 +56,6 @@ MSMARCO_LENGTH = 8_753_404
 N_SHARDS = 64
 
 shard_length = math.ceil(MSMARCO_LENGTH / N_SHARDS)
-start_idxs = []
 
 for i in range(N_SHARDS):
     start_idx = i * shard_length

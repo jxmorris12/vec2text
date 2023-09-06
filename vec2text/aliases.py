@@ -25,7 +25,6 @@ CHECKPOINT_FOLDERS_DICT = {
     "gtr_nq__msl32_beta__correct__nofeedback": "/home/jxm3/research/retrieval/inversion/saves/f031f2b69c815cca265dd791473de60a",
     # https://wandb.ai/jack-morris/emb-inv-3/runs/35f5983783e5d6c7613aa14b84af1ff6/overview?workspace=
     "clinicalbert_nq__msl32": "/home/jxm3/research/retrieval/inversion/saves/01c63decd9009f5961504b52a96cd324",
-
     ####################################################################
     ############################# MSMARCO ##############################
     ####################################################################
@@ -42,7 +41,6 @@ CHECKPOINT_FOLDERS_DICT = {
     # openai corrector model:
     # https://wandb.ai/jack-morris/emb-correct-1/runs/b3b83aede945ba412ac6e9eebaf5f0dd/overview?workspace=user-jxmorris12
     "openai_msmarco__msl128__100epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/d6ec9d5838a4ad3daeba636e5378a8a0",
-
     # openai corrector model trained for a lot longer:
     # https://wandb.ai/jack-morris/emb-correct-1/runs/5c1f59956a46e62e8f26f778e167348a/overview?workspace=user-jxmorris12
     "openai_msmarco__msl128__200epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/c7be16d4af952eea8046a02a9d2a2113",

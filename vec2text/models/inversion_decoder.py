@@ -4,19 +4,13 @@ from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
 
-from vec2text.utils import embed_all_tokens, embed_api
+from vec2text.utils import embed_all_tokens
 
 from . import InversionModel
-from .model_utils import (
-    EMBEDDING_TRANSFORM_STRATEGIES,
-    device,
-    disable_dropout,
-    mean_pool,
-)
+from .model_utils import EMBEDDING_TRANSFORM_STRATEGIES, device
 
 logger = logging.getLogger(__name__)
 
@@ -27,6 +21,9 @@ logger = logging.getLogger(__name__)
 class InversionModelDecoderOnly(InversionModel):
     """A class of model that conditions on embeddings from a pre-trained sentence embedding model
     to decode text autoregressively.
+
+    This class is how we train a baseline for our paper that's just GPT-2 conditioned on a single token
+    embedding.
     """
 
     embedder: nn.Module
@@ -183,12 +180,12 @@ class InversionModelDecoderOnly(InversionModel):
                 **generation_kwargs,
             )
 
-    def forward(
+    def forward(  # type: ignore
         self,
         embedder_input_ids: torch.Tensor,
         embedder_attention_mask: torch.Tensor,
-        input_ids: Optional[torch.Tensor] = None,
-        attention_mask: Optional[torch.Tensor] = None,
+        input_ids: torch.Tensor = None,
+        attention_mask: torch.Tensor = None,
         labels: Optional[torch.Tensor] = None,
         frozen_embeddings: Optional[torch.Tensor] = None,
         **kwargs,
@@ -197,8 +194,8 @@ class InversionModelDecoderOnly(InversionModel):
         # automatically happen since the prepended embedding
         # takes up a single slot on the left.
         if labels is not None:
-            input_ids = input_ids[:, :-1]
-            attention_mask = attention_mask[:, :-1]
+            input_ids = input_ids[:, :-1]  # type: ignore
+            attention_mask = attention_mask[:, :-1]  # type: ignore
 
         embed_inputs_embeds, embed_attention_mask = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,

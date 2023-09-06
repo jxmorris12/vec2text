@@ -6,7 +6,11 @@ import torch
 import transformers
 from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
 
-from vec2text.models import EMBEDDING_TRANSFORM_STRATEGIES, FREEZE_STRATEGIES, MODEL_NAMES
+from vec2text.models import (
+    EMBEDDING_TRANSFORM_STRATEGIES,
+    FREEZE_STRATEGIES,
+    MODEL_NAMES,
+)
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
@@ -192,8 +196,8 @@ class DataArguments:
             )
         },
     )
-    use_less_data: Optional[int] = field(
-        default=None,
+    use_less_data: int = field(
+        default=-1,
         metadata={
             "help": {"Use a small amount of the training/eval data (for testing)"}
         },

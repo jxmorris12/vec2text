@@ -162,7 +162,7 @@ class CorrectorTrainer(BaseTrainer):
         Override to compute ppl from eval loss.
         """
         metric_key_prefix = kwargs["metric_key_prefix"]
-        output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
+        output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)  # type: ignore
         if metric_key_prefix in {"eval_msmarco", "eval_nq"}:
             n_rounds = 5
             self.num_gen_recursive_steps = n_rounds
@@ -412,7 +412,7 @@ class CorrectorTrainer(BaseTrainer):
         num_recursive_steps: int,
         num_recursive_steps_so_far: int,
         sequence_beam_width: int,
-    ) -> Tuple[torch.Tensor, torch.Tensor]:
+    ) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """Generates text using self-correction.
 
         Args:
@@ -647,13 +647,6 @@ class CorrectorTrainer(BaseTrainer):
 
             # print scores for any type of beam search
             best_scores = scores.max(1).values.cpu()
-            # print(
-            #     f"step {num_recursive_steps_so_far} // scores = {best_scores.tolist()}"
-            # )
-            lengths = (
-                gen_text_ids != self.model.encoder_decoder.config.pad_token_id
-            ).sum(1)
-            # print(f"lengths: {lengths.tolist()}")
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]

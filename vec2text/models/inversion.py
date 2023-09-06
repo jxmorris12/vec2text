@@ -8,8 +8,6 @@ import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
 
-from vec2text.utils import embed_all_tokens, embed_api
-
 from vec2text.models.model_utils import (
     EMBEDDING_TRANSFORM_STRATEGIES,
     FREEZE_STRATEGIES,
@@ -18,6 +16,7 @@ from vec2text.models.model_utils import (
     freeze_params,
     mean_pool,
 )
+from vec2text.utils import embed_all_tokens, embed_api
 
 logger = logging.getLogger(__name__)
 

@@ -4,7 +4,12 @@ import pytest
 import transformers
 
 from vec2text.experiments import experiment_from_args
-from vec2text.run_args import DATASET_NAMES, DataArguments, ModelArguments, TrainingArguments
+from vec2text.run_args import (
+    DATASET_NAMES,
+    DataArguments,
+    ModelArguments,
+    TrainingArguments,
+)
 from vec2text.trainers import InversionTrainer
 
 DEFAULT_ARGS_STR = "--per_device_train_batch_size 32 --max_seq_length 128 --model_name_or_path t5-small --embedder_model_name gtr_base --num_repeat_tokens 32 --exp_name test-exp-123"

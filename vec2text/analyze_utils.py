@@ -31,8 +31,10 @@ def load_experiment_and_trainer(
     # import previous aliases so that .bin that were saved prior to the
     # existence of the vec2text module will still work.
     import sys
+
     import vec2text.run_args as run_args
-    sys.modules['run_args'] = run_args
+
+    sys.modules["run_args"] = run_args
 
     print("run_args:", run_args)
 
@@ -103,6 +105,13 @@ def load_experiment_and_trainer(
     if sanity_decode:
         trainer.sanity_decode()
     return experiment, trainer
+
+
+def load_trainer(
+    *args, **kwargs
+):  # (can't import due to circluar import) -> trainers.Inversion
+    experiment, trainer = load_experiment_and_trainer(*args, **kwargs)
+    return trainer
 
 
 def load_results_from_folder(name: str) -> pd.DataFrame:

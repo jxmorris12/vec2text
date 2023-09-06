@@ -79,7 +79,7 @@ def main(args: argparse.ArgumentParser):
     if args.dataset:
         # load dataset
         beir = load_beir_datasets()
-        if hasattr(trainer, 'inversion_trainer'):
+        if hasattr(trainer, "inversion_trainer"):
             model = trainer.inversion_trainer.model
         else:
             model = trainer.model

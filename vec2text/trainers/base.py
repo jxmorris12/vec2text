@@ -25,6 +25,7 @@ def preprocess_logits_for_metrics(logits, labels):
         logits = logits[0]
     return logits.argmax(dim=-1)
 
+
 def sem(L: List[float]) -> float:
     return scipy.stats.sem(np.array(L))
 
@@ -71,7 +72,7 @@ class BaseTrainer(transformers.Trainer):
     def bos_token_id(self) -> int:
         try:
             return self.model.encoder_decoder.decoder_start_token_id
-        except:
+        except AttributeError:
             return self.tokenizer.bos_token_id
 
     def sanity_decode(self):
@@ -247,7 +248,6 @@ class BaseTrainer(transformers.Trainer):
         # Compute token, precision, recall, and ngram-level metrics.
         precision_sum = 0.0
         recall_sum = 0.0
-        f1_sum = 0.0
         num_overlapping_words = []
         num_overlapping_bigrams = []
         num_overlapping_trigrams = []
@@ -301,17 +301,20 @@ class BaseTrainer(transformers.Trainer):
             "num_pred_words": mean(num_pred_words),
         }
         ############################################################
-        bleu_results = np.array([
-            self.metric_bleu.compute(predictions=[p], references=[r])["score"] for p, r in zip(predictions_str, references_str)
-        ])
+        bleu_results = np.array(
+            [
+                self.metric_bleu.compute(predictions=[p], references=[r])["score"]
+                for p, r in zip(predictions_str, references_str)
+            ]
+        )
         rouge_result = self.metric_rouge.compute(
             predictions=predictions_str, references=references_str
         )
-        self.bleu_results = bleu_results # store bleu results in case we want to use them later for t-tests
+        self.bleu_results = bleu_results  # store bleu results in case we want to use them later for t-tests
         # bertscore_result = self.metric_bertscore.compute(
         #     predictions=predictions_str, references=references_str, lang="en"
         # )
-        exact_matches = (np.array(predictions_str) == np.array(references_str))
+        exact_matches = np.array(predictions_str) == np.array(references_str)
         gen_metrics = {
             "bleu_score": bleu_results.mean(),
             "bleu_score_sem": sem(bleu_results),

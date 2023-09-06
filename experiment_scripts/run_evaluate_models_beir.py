@@ -75,7 +75,10 @@ def run_command(cmd: str, job_desc: str):
 
 def main():
     # for model_alias in ["gtr_msmarco__msl128__100epoch", "openai_msmarco__msl128__200epoch__correct"]:
-    for model_alias in ["openai_msmarco__msl128__100epoch", "openai_msmarco__msl128__200epoch__correct"]:
+    for model_alias in [
+        "openai_msmarco__msl128__100epoch",
+        "openai_msmarco__msl128__200epoch__correct",
+    ]:
         for dataset in all_beir_datasets:
             command = base_command.format(
                 alias=model_alias,
