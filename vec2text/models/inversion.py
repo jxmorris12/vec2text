@@ -8,9 +8,9 @@ import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
 
-from utils import embed_all_tokens, embed_api
+from vec2text.utils import embed_all_tokens, embed_api
 
-from .model_utils import (
+from vec2text.models.model_utils import (
     EMBEDDING_TRANSFORM_STRATEGIES,
     FREEZE_STRATEGIES,
     device,

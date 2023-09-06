@@ -2,7 +2,7 @@ from typing import Dict
 
 import torch
 
-from trainers.base import BaseTrainer
+from vec2text.trainers.base import BaseTrainer
 
 
 class InversionTrainerBagOfWords(BaseTrainer):

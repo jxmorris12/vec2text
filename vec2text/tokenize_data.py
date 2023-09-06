@@ -4,7 +4,7 @@ from typing import Callable, Dict
 import datasets
 import torch
 
-from models import InversionModel
+from vec2text.models import InversionModel
 
 
 def tokenize_function(

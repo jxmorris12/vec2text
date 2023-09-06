@@ -8,7 +8,7 @@ import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
 
-from utils import embed_all_tokens, embed_api
+from vec2text.utils import embed_all_tokens, embed_api
 
 from . import InversionModel
 from .model_utils import (

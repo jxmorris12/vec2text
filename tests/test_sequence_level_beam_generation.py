@@ -1,4 +1,4 @@
-import aliases
+from vec2text import aliases
 
 
 def test_generation():

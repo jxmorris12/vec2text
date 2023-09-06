@@ -1,6 +1,6 @@
 import pytest
 
-import analyze_utils
+from vec2text import analyze_utils
 
 
 def test_load_model_seqlen32():

@@ -9,10 +9,9 @@ import torch
 import torch.nn as nn
 import transformers
 
-from models import CorrectorEncoderModel
-from models.logits_processors import EncourageTrueTokensLogitsProcessor
-from models.model_utils import freeze_params
-from run_args import TrainingArguments
+from vec2text.models import CorrectorEncoderModel
+from vec2text.models.model_utils import freeze_params
+from vec2text.run_args import TrainingArguments
 
 from .base import BaseTrainer
 from .inversion import InversionTrainer
@@ -719,18 +718,7 @@ class CorrectorTrainer(BaseTrainer):
                 "no_repeat_ngram_size": 0,
                 "max_length": seq_length,
             }
-            if cheat:
-                assert (
-                    "input_ids" in inputs.keys()
-                ), "cannot encourage true tokens for train hypotheses without them set"
-                true_tokens_logits_processor = EncourageTrueTokensLogitsProcessor(
-                    true_input_ids=inputs["input_ids"],
-                )
-                generation_kwargs[
-                    "logits_processor"
-                ] = transformers.LogitsProcessorList([true_tokens_logits_processor])
-                # The following line tells HuggingFace to renormalize
-                # generation_kwargs["renormalize_logits"] = True
+            assert not cheat, "'cheating' argument no longer supported."
 
             # TODO: support generated outputs of varying length.
             # TODO consider other (multiple?) hypothesis generation conditions.

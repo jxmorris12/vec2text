@@ -10,8 +10,8 @@ import transformers
 from transformers import HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 
-import experiments
-from run_args import DataArguments, ModelArguments, TrainingArguments
+from vec2text import experiments
+from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 transformers.logging.set_verbosity_error()
@@ -28,6 +28,14 @@ def load_experiment_and_trainer(
     max_seq_length: Optional[int] = None,
     use_less_data: Optional[int] = None,
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
+    # import previous aliases so that .bin that were saved prior to the
+    # existence of the vec2text module will still work.
+    import sys
+    import vec2text.run_args as run_args
+    sys.modules['run_args'] = run_args
+
+    print("run_args:", run_args)
+
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
     if args_str is not None:

@@ -3,6 +3,10 @@ __pycache__/
 *.p
 .ipynb_checkpoints/
 
+build/
+dist/
+vec2text.egg-info/
+
 embeddings/
 logs/
 notebooks/

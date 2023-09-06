@@ -5,8 +5,7 @@ import torch
 import torch.nn as nn
 import transformers
 
-from models.logits_processors import ContrastiveLogitsProcessor
-from trainers.base import BaseTrainer
+from vec2text.trainers.base import BaseTrainer
 
 
 class InversionTrainer(BaseTrainer):
@@ -36,39 +35,6 @@ class InversionTrainer(BaseTrainer):
             return self.model.generate(
                 inputs=inputs, generation_kwargs=generation_kwargs
             )
-
-    def generate_contrastive(
-        self, inputs: Dict, generation_kwargs: Dict
-    ) -> torch.Tensor:
-        # TODO consider moving this method into the InversionTrainer– better separation of concerns?
-        #
-        contrastive_logits_processor = ContrastiveLogitsProcessor(
-            model=self.model,
-            alpha=self.contrastive_generation_alpha,
-            beta=self.contrastive_generation_beta,
-            gamma=self.contrastive_generation_gamma,
-            hypothesis_temperature=self.contrastive_generation_hypothesis_temperature,
-            hypothesis_num_samples=self.contrastive_generation_hypothesis_num_samples,
-            inputs=inputs,
-        )
-        generation_kwargs["logits_processor"] = transformers.LogitsProcessorList(
-            [
-                contrastive_logits_processor,
-            ]
-        )
-        # The following line tells HuggingFace to renormalize, since we apply a mask
-        # and mess with the softmax output
-        generation_kwargs["renormalize_logits"] = True
-
-        for round_ in range(self.contrastive_generation_num_rounds):
-            generations = self.model.generate(
-                inputs=inputs, generation_kwargs=generation_kwargs
-            )
-            if round_ + 1 < self.contrastive_generation_num_rounds:
-                contrastive_logits_processor.update_hypotheses(
-                    hypotheses=generations,
-                )
-        return generations
 
     def training_step(
         self, model: nn.Module, inputs: Dict[str, torch.Tensor]

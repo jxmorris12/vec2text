@@ -12,11 +12,11 @@ import datasets
 import torch
 import transformers
 
-import aliases
-import trainers
-from collator import DataCollatorForCorrection
-from data_helpers import dataset_from_args, load_standard_val_datasets
-from models import (
+from vec2text import aliases
+from vec2text import trainers
+from vec2text.collator import DataCollatorForCorrection
+from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
+from vec2text.models import (
     CorrectorEncoderModel,
     InversionModel,
     InversionModelBagOfWords,
@@ -25,9 +25,9 @@ from models import (
     load_embedder_and_tokenizer,
     load_encoder_decoder,
 )
-from run_args import DataArguments, ModelArguments, TrainingArguments
-from tokenize_data import embed_dataset_batch, tokenize_function
-from utils import torch_main_worker_finish_first
+from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
+from vec2text.tokenize_data import embed_dataset_batch, tokenize_function
+from vec2text.utils import torch_main_worker_finish_first
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"

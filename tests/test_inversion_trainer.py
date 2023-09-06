@@ -5,9 +5,9 @@ import tempfile
 import pytest
 import transformers
 
-from experiments import experiment_from_args
-from run_args import DATASET_NAMES, DataArguments, ModelArguments, TrainingArguments
-from trainers import InversionTrainer
+from vec2text.experiments import experiment_from_args
+from vec2text.run_args import DATASET_NAMES, DataArguments, ModelArguments, TrainingArguments
+from vec2text.trainers import InversionTrainer
 
 DEFAULT_ARGS_STR = "--per_device_train_batch_size 32 --max_seq_length 128 --model_name_or_path t5-base --embedder_model_name gtr_base --num_repeat_tokens 16 --exp_name test-exp-123 --use_less_data 1000"
 DEFAULT_ARGS = shlex.split(DEFAULT_ARGS_STR)

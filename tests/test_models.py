@@ -4,7 +4,7 @@ import pytest
 import torch
 import transformers
 
-from models import (
+from vec2text.models import (
     FREEZE_STRATEGIES,
     MODEL_NAMES,
     InversionModel,

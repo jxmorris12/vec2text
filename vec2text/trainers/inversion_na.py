@@ -4,7 +4,7 @@ from typing import Dict
 import torch
 import transformers
 
-from trainers.base import BaseTrainer
+from vec2text.trainers.base import BaseTrainer
 
 
 class InversionTrainerNonAutoregressive(BaseTrainer):
