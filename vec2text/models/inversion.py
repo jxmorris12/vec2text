@@ -46,7 +46,6 @@ class InversionModel(transformers.PreTrainedModel):
     embedder_fake_with_zeros: bool  # Whether to just provide zeros as input for encoder-decoder (unconditional)
     embedding_transform_strategy: str  # Way to transform bottleneck embedding into input for encoder-decoder
     use_frozen_embeddings_as_input: bool  # Whether to train/evaluate on frozen embeddings
-    whiten_embeddings: bool  # Preprocess all embeddings using 'whitening'
     embedded_tokens: torch.Tensor  # used for decoding
     embedder_model_api: Optional[str]
 
@@ -56,7 +55,6 @@ class InversionModel(transformers.PreTrainedModel):
         embedder_model_api = config.embedder_model_api
         embedder_fake_with_zeros = config.embedder_fake_with_zeros
         use_frozen_embeddings_as_input = config.use_frozen_embeddings_as_input
-        whiten_embeddings = config.whiten_embeddings
         encoder_dropout_disabled = config.encoder_dropout_disabled
         decoder_dropout_disabled = config.decoder_dropout_disabled
         freeze_strategy = config.freeze_strategy
@@ -117,7 +115,6 @@ class InversionModel(transformers.PreTrainedModel):
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
-        self.whiten_embeddings = whiten_embeddings
         self.bottleneck_dim = bottleneck_dim
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
@@ -141,46 +138,6 @@ class InversionModel(transformers.PreTrainedModel):
         self.embedding_transform_strategy = "repeat"  # "none" # "repeat"
         self.embeddings_from_layer_n = embeddings_from_layer_n
         self.noise_level = 0
-
-    def precompute_whitening_params(self, train_dataloader):
-        if not self.whiten_embeddings:
-            return
-        self.embedder.to(device)
-        n_sample = 500_000  # TODO argparse for this.
-        n_points = 0
-        embeddings = []
-        for inputs in tqdm.tqdm(
-            train_dataloader, desc="computing initial embeddings for whitening"
-        ):
-            n_points += len(inputs["embedder_input_ids"])
-            if self.use_frozen_embeddings_as_input:
-                frozen_embedding = inputs["frozen_embeddings"]
-            else:
-                with torch.no_grad():
-                    frozen_embedding = self.call_embedding_model(
-                        input_ids=inputs["embedder_input_ids"].to(device),
-                        attention_mask=inputs["embedder_attention_mask"].to(device),
-                    )
-            embeddings.append(frozen_embedding.cpu())
-            if n_points >= 200_000:  # TODO argparse for this
-                break
-        embeddings = torch.cat(embeddings, dim=0)
-        logger.info("[whitening] mean & sample")
-        mu = torch.mean(embeddings, dim=0, keepdim=True)
-        embeddings_sample = embeddings[:n_sample]
-        logger.info("[whitening] cov")
-        cov = torch.mm((embeddings_sample - mu).t(), embeddings_sample - mu)
-        logger.info("[whitening] SVD")
-        u, s, vt = torch.svd(cov)
-        logger.info("[whitening] computing W")
-        W = torch.mm(u, torch.diag(1 / torch.sqrt(s)))
-        self.whitening_mu = mu.to(device)
-        self.whitening_W = W.to(device)
-
-    def consider_whitening(self, embeddings: torch.Tensor) -> torch.Tensor:
-        if not self.whiten_embeddings:
-            return embeddings
-        return torch.mm(embeddings - self.whitening_mu, self.whitening_W)
 
     def _freeze_encoder(self):
         freeze_params(self.encoder_decoder.encoder)
@@ -296,7 +253,6 @@ class InversionModel(transformers.PreTrainedModel):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        embeddings = self.consider_whitening(embeddings)
 
         if self.embedding_transform_strategy == "none":
             pass

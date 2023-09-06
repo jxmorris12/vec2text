@@ -139,12 +139,6 @@ class ModelArguments:
             "help": "Whether to pass a 'frozen_embedding' column and train on that instead of generating embeddings on-the-fly"
         },
     )
-    whiten_embeddings: bool = field(
-        default=False,
-        metadata={
-            "help": "Whether to do whitening on embeddings (requires computing expensive covariance matrix first)"
-        },
-    )
     corrector_ignore_hypothesis_embedding: bool = field(
         default=False,
         metadata={

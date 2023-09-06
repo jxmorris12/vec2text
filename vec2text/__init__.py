@@ -1,1 +1,1 @@
-from . import models, trainers  # noqa: F401
+from . import collator, models, trainers  # noqa: F401

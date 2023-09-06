@@ -12,29 +12,14 @@ class InversionTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         ######################################################
-        self.model.precompute_whitening_params(self.get_train_dataloader())
         self.tokenizer = self.model.tokenizer
         self.embedder_tokenizer = self.model.embedder_tokenizer
         self.call_embedding_model = self.model.call_embedding_model
 
-        # todo move generation strategy into model?
-        self.generation_strategy = "none"  # contrastive, none
-        self.contrastive_generation_num_rounds = 1
-        self.contrastive_generation_alpha = 1.0
-        self.contrastive_generation_beta = 1.0
-        self.contrastive_generation_gamma = 0.1
-        self.contrastive_generation_hypothesis_temperature = 0
-        self.contrastive_generation_hypothesis_num_samples = 1
-
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        if self.generation_strategy == "contrastive":
-            return self.generate_contrastive(
-                inputs=inputs, generation_kwargs=generation_kwargs
-            )
-        else:
-            return self.model.generate(
-                inputs=inputs, generation_kwargs=generation_kwargs
-            )
+        return self.model.generate(
+            inputs=inputs, generation_kwargs=generation_kwargs
+        )
 
     def training_step(
         self, model: nn.Module, inputs: Dict[str, torch.Tensor]

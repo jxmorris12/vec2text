@@ -68,37 +68,6 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
     return batch
 
 
-def whiten_embeddings_torch(
-    embeddings: torch.Tensor, n_sample=2 * 10**4
-) -> torch.Tensor:
-    # https://github.com/Jun-jie-Huang/WhiteningBERT/blob/d1ef06ae00ac5c3d869a028dd817a68833870d72/sentence_transformers/pooling_utils.py#L40-L47
-    print("\t[whitening] mean")
-    mu = torch.mean(embeddings, dim=0, keepdim=True)
-    embeddings_sample = embeddings[:n_sample]
-    print("\t[whitening]  cov")
-    cov = torch.mm((embeddings_sample - mu).t(), embeddings_sample - mu)
-    print("\t[whitening] svd")
-    u, s, vt = torch.svd(cov)
-    print("\t[whitening] W")
-    W = torch.mm(u, torch.diag(1 / torch.sqrt(s)))
-    print("\t[whitening] output")
-    embeddings = torch.mm(embeddings - mu, W)
-    return embeddings
-
-
-def whiten_embedded_dataset(dataset_dict: datasets.DatasetDict) -> datasets.DatasetDict:
-    for key in dataset_dict:
-        dataset = dataset_dict[key]
-        print(f"whitening split – {key} (len {len(dataset)})")
-        embeddings = torch.tensor(dataset["frozen_embeddings"])
-        whitened_embeddings = whiten_embeddings_torch(embeddings=embeddings)
-        whitened_embeddings = whitened_embeddings.cpu().tolist()
-        dataset_dict[key] = dataset_dict[key].add_column(
-            "frozen_embeddings_whitened", whitened_embeddings
-        )
-    return dataset_dict
-
-
 def randomly_truncate_inputs(
     inputs: Dict[str, torch.Tensor]
 ) -> Dict[str, torch.Tensor]:

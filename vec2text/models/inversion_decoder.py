@@ -99,9 +99,6 @@ class InversionModelDecoderOnly(InversionModel):
         self.noise_level = 0
         self.embeddings_from_layer_n = None
 
-    def precompute_whitening_params(self, train_dataloader):
-        pass
-
     def embed_and_project(
         self,
         embedder_input_ids: Optional[torch.Tensor],
