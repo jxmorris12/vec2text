@@ -17,9 +17,7 @@ class InversionTrainer(BaseTrainer):
         self.call_embedding_model = self.model.call_embedding_model
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        return self.model.generate(
-            inputs=inputs, generation_kwargs=generation_kwargs
-        )
+        return self.model.generate(inputs=inputs, generation_kwargs=generation_kwargs)
 
     def training_step(
         self, model: nn.Module, inputs: Dict[str, torch.Tensor]

@@ -75,7 +75,7 @@ def random_mixup(
     return new_tokens
 
 
-class CorrectorTrainer(BaseTrainer):
+class Corrector(BaseTrainer):
     """Trains an encoder model to generate embeddings that recursively correct of an
     InversionTrainer.
     """
@@ -97,7 +97,7 @@ class CorrectorTrainer(BaseTrainer):
         self,
         model: CorrectorEncoderModel,
         inversion_trainer: InversionTrainer,
-        args: TrainingArguments,
+        args: Optional[TrainingArguments],
         **kwargs,
     ):
         # Freeze other model params
@@ -144,15 +144,6 @@ class CorrectorTrainer(BaseTrainer):
         assert self.args.fp16 == self.inversion_trainer.args.fp16
         assert self.args.bf16 == self.inversion_trainer.args.bf16
 
-        # self.hypothesis_source = "model" # ["model", "random_deletion", "random_mixup"]
-        self.hypothesis_source = "model"  # ["model", "random_deletion", "random_mixup"]
-        # loading 90-hour-trained model from msl128 openai model. hoping to save a bit of time.
-        # weights_path = "/home/jxm3/research/retrieval/inversion/saves/8124d6f7da2a100ee180cddce0464295/checkpoint-40000/pytorch_model.bin"
-        # weights_path = "/home/jxm3/research/retrieval/inversion/saves/1ee3a579ee3c94cdd7496ca25e2cf8e3/checkpoint-40000/pytorch_model.bin"
-        # state_dict = torch.load(weights_path)
-        # self.model.load_state_dict(state_dict)
-        # print("loaded model weights =>", weights_path)
-
     def evaluation_loop(
         self, dataloader: torch.utils.data.DataLoader, *args, **kwargs
     ) -> transformers.trainer_utils.EvalLoopOutput:
@@ -179,7 +170,9 @@ class CorrectorTrainer(BaseTrainer):
         return output
 
     def _precompute_hypothesis_and_embedding(
-        self, ds_inputs: Dict[str, torch.Tensor], collator=None, cheat: bool = False
+        self,
+        ds_inputs: Dict[str, torch.Tensor],
+        collator=None,
     ) -> Dict[str, torch.Tensor]:
         assert not self.model.training
         inputs = collator.tokenizer.pad(
@@ -195,7 +188,7 @@ class CorrectorTrainer(BaseTrainer):
             hypothesis_input_ids,
             hypothesis_attention_mask,
             hypothesis_embedding,
-        ) = self._get_hypothesis_uncached(inputs=inputs, cheat=cheat)
+        ) = self._get_hypothesis_uncached(inputs=inputs)
         ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
         ds_inputs["hypothesis_embedding"] = hypothesis_embedding.cpu()
         # cut padding so we can batch by length later
@@ -217,7 +210,7 @@ class CorrectorTrainer(BaseTrainer):
         return ds_inputs
 
     def _preprocess_dataset(
-        self, dataset: datasets.Dataset, cheat: bool = False
+        self, dataset: datasets.Dataset
     ) -> Tuple[datasets.Dataset, str]:
         #
         # In each model directory, we store a copy of the dataset with hypotheses
@@ -238,8 +231,6 @@ class CorrectorTrainer(BaseTrainer):
         # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
         # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156/"
         assert os.path.exists(model_dir)
-        if cheat:
-            model_dir = os.path.join(model_dir, "improved_hypotheses")
         ####
         cache_path = os.path.join(model_dir, f"{dataset._fingerprint}_hypotheses.cache")
         if not os.path.exists(cache_path):
@@ -253,7 +244,6 @@ class CorrectorTrainer(BaseTrainer):
                 functools.partial(
                     self._precompute_hypothesis_and_embedding,
                     collator=self.data_collator,
-                    cheat=cheat,
                 ),
                 batched=True,
                 batch_size=(self.args.train_batch_size * 2),
@@ -276,29 +266,26 @@ class CorrectorTrainer(BaseTrainer):
         # TODO: Compare doing this with and without training mode enabled.
         logger.info("Precomputing frozen embedding & hypotheses before training")
         # self.train_dataset = self._preprocess_dataset(
-        #     cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
+        #     dataset=self.train_dataset
         # )
         # for k, v in self.eval_dataset.items():
         #     self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
         # print("done precomputing")
-        if self.hypothesis_source == "model":  # ["model", "random_deletion"]
-            self.train_dataset, train_cache_path = self._preprocess_dataset(
-                cheat=self.args.cheat_on_train_hypotheses, dataset=self.train_dataset
-            )
-            # ###########################################################################
-            # # Temporary hack: load explicit dataset explicitly from disk
-            # # This is MSMARCO, sequence length 128, precomputed with OpenAI embeddings
-            # # + hypotheses
-            # print("Loading full train dataset [MSMARCO // 128 // OpenAI]...")
-            # train_cache_path = "/home/jxm3/research/retrieval/inversion/msmarco_msl128_hypotheses/msmarco_full.cache"
-            # self.train_dataset = datasets.Dataset.load_from_disk(train_cache_path)
-            # print("Loaded!")
-            # ###########################################################################
+        self.train_dataset, train_cache_path = self._preprocess_dataset(
+            dataset=self.train_dataset
+        )
+        # ###########################################################################
+        # # Temporary hack: load explicit dataset explicitly from disk
+        # # This is MSMARCO, sequence length 128, precomputed with OpenAI embeddings
+        # # + hypotheses
+        # print("Loading full train dataset [MSMARCO // 128 // OpenAI]...")
+        # train_cache_path = "/home/jxm3/research/retrieval/inversion/msmarco_msl128_hypotheses/msmarco_full.cache"
+        # self.train_dataset = datasets.Dataset.load_from_disk(train_cache_path)
+        # print("Loaded!")
+        # ###########################################################################
 
-            for k, v in self.eval_dataset.items():
-                self.eval_dataset[k], _ = self._preprocess_dataset(dataset=v)
-        else:
-            pass  # otherwise: don't precompute anything :-)
+        for k, v in self.eval_dataset.items():
+            self.eval_dataset[k], _ = self._preprocess_dataset(dataset=v)
         return train_cache_path
 
     def _inner_training_loop(self, *args, **kwargs):
@@ -685,74 +672,34 @@ class CorrectorTrainer(BaseTrainer):
             embedder_attention_mask=attention_mask,
         )
 
-    def _get_hypothesis_uncached(
-        self, inputs: Dict[str, torch.Tensor], cheat: bool = False
-    ) -> torch.Tensor:
-        batch_size, seq_length = inputs["embedder_input_ids"].shape
-        fake_embedder_input_ids = torch.ones(
-            (batch_size, seq_length), device=self.args.device
-        )
-        fake_embedder_attention_mask = torch.ones(
-            (batch_size, seq_length), device=self.args.device
-        )
+    def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         if "frozen_embeddings" in inputs:
             frozen_embeddings = inputs["frozen_embeddings"]
         else:
+            assert (
+                "embedder_input_ids" in inputs
+            ), f"cannot generate hypothesis with input keys: {inputs.keys()}"
             frozen_embeddings = self.get_frozen_embeddings(
                 embedder_input_ids=inputs["embedder_input_ids"],
                 embedder_attention_mask=inputs["embedder_attention_mask"],
             )
 
-        if (not self.model.training) or self.hypothesis_source == "model":
-            generation_kwargs = {
-                "early_stopping": False,
-                "num_beams": 1,
-                "do_sample": False,
-                "no_repeat_ngram_size": 0,
-                "max_length": seq_length,
-            }
-            assert not cheat, "'cheating' argument no longer supported."
+        generation_kwargs = {
+            "early_stopping": False,
+            "num_beams": 1,
+            "do_sample": False,
+            "no_repeat_ngram_size": 0,
+            "max_length": 128,
+        }
 
-            # TODO: support generated outputs of varying length.
-            # TODO consider other (multiple?) hypothesis generation conditions.
-            hypothesis_input_ids = self.inversion_trainer.model.generate(
-                inputs={
-                    "embedder_input_ids": fake_embedder_input_ids,
-                    "embedder_attention_mask": fake_embedder_attention_mask,
-                    "frozen_embeddings": frozen_embeddings,
-                },
-                generation_kwargs=generation_kwargs,
-            )
-        elif self.hypothesis_source == "random_mixup":
-            max_len = max(map(len, inputs["input_ids"]))
-            batch_input_ids1 = inputs["input_ids"]
-            batch_input_ids2 = batch_input_ids1[torch.randperm(len(batch_input_ids1))]
-            hypothesis_input_ids = torch.stack(
-                [
-                    random_mixup(
-                        input_ids1,
-                        input_ids2,
-                        max_len,
-                        self.model.encoder_decoder.config.pad_token_id,
-                    )
-                    for input_ids1, input_ids2 in zip(
-                        batch_input_ids1, batch_input_ids2
-                    )
-                ]
-            )
-        else:
-            max_len = max(map(len, inputs["input_ids"]))
-            hypothesis_input_ids = torch.stack(
-                [
-                    choose_random_tokens(
-                        input_ids,
-                        max_len,
-                        self.model.encoder_decoder.config.pad_token_id,
-                    )
-                    for input_ids in inputs["input_ids"]
-                ]
-            )
-            print(f"hypothesis_source = {self.hypothesis_source}")
+        # TODO: support generated outputs of varying length.
+        # TODO consider other (multiple?) hypothesis generation conditions.
+        hypothesis_input_ids = self.inversion_trainer.model.generate(
+            inputs={
+                "frozen_embeddings": frozen_embeddings,
+            },
+            generation_kwargs=generation_kwargs,
+        )
         hypothesis_attention_mask = (
             hypothesis_input_ids != self.model.encoder_decoder.config.pad_token_id
         )

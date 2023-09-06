@@ -4,14 +4,12 @@ from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
-import tqdm
 import transformers
 from sentence_transformers import SentenceTransformer
 
 from vec2text.models.config import InversionConfig
 from vec2text.models.model_utils import (
     FREEZE_STRATEGIES,
-    device,
     disable_dropout,
     freeze_params,
     load_embedder_and_tokenizer,
@@ -285,8 +283,8 @@ class InversionModel(transformers.PreTrainedModel):
         # ).shape[1]
         # print("IM.generate:", generation_kwargs)
         inputs_embeds, attention_mask = self.embed_and_project(
-            embedder_input_ids=inputs["embedder_input_ids"],
-            embedder_attention_mask=inputs["embedder_attention_mask"],
+            embedder_input_ids=inputs.get("embedder_input_ids"),
+            embedder_attention_mask=inputs.get("embedder_attention_mask"),
             frozen_embeddings=inputs.get("frozen_embeddings"),
         )
         if "decoder_input_ids" in inputs:

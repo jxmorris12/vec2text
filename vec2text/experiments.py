@@ -626,7 +626,7 @@ class CorrectorExperiment(Experiment):
             max_seq_length=self.model_args.max_seq_length,
             use_less_data=self.data_args.use_less_data,
         )
-        return trainers.CorrectorTrainer(
+        return trainers.Corrector(
             model=model,
             inversion_trainer=inversion_trainer,
             args=self.training_args,

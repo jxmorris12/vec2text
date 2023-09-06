@@ -2,7 +2,7 @@ from setuptools import find_packages, setup
 
 setup(
     name="vec2text",
-    version="0.0.1",
+    version="0.0.2",
     description="convert embedding vectors back to text",
     author="Jack Morris",
     author_email="jxm3@cornell.edu",

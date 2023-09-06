@@ -1,7 +1,6 @@
 import random
 from typing import Callable, Dict
 
-import datasets
 import torch
 
 from vec2text.models import InversionModel
