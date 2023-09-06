@@ -21,9 +21,8 @@ import numpy as np
 import torch
 import tqdm
 import transformers
-from models import InversionModel, load_embedder_and_tokenizer, load_encoder_decoder
-
 from data_helpers import NQ_DEV, load_dpr_corpus
+from models import InversionModel, load_embedder_and_tokenizer, load_encoder_decoder
 from tokenize_data import tokenize_function
 from utils import emb, embed_all_tokens
 

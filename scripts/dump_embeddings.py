@@ -16,6 +16,8 @@ import datasets
 import torch
 import tqdm
 import transformers
+from collator import CustomCollator
+from data_helpers import NQ_DEV, load_dpr_corpus
 from models import (
     FREEZE_STRATEGIES,
     MODEL_NAMES,
@@ -23,9 +25,6 @@ from models import (
     load_embedder_and_tokenizer,
     load_encoder_decoder,
 )
-
-from collator import CustomCollator
-from data_helpers import NQ_DEV, load_dpr_corpus
 from tokenize_data import tokenize_function
 from utils import emb
 

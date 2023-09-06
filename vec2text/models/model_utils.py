@@ -167,3 +167,20 @@ def load_encoder_decoder(
     return transformers.AutoModelForSeq2SeqLM.from_pretrained(
         model_name, **model_kwargs
     )
+
+
+def load_tokenizer(name: str, max_length: int) -> transformers.PreTrainedTokenizer:
+    tokenizer = transformers.AutoTokenizer.from_pretrained(
+        name,
+        padding=True,
+        truncation="max_length",
+        max_length=max_length,
+    )
+
+    if tokenizer.pad_token is None:
+        tokenizer.pad_token = tokenizer.eos_token
+
+    # Disable super annoying warning:
+    # https://github.com/huggingface/transformers/issues/22638
+    tokenizer.deprecation_warnings["Asking-to-pad-a-fast-tokenizer"] = True
+    return tokenizer

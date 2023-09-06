@@ -10,7 +10,6 @@ import torch
 import tqdm
 import transformers
 from models import InversionModel, load_embedder_and_tokenizer, load_encoder_decoder
-
 from utils import embed_all_tokens
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

@@ -2,10 +2,9 @@ import argparse
 import glob
 import os
 
+import aliases
 import datasets
 import tqdm
-
-import aliases
 
 
 def precompute(start_idx: int, num_samples: int):

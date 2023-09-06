@@ -5,10 +5,14 @@ import torch.nn as nn
 import transformers
 
 from vec2text.models.config import InversionConfig
-from vec2text.models.model_utils import mean_pool
+from vec2text.models.model_utils import (
+    load_embedder_and_tokenizer,
+    load_tokenizer,
+    mean_pool,
+)
 
 
-class InversionModelNonAutoregressive(nn.Module):
+class InversionModelNonAutoregressive(transformers.PreTrainedModel):
     embedder: torch.nn.Module
     encoder: transformers.AutoModel
     tokenizer: transformers.AutoTokenizer
@@ -17,12 +21,20 @@ class InversionModelNonAutoregressive(nn.Module):
     def __init__(
         self,
         config: InversionConfig,
-        embedder: torch.nn.Module,
-        encoder: transformers.AutoModel,
-        embedder_tokenizer: transformers.AutoTokenizer,
-        tokenizer: transformers.AutoTokenizer,
     ):
         super().__init__(config=config)
+
+        encoder = transformers.AutoModel.from_pretrained(
+            config.model_name_or_path,
+        ).encoder
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=config.embedder_model_name
+        )
+        tokenizer = load_tokenizer(
+            config.model_name_or_path,
+            max_length=config.max_seq_length,
+        )
+
         self.embedder = embedder
         self.encoder = encoder
         self.embedder_tokenizer = embedder_tokenizer

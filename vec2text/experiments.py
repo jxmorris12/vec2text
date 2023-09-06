@@ -22,7 +22,6 @@ from vec2text.models import (
     InversionModelDecoderOnly,
     InversionModelNonAutoregressive,
     load_embedder_and_tokenizer,
-    load_encoder_decoder,
 )
 from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
@@ -284,7 +283,7 @@ class Experiment(abc.ABC):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def load_model(self) -> torch.nn.Module:
+    def load_model(self) -> transformers.PreTrainedModel:
         raise NotImplementedError()
 
     def load_tokenizer(self) -> transformers.PreTrainedTokenizer:
@@ -316,7 +315,7 @@ class Experiment(abc.ABC):
     @torch_main_worker_finish_first
     def _load_train_dataset_uncached(
         self,
-        model: torch.nn.Module,
+        model: transformers.PreTrainedModel,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
     ) -> datasets.DatasetDict:
@@ -385,7 +384,7 @@ class Experiment(abc.ABC):
 
     def _prepare_val_datasets_dict(
         self,
-        model: torch.nn.Module,
+        model: transformers.PreTrainedModel,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
         val_datasets_dict: datasets.DatasetDict,
@@ -425,7 +424,7 @@ class Experiment(abc.ABC):
 
     def _load_val_datasets_uncached(
         self,
-        model: torch.nn.Module,
+        model: transformers.PreTrainedModel,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
     ) -> datasets.DatasetDict:
@@ -444,7 +443,7 @@ class Experiment(abc.ABC):
 
     def load_train_and_val_datasets(
         self,
-        model: torch.nn.Module,
+        model: transformers.PreTrainedModel,
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
     ):
@@ -516,32 +515,9 @@ class InversionExperiment(Experiment):
     def _wandb_project_name(self) -> str:
         return "emb-inv-3"
 
-    def load_model(self) -> torch.nn.Module:
-        model_args = self.model_args
-        tokenizer = self.load_tokenizer()
-        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-            name=model_args.embedder_model_name
-        )
+    def load_model(self) -> transformers.PreTrainedModel:
         return InversionModel(
             config=self.config,
-            embedder=embedder,
-            embedder_tokenizer=embedder_tokenizer,
-            embedder_model_api=model_args.embedder_model_api,
-            tokenizer=tokenizer,
-            encoder_decoder=load_encoder_decoder(
-                model_name=model_args.model_name_or_path,
-                lora=model_args.use_lora,
-            ),
-            num_repeat_tokens=model_args.num_repeat_tokens,
-            embedder_no_grad=model_args.embedder_no_grad,
-            embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
-            use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
-            whiten_embeddings=model_args.whiten_embeddings,
-            encoder_dropout_disabled=model_args.encoder_dropout_disabled,
-            decoder_dropout_disabled=model_args.decoder_dropout_disabled,
-            freeze_strategy=model_args.freeze_strategy,
-            encoder_decoder_lora=model_args.use_lora,
-            embeddings_from_layer_n=model_args.embeddings_from_layer_n,
         )
 
     @torch_main_worker_finish_first
@@ -567,33 +543,14 @@ class InversionExperiment(Experiment):
 
 
 class InversionExperimentDecoderOnly(InversionExperiment):
-    def load_model(self) -> torch.nn.Module:
+    def load_model(self) -> transformers.PreTrainedModel:
         model_args = self.model_args
 
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
             name=model_args.embedder_model_name
         )
-
-        if "t5" in model_args.model_name_or_path:
-            # special handling for loading decoder of t5 (just decoder from encoder-decoder model).
-            decoder = transformers.T5ForConditionalGeneration.from_pretrained(
-                model_args.model_name_or_path
-            )
-        else:
-            decoder = transformers.AutoModelForCausalLM.from_pretrained(
-                model_args.model_name_or_path
-            )
-
         return InversionModelDecoderOnly(
             config=self.config,
-            embedder=embedder,
-            embedder_tokenizer=embedder_tokenizer,
-            embedder_model_api=model_args.embedder_model_api,
-            tokenizer=self.load_tokenizer(),
-            decoder=decoder,
-            embedder_no_grad=model_args.embedder_no_grad,
-            embedder_fake_with_zeros=model_args.embedder_fake_with_zeros,
-            use_frozen_embeddings_as_input=model_args.use_frozen_embeddings_as_input,
         )
 
 
@@ -602,21 +559,9 @@ class InversionExperimentNonAutoregressive(Experiment):
     def _wandb_project_name(self) -> str:
         return "emb-inv-na-1"
 
-    def load_model(self) -> torch.nn.Module:
-        model_args = self.model_args
-        tokenizer = self.load_tokenizer()
-        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-            name=model_args.embedder_model_name
-        )
-        encoder = transformers.AutoModel.from_pretrained(
-            model_args.model_name_or_path,
-        ).encoder
+    def load_model(self) -> transformers.PreTrainedModel:
         return InversionModelNonAutoregressive(
             config=self.config,
-            embedder=embedder,
-            encoder=encoder,
-            embedder_tokenizer=embedder_tokenizer,
-            tokenizer=tokenizer,
         )
 
     def load_trainer(self) -> transformers.Trainer:
@@ -644,21 +589,9 @@ class InversionExperimentBagOfWords(Experiment):
     def _wandb_project_name(self) -> str:
         return "emb-inv-bow-1"
 
-    def load_model(self) -> torch.nn.Module:
-        model_args = self.model_args
-        tokenizer = self.load_tokenizer()
-        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-            name=model_args.embedder_model_name
-        )
-        encoder = transformers.AutoModel.from_pretrained(
-            model_args.model_name_or_path,
-        ).encoder
+    def load_model(self) -> transformers.PreTrainedModel:
         return InversionModelBagOfWords(
             config=self.config,
-            embedder=embedder,
-            encoder=encoder,
-            embedder_tokenizer=embedder_tokenizer,
-            tokenizer=tokenizer,
         )
 
     def load_trainer(self) -> transformers.Trainer:
@@ -702,19 +635,9 @@ class CorrectorExperiment(Experiment):
             ),
         )
 
-    def load_model(self) -> torch.nn.Module:
-        encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained("t5-base")
-        if self.model_args.embedder_model_api:
-            embedder_dim = 1536
-        else:
-            embedder_dim = 768
-
+    def load_model(self) -> transformers.PreTrainedModel:
         return CorrectorEncoderModel(
             config=self.config,
-            encoder_decoder=encoder_decoder,
-            embedder_dim=embedder_dim,
-            bottleneck_dim=embedder_dim,
-            ignore_hypothesis_embedding=self.model_args.corrector_ignore_hypothesis_embedding,
         )
 
 

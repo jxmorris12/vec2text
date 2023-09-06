@@ -8,24 +8,32 @@ import transformers
 from vec2text.models.config import InversionConfig
 
 
-class CorrectorEncoderModel(torch.nn.Module):
+class CorrectorEncoderModel(transformers.PreTrainedModel):
     """Embeds text and concats with a provided embedding.
 
     TODO improve comment here.
     """
 
+    config_class = InversionConfig
     encoder_decoder: transformers.PreTrainedModel
 
     def __init__(
         self,
         config: InversionConfig,
-        encoder_decoder: transformers.PreTrainedModel,
-        embedder_dim: int = 768,
-        num_repeat_tokens: int = 16,
-        bottleneck_dim: int = 768,
-        ignore_hypothesis_embedding: bool = False,
     ):
         super().__init__(config=config)
+        if config.embedder_model_api:
+            embedder_dim = 1536
+        else:
+            embedder_dim = 768
+        bottleneck_dim = embedder_dim
+
+        num_repeat_tokens = config.num_repeat_tokens
+        ignore_hypothesis_embedding = config.corrector_ignore_hypothesis_embedding
+
+        encoder_decoder = transformers.AutoModelForSeq2SeqLM.from_pretrained(
+            config.model_name_or_path
+        )
         self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens
@@ -52,7 +60,6 @@ class CorrectorEncoderModel(torch.nn.Module):
         # TODO argparse; default to 0?
         # self.training_embedding_noise_level = 0
         self.training_embedding_noise_level = 1e-5  # adding for openai...
-        # self.training_embedding_noise_level = 1e-2 # adding for openai...
         self.use_ln = True  # TODO argparse / test.
         if self.use_ln:
             self.layernorm = nn.LayerNorm(self.encoder_hidden_dim)

@@ -13,7 +13,6 @@ import pandas as pd
 import torch
 import tqdm
 import transformers
-
 from data_helpers import NQ_DEV, load_dpr_corpus
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

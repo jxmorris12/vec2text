@@ -10,14 +10,16 @@ from sentence_transformers import SentenceTransformer
 
 from vec2text.models.config import InversionConfig
 from vec2text.models.model_utils import (
-    EMBEDDING_TRANSFORM_STRATEGIES,
     FREEZE_STRATEGIES,
     device,
     disable_dropout,
     freeze_params,
+    load_embedder_and_tokenizer,
+    load_encoder_decoder,
+    load_tokenizer,
     mean_pool,
 )
-from vec2text.utils import embed_all_tokens, embed_api
+from vec2text.utils import embed_api
 
 logger = logging.getLogger(__name__)
 
@@ -30,6 +32,7 @@ class InversionModel(transformers.PreTrainedModel):
     to decode text autoregressively.
     """
 
+    config_class = InversionConfig
     embedder: nn.Module
     embedder_tokenizer: transformers.PreTrainedTokenizer  # embedder's tokenizer
     encoder_decoder: transformers.AutoModelForSeq2SeqLM
@@ -47,31 +50,34 @@ class InversionModel(transformers.PreTrainedModel):
     embedded_tokens: torch.Tensor  # used for decoding
     embedder_model_api: Optional[str]
 
-    def __init__(
-        self,
-        config: InversionConfig,
-        embedder: nn.Module,
-        embedder_tokenizer: transformers.PreTrainedTokenizer,
-        encoder_decoder: transformers.AutoModelForSeq2SeqLM,
-        tokenizer: transformers.PreTrainedTokenizer,
-        num_repeat_tokens: int,
-        embedder_no_grad: bool,
-        freeze_strategy: str = "none",
-        embedder_model_api: Optional[str] = None,
-        embedder_fake_with_zeros: bool = False,
-        encoder_dropout_disabled: bool = False,
-        decoder_dropout_disabled: bool = False,
-        use_frozen_embeddings_as_input: bool = False,
-        whiten_embeddings: bool = False,
-        encoder_decoder_lora: bool = False,
-        embedding_transform_strategy: str = "repeat",
-        bottleneck_dim: int = 768,  # 128,
-        token_decode_alpha: Optional[float] = None,
-        embeddings_from_layer_n: Optional[int] = None,
-    ):
-        print("config:", type(config))
+    def __init__(self, config: InversionConfig):
         super().__init__(config=config)
-        self.embedder = embedder
+
+        embedder_model_api = config.embedder_model_api
+        embedder_fake_with_zeros = config.embedder_fake_with_zeros
+        use_frozen_embeddings_as_input = config.use_frozen_embeddings_as_input
+        whiten_embeddings = config.whiten_embeddings
+        encoder_dropout_disabled = config.encoder_dropout_disabled
+        decoder_dropout_disabled = config.decoder_dropout_disabled
+        freeze_strategy = config.freeze_strategy
+        encoder_decoder_lora = config.use_lora
+        embeddings_from_layer_n = config.embeddings_from_layer_n
+
+        encoder_decoder = load_encoder_decoder(
+            model_name=config.model_name_or_path,
+            lora=config.use_lora,
+        )
+
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=config.embedder_model_name
+        )
+        tokenizer = load_tokenizer(
+            config.model_name_or_path,
+            max_length=config.max_seq_length,
+        )
+        num_repeat_tokens = config.num_repeat_tokens
+        embedder_no_grad = config.embedder_no_grad
+
         self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
         if encoder_decoder_lora:
             from peft import (
@@ -103,7 +109,7 @@ class InversionModel(transformers.PreTrainedModel):
         #     # temp hack to set fixed sentence embedding size to 512 for luar.
         #     # TODO do this in a smarter way (figure it out from data? or make it an arg.)
         #     self.embedder_dim = 512
-        elif isinstance(self.embedder, SentenceTransformer):
+        elif isinstance(embedder, SentenceTransformer):
             self.embedder_dim = self.embedder.get_sentence_embedding_dimension()
         else:
             self.embedder_dim = self.embedder.config.hidden_size
@@ -126,18 +132,13 @@ class InversionModel(transformers.PreTrainedModel):
             disable_dropout(self.encoder_decoder.lm_head)
         ######################################################
         self.tokenizer = tokenizer
+        self.embedder = embedder
         self.embedder_tokenizer = embedder_tokenizer
         self.embedder_model_api = embedder_model_api
         self.freeze(freeze_strategy=freeze_strategy)
         self.embedder_fake_with_zeros = embedder_fake_with_zeros
-        assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
+
         self.embedding_transform_strategy = "repeat"  # "none" # "repeat"
-        self.token_decode_alpha = token_decode_alpha
-        if token_decode_alpha is not None:
-            assert embedder_tokenizer is not None
-            self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
-        else:
-            self.embedded_tokens = None
         self.embeddings_from_layer_n = embeddings_from_layer_n
         self.noise_level = 0
 

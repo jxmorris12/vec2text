@@ -7,11 +7,9 @@ import torch.nn as nn
 import transformers
 from sentence_transformers import SentenceTransformer
 
+from vec2text.models import InversionModel
 from vec2text.models.config import InversionConfig
-from vec2text.utils import embed_all_tokens
-
-from . import InversionModel
-from .model_utils import EMBEDDING_TRANSFORM_STRATEGIES, device
+from vec2text.models.model_utils import load_embedder_and_tokenizer, load_tokenizer
 
 logger = logging.getLogger(__name__)
 
@@ -44,23 +42,33 @@ class InversionModelDecoderOnly(InversionModel):
     def __init__(
         self,
         config: InversionConfig,
-        embedder: nn.Module,
-        embedder_tokenizer: transformers.PreTrainedTokenizer,
-        decoder: transformers.AutoModelForSeq2SeqLM,
-        tokenizer: transformers.PreTrainedTokenizer,
-        embedder_no_grad: bool,
-        embedder_model_api: Optional[str] = None,
-        embedder_fake_with_zeros: bool = False,
-        encoder_dropout_disabled: bool = False,
-        decoder_dropout_disabled: bool = False,
-        use_frozen_embeddings_as_input: bool = False,
-        embedding_transform_strategy: str = "repeat",
-        bottleneck_dim: int = 768,  # 128,
-        token_decode_alpha: Optional[float] = None,
     ):
         super(InversionModel, self).__init__(config=config)
+
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=config.embedder_model_name
+        )
+        tokenizer = load_tokenizer(
+            config.model_name_or_path,
+            max_length=config.max_seq_length,
+        )
+        embedder_model_api = config.embedder_model_api
+
+        if "t5" in config.model_name_or_path:
+            # special handling for loading decoder of t5 (just decoder from encoder-decoder model).
+            decoder = transformers.T5ForConditionalGeneration.from_pretrained(
+                config.model_name_or_path
+            )
+        else:
+            decoder = transformers.AutoModelForCausalLM.from_pretrained(
+                config.model_name_or_path
+            )
         self.embedder = embedder
-        self.decoder = decoder  # .to_bettertransformer()
+        self.decoder = decoder
+
+        embedder_no_grad = config.embedder_no_grad
+        embedder_fake_with_zeros = config.embedder_fake_with_zeros
+        use_frozen_embeddings_as_input = config.use_frozen_embeddings_as_input
 
         if embedder_model_api:
             assert use_frozen_embeddings_as_input, "must precompute embeddings w/ api"
@@ -87,14 +95,7 @@ class InversionModelDecoderOnly(InversionModel):
         self.embedder_tokenizer = embedder_tokenizer
         self.embedder_model_api = embedder_model_api
         self.embedder_fake_with_zeros = embedder_fake_with_zeros
-        assert embedding_transform_strategy in EMBEDDING_TRANSFORM_STRATEGIES
         self.embedding_transform_strategy = "repeat"  # "none" # "repeat"
-        self.token_decode_alpha = token_decode_alpha
-        if token_decode_alpha is not None:
-            assert embedder_tokenizer is not None
-            self.embedded_tokens = embed_all_tokens(self, embedder_tokenizer).to(device)
-        else:
-            self.embedded_tokens = None
         self.noise_level = 0
         self.embeddings_from_layer_n = None
 

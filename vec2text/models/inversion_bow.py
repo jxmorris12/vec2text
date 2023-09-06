@@ -5,24 +5,33 @@ import torch.nn as nn
 import transformers
 
 from vec2text.models.config import InversionConfig
-from vec2text.models.model_utils import mean_pool
+from vec2text.models.model_utils import (
+    load_embedder_and_tokenizer,
+    load_tokenizer,
+    mean_pool,
+)
 
 
-class InversionModelBagOfWords(nn.Module):
+class InversionModelBagOfWords(transformers.PreTrainedModel):
     embedder: torch.nn.Module
     encoder: transformers.AutoModel
     tokenizer: transformers.AutoTokenizer
     embedder_tokenizer: transformers.AutoTokenizer
 
-    def __init__(
-        self,
-        config: InversionConfig,
-        embedder: torch.nn.Module,
-        encoder: transformers.AutoModel,
-        embedder_tokenizer: transformers.AutoTokenizer,
-        tokenizer: transformers.AutoTokenizer,
-    ):
+    def __init__(self, config: InversionConfig):
         super().__init__(config=config)
+
+        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
+            name=config.embedder_model_name
+        )
+        encoder = transformers.AutoModel.from_pretrained(
+            config.model_name_or_path,
+        ).encoder
+        tokenizer = load_tokenizer(
+            config.model_name_or_path,
+            max_length=config.max_seq_length,
+        )
+
         self.embedder = embedder
         self.encoder = encoder
         self.embedder_tokenizer = embedder_tokenizer
