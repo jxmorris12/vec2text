@@ -319,16 +319,9 @@ class Corrector(BaseTrainer):
         """
         try:
             frozen_embeddings = inputs["frozen_embeddings"]
-            ################################################################################
-            # # print("temp: starting from best hypothesis")
-            # hypothesis_input_ids = inputs["best_hypothesis_input_ids"]
-            # hypothesis_embedding = inputs["best_hypothesis_embedding"]
-            # hypothesis_attention_mask = (hypothesis_input_ids != self.model.encoder_decoder.config.pad_token_id).int()
-            ################################################################################
             hypothesis_input_ids = inputs["hypothesis_input_ids"]
             hypothesis_attention_mask = inputs["hypothesis_attention_mask"]
             hypothesis_embedding = inputs["hypothesis_embedding"]
-            ################################################################################
         except KeyError:
             (
                 frozen_embeddings,
@@ -596,6 +589,11 @@ class Corrector(BaseTrainer):
                 else:
                     scores = gen_text_scores.reshape((batch_size, beam_width))
 
+                # print("scores:")
+                # for t, s in zip(self.tokenizer.batch_decode(gen_text_ids, skip_special_tokens=True), scores.flatten().tolist()):
+                #     print(f"\t- {s:2f}", t)
+                # print()
+
                 # take top *unique* things in beam.
                 best_idx_in_beam_total = scores.topk(dim=1, k=beam_width).indices
                 hypothesis_embedding = hypothesis_embedding.reshape(
@@ -637,6 +635,7 @@ class Corrector(BaseTrainer):
         # make sure we reshape correctly
         # (can't do a shape check on gen_text_ids because of the dynamic length.)
         assert hypothesis_embedding.shape[-1] == inputs["frozen_embeddings"].shape[-1]
+
         return gen_text_ids, hypothesis_embedding, best_scores
 
     def get_frozen_embeddings(

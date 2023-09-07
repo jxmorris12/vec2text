@@ -1,25 +1,28 @@
-from typing import List
-
 import copy
+from typing import List
 
 import torch
 import transformers
+
 import vec2text
 from vec2text import Corrector
 from vec2text.models.model_utils import device
 
-
 SUPPORTED_MODELS = ["text-embedding-ada-002"]
+
+
 def load_corrector(embedder: str) -> Corrector:
     """Gets the Corrector object for the given embedder.
-    
-    For now, we just support inverting OpenAI Ada 002 embeddings; we plan to 
+
+    For now, we just support inverting OpenAI Ada 002 embeddings; we plan to
     expand this support over time.
     """
-    assert embedder in SUPPORTED_MODELS, f"embedder to invert `{embedder} not in list of supported models: {SUPPORTED_MODELS}`"
+    assert (
+        embedder in SUPPORTED_MODELS
+    ), f"embedder to invert `{embedder} not in list of supported models: {SUPPORTED_MODELS}`"
 
     inversion_model = vec2text.models.InversionModel.from_pretrained(
-       "jxm/vec2text__openai_ada002__msmarco__msl128__hypothesizer"
+        "jxm/vec2text__openai_ada002__msmarco__msl128__hypothesizer"
     )
     model = vec2text.models.CorrectorEncoderModel.from_pretrained(
         "jxm/vec2text__openai_ada002__msmarco__msl128__corrector"
@@ -49,11 +52,11 @@ def load_corrector(embedder: str) -> Corrector:
 
 
 def invert_embeddings(
-        embeddings: torch.Tensor, 
-        corrector: Corrector,
-        num_recursive_steps: int = None,
-        sequence_beam_width: int = 0,
-    ) -> List[str]:
+    embeddings: torch.Tensor,
+    corrector: Corrector,
+    num_steps: int = None,
+    sequence_beam_width: int = 0,
+) -> List[str]:
     corrector.inversion_trainer.model.eval()
     corrector.model.eval()
 
@@ -61,25 +64,27 @@ def invert_embeddings(
     gen_kwargs["min_length"] = 1
     gen_kwargs["max_length"] = 128
 
-    if num_recursive_steps is None:
-        assert sequence_beam_width == 0, "can't set a nonzero beam width without multiple steps"
+    if num_steps is None:
+        assert (
+            sequence_beam_width == 0
+        ), "can't set a nonzero beam width without multiple steps"
 
         regenerated = corrector.inversion_trainer.generate(
             inputs={
                 "frozen_embeddings": embeddings,
             },
             generation_kwargs=gen_kwargs,
-        ) 
+        )
     else:
-        corrector.return_best_hypothesis = (sequence_beam_width > 0)
+        corrector.return_best_hypothesis = sequence_beam_width > 0
         regenerated = corrector.generate(
             inputs={
                 "frozen_embeddings": embeddings,
             },
             generation_kwargs=gen_kwargs,
-            num_recursive_steps=num_recursive_steps,
+            num_recursive_steps=num_steps,
             sequence_beam_width=sequence_beam_width,
-        ) 
+        )
 
     output_strings = corrector.tokenizer.batch_decode(
         regenerated, skip_special_tokens=True
@@ -90,12 +95,12 @@ def invert_embeddings(
 def invert_strings(
     strings: List[str],
     corrector: Corrector,
-    num_recursive_steps: int = None,
+    num_steps: int = None,
     sequence_beam_width: int = 0,
 ) -> List[str]:
     inputs = corrector.embedder_tokenizer(
-        strings, 
-        return_tensors="pt", 
+        strings,
+        return_tensors="pt",
         max_length=128,
         truncation=True,
         padding=True,
@@ -109,6 +114,6 @@ def invert_strings(
     return invert_embeddings(
         embeddings=frozen_embeddings,
         corrector=corrector,
-        num_recursive_steps=num_recursive_steps,
+        num_steps=num_steps,
         sequence_beam_width=sequence_beam_width,
     )

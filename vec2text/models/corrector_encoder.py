@@ -58,12 +58,12 @@ class CorrectorEncoderModel(transformers.PreTrainedModel):
         )
         self.ignore_hypothesis_embedding = ignore_hypothesis_embedding
         # TODO argparse; default to 0?
-        # self.training_embedding_noise_level = 0
-        self.training_embedding_noise_level = 1e-5  # adding for openai...
+        self.training_embedding_noise_level = 0
+        # self.training_embedding_noise_level = 1e-5  # adding for openai...
         self.use_ln = True  # TODO argparse / test.
         if self.use_ln:
             self.layernorm = nn.LayerNorm(self.encoder_hidden_dim)
-        print(f"Corrector encoder noise level {self.training_embedding_noise_level}")
+        # print(f"Corrector encoder noise level {self.training_embedding_noise_level}")
 
     def get_encoder_embedding(
         self,
@@ -147,7 +147,6 @@ class CorrectorEncoderModel(transformers.PreTrainedModel):
             generation_kwargs["max_length"] = inputs.get(
                 "input_ids", inputs["embedder_input_ids"]
             ).shape[1]
-        # print("CE.generate:", generation_kwargs)
 
         inputs_embeds, attention_mask = self.get_encoder_embedding(
             embedding=inputs["frozen_embeddings"],

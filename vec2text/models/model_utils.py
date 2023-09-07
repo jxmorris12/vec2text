@@ -41,7 +41,7 @@ def freeze_params(model: nn.Module):
     for name, params in model.named_parameters():
         params.requires_grad = False
         total_num_params += params.numel()
-    print(f"Froze {total_num_params} params from model type {type(model)}")
+    # print(f"Froze {total_num_params} params from model type {type(model)}")
 
 
 def mean_pool(

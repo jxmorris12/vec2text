@@ -55,7 +55,6 @@ class InversionModel(transformers.PreTrainedModel):
         use_frozen_embeddings_as_input = config.use_frozen_embeddings_as_input
         encoder_dropout_disabled = config.encoder_dropout_disabled
         decoder_dropout_disabled = config.decoder_dropout_disabled
-        freeze_strategy = config.freeze_strategy
         encoder_decoder_lora = config.use_lora
         embeddings_from_layer_n = config.embeddings_from_layer_n
 
@@ -130,7 +129,7 @@ class InversionModel(transformers.PreTrainedModel):
         self.embedder = embedder
         self.embedder_tokenizer = embedder_tokenizer
         self.embedder_model_api = embedder_model_api
-        self.freeze(freeze_strategy=freeze_strategy)
+        # self.freeze(freeze_strategy=config.freeze_strategy)
         self.embedder_fake_with_zeros = embedder_fake_with_zeros
 
         self.embedding_transform_strategy = "repeat"  # "none" # "repeat"

@@ -206,4 +206,9 @@ def embed_api(
         )
     else:
         raise ValueError(f"unsupported api name {api_name}")
+
+    # print("GETTING EMBEDDINGS:")
+    # print(text_list)
+    # print(torch.tensor(embeddings).abs().sum(dim=-1).tolist())
+    # print()
     return torch.tensor(embeddings, device=input_ids.device, dtype=torch.float32)
