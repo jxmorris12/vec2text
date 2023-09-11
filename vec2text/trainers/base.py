@@ -103,6 +103,7 @@ class BaseTrainer(transformers.Trainer):
     def _log_preds_table(
         self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]
     ):
+        # import pdb; pdb.set_trace()
         if not self.args.use_wandb:
             return
         elif not (self.args.local_rank <= 0):

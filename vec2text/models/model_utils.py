@@ -1,5 +1,7 @@
 from typing import Any, Dict
 
+import os
+
 import torch
 import torch.nn as nn
 import transformers
@@ -119,7 +121,6 @@ def load_embedder_and_tokenizer(name: str):
             "sentence-transformers/gtr-t5-base"
         )
     elif name == "gtr_base_st":
-        # TODO figure out why model w/ sentence transformers gives different results.
         model = SentenceTransformer("sentence-transformers/gtr-t5-base")
         tokenizer = model.tokenizer
     elif name == "gtr_large":
@@ -144,6 +145,18 @@ def load_embedder_and_tokenizer(name: str):
             "medicalai/ClinicalBERT", **model_kwargs
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
+    elif name == "medicalai/ClinicalBERT":
+        model = transformers.AutoModel.from_pretrained(
+            "medicalai/ClinicalBERT", **model_kwargs
+        )
+        # tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
+    elif name.startswith("meta-llama/") or name.startswith("gpt2"):
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            name, **model_kwargs,
+            token=os.environ.get("LLAMA_TOKEN"),
+        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(name)
+        tokenizer.pad_token = tokenizer.eos_token
     else:
         raise ValueError(f"unknown embedder {name}")
 

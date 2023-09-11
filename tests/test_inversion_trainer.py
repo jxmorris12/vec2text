@@ -14,7 +14,7 @@ from vec2text.run_args import (
 )
 from vec2text.trainers import InversionTrainer
 
-DEFAULT_ARGS_STR = "--per_device_train_batch_size 32 --max_seq_length 128 --model_name_or_path t5-base --embedder_model_name gtr_base --num_repeat_tokens 16 --exp_name test-exp-123 --use_less_data 1000"
+DEFAULT_ARGS_STR = "--per_device_train_batch_size 8 --max_seq_length 128 --model_name_or_path t5-base --embedder_model_name gtr_base --num_repeat_tokens 16 --exp_name test-exp-123 --use_less_data 1000"
 DEFAULT_ARGS = shlex.split(DEFAULT_ARGS_STR)
 
 DEFAULT_ARGS += ["--use_wandb", "0"]
@@ -111,6 +111,31 @@ def test_trainer_decoder():
 
     print("metrics:", metrics)
 
+def test_trainer_gpt2():
+    parser = transformers.HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments)
+    )
+    model_args, data_args, training_args = parser.parse_args_into_dataclasses(
+        args=DEFAULT_ARGS
+    )
+    model_args.embedder_model_name = "gpt2"
+    # model_args.embedder_model_name = "meta-llama/Llama-2-7b-hf"
+    model_args.embedder_model_api = None
+    model_args.model_name_or_path = "t5-small"
+    model_args.use_frozen_embeddings_as_input = False # too big (1.1 TB for 8M logits)
+    data_args.dataset_name = "msmarco"
+    trainer = load_trainer(
+        model_args=model_args, data_args=data_args, training_args=training_args
+    )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        TRAINER_STATE_NAME = "state.json"
+        trainer.state.save_to_json(os.path.join(temp_dir, TRAINER_STATE_NAME))
+    train_result = trainer.train(resume_from_checkpoint=None)
+    metrics = train_result.metrics
+    assert metrics["train_loss"] > 0
+
+    print("metrics:", metrics)
 
 # def test_trainer_luar_data():
 #     parser = transformers.HfArgumentParser(

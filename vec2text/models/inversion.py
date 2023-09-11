@@ -74,41 +74,25 @@ class InversionModel(transformers.PreTrainedModel):
         embedder_no_grad = config.embedder_no_grad
 
         self.encoder_decoder = encoder_decoder  # .to_bettertransformer()
-        if encoder_decoder_lora:
-            from peft import (
-                LoraConfig,
-                TaskType,
-                get_peft_model,
-                prepare_model_for_int8_training,
-            )
-
-            peft_config = LoraConfig(
-                task_type=TaskType.SEQ_2_SEQ_LM,
-                inference_mode=False,
-                r=16,
-                lora_alpha=32,
-                lora_dropout=0.1,
-            )
-            print("Initializing LORA model with config:", peft_config)
-            self.encoder_decoder = prepare_model_for_int8_training(self.encoder_decoder)
-            self.encoder_decoder = get_peft_model(self.encoder_decoder, peft_config)
         ######################################################
         self.num_repeat_tokens = num_repeat_tokens
 
-        if embedder_model_api:
+        self.embedder_is_decoder = False
+
+        if ('CausalLM' in str(type(embedder))) or ('LMHead' in str(type(embedder))): # hacky way of checking if model is a pre-trained HF decoder
+            self.embedder_dim = embedder.config.vocab_size
+            self.embedder_is_decoder = True
+            bottleneck_dim = 768  # 768 * 30k = 23m params. TODO: is this rank reduction harmful?
+        elif embedder_model_api:
             assert use_frozen_embeddings_as_input, "must precompute embeddings w/ api"
             # Hard-code OpenAI embedding dim
-            self.embedder_dim = 1536
-            bottleneck_dim = 1536
-        # elif use_frozen_embeddings_as_input:
-        #     # temp hack to set fixed sentence embedding size to 512 for luar.
-        #     # TODO do this in a smarter way (figure it out from data? or make it an arg.)
-        #     self.embedder_dim = 512
+            bottleneck_dim = self.embedder_dim
         elif isinstance(embedder, SentenceTransformer):
-            self.embedder_dim = self.embedder.get_sentence_embedding_dimension()
+            self.embedder_dim = embedder.get_sentence_embedding_dimension()
+            bottleneck_dim = self.embedder_dim
         else:
-            self.embedder_dim = self.embedder.config.hidden_size
-
+            self.embedder_dim = embedder.config.hidden_size
+            bottleneck_dim = self.embedder_dim
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedder_no_grad = embedder_no_grad
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
@@ -178,12 +162,13 @@ class InversionModel(transformers.PreTrainedModel):
                     outputs, "hidden_states"
                 ), "output missing hidden states - did you remember to initialize the model with output_hidden_states=True?"
                 hidden_state = outputs.hidden_states[self.embeddings_from_layer_n]
+                embeddings = mean_pool(hidden_state, attention_mask)
+            elif self.embedder_is_decoder:
+                embeddings = outputs.logits[:, -1, :] # (batch, sequence_length, vocab_size)
+                hidden_state = outputs.hidden_states[-1]
             else:
                 hidden_state = outputs.last_hidden_state
-            # embeddings = model_output
-            embeddings = mean_pool(hidden_state, attention_mask)
-            # embeddings = max_pool(model_output, attention_mask)
-            # embeddings = stack_pool(model_output, attention_mask)
+                embeddings = mean_pool(hidden_state, attention_mask)
             return embeddings
 
     def call_embedding_model(
@@ -225,7 +210,6 @@ class InversionModel(transformers.PreTrainedModel):
             embeddings += self.noise_level * torch.randn(
                 embeddings.shape, device=embeddings.device
             )
-
         return embeddings
 
     def embed_and_project(
@@ -254,10 +238,10 @@ class InversionModel(transformers.PreTrainedModel):
         if self.embedding_transform_strategy == "none":
             pass
         elif self.embedding_transform_strategy == "repeat":
-            embeddings = self.embedding_transform(embeddings)
+            repeated_embeddings = self.embedding_transform(embeddings)
             batch_size = embeddings.shape[0]
             # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
-            embeddings = embeddings.reshape((batch_size, self.num_repeat_tokens, -1))
+            embeddings = repeated_embeddings.reshape((*repeated_embeddings.shape[:-1], self.num_repeat_tokens, -1))
         elif self.embedding_transform_strategy == "nearest_neighbors":
             # TODO
             raise NotImplementedError()
@@ -276,16 +260,12 @@ class InversionModel(transformers.PreTrainedModel):
         generation_kwargs: Dict[str, torch.Tensor],
     ) -> torch.Tensor:
         generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
-        # if "max_length" not in generation_kwargs:
-        # generation_kwargs["max_length"] = generation_kwargs["min_length"] = inputs.get(
-        #     "input_ids", inputs["embedder_input_ids"]
-        # ).shape[1]
-        # print("IM.generate:", generation_kwargs)
         inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=inputs.get("embedder_input_ids"),
             embedder_attention_mask=inputs.get("embedder_attention_mask"),
             frozen_embeddings=inputs.get("frozen_embeddings"),
         )
+
         if "decoder_input_ids" in inputs:
             return self.encoder_decoder.generate(
                 # required: input embeddings
