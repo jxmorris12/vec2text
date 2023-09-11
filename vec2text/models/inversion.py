@@ -55,7 +55,6 @@ class InversionModel(transformers.PreTrainedModel):
         use_frozen_embeddings_as_input = config.use_frozen_embeddings_as_input
         encoder_dropout_disabled = config.encoder_dropout_disabled
         decoder_dropout_disabled = config.decoder_dropout_disabled
-        encoder_decoder_lora = config.use_lora
         embeddings_from_layer_n = config.embeddings_from_layer_n
 
         encoder_decoder = load_encoder_decoder(
@@ -79,10 +78,14 @@ class InversionModel(transformers.PreTrainedModel):
 
         self.embedder_is_decoder = False
 
-        if ('CausalLM' in str(type(embedder))) or ('LMHead' in str(type(embedder))): # hacky way of checking if model is a pre-trained HF decoder
+        if ("CausalLM" in str(type(embedder))) or (
+            "LMHead" in str(type(embedder))
+        ):  # hacky way of checking if model is a pre-trained HF decoder
             self.embedder_dim = embedder.config.vocab_size
             self.embedder_is_decoder = True
-            bottleneck_dim = 768  # 768 * 30k = 23m params. TODO: is this rank reduction harmful?
+            bottleneck_dim = (
+                768  # 768 * 30k = 23m params. TODO: is this rank reduction harmful?
+            )
         elif embedder_model_api:
             assert use_frozen_embeddings_as_input, "must precompute embeddings w/ api"
             # Hard-code OpenAI embedding dim
@@ -164,7 +167,9 @@ class InversionModel(transformers.PreTrainedModel):
                 hidden_state = outputs.hidden_states[self.embeddings_from_layer_n]
                 embeddings = mean_pool(hidden_state, attention_mask)
             elif self.embedder_is_decoder:
-                embeddings = outputs.logits[:, -1, :] # (batch, sequence_length, vocab_size)
+                embeddings = outputs.logits[
+                    :, -1, :
+                ]  # (batch, sequence_length, vocab_size)
                 hidden_state = outputs.hidden_states[-1]
             else:
                 hidden_state = outputs.last_hidden_state
@@ -239,9 +244,10 @@ class InversionModel(transformers.PreTrainedModel):
             pass
         elif self.embedding_transform_strategy == "repeat":
             repeated_embeddings = self.embedding_transform(embeddings)
-            batch_size = embeddings.shape[0]
             # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
-            embeddings = repeated_embeddings.reshape((*repeated_embeddings.shape[:-1], self.num_repeat_tokens, -1))
+            embeddings = repeated_embeddings.reshape(
+                (*repeated_embeddings.shape[:-1], self.num_repeat_tokens, -1)
+            )
         elif self.embedding_transform_strategy == "nearest_neighbors":
             # TODO
             raise NotImplementedError()

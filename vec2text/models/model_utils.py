@@ -1,6 +1,5 @@
-from typing import Any, Dict
-
 import os
+from typing import Any, Dict
 
 import torch
 import torch.nn as nn
@@ -152,7 +151,8 @@ def load_embedder_and_tokenizer(name: str):
         # tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
     elif name.startswith("meta-llama/") or name.startswith("gpt2"):
         model = transformers.AutoModelForCausalLM.from_pretrained(
-            name, **model_kwargs,
+            name,
+            **model_kwargs,
             token=os.environ.get("LLAMA_TOKEN"),
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)

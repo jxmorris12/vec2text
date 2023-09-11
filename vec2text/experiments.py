@@ -513,7 +513,7 @@ class Experiment(abc.ABC):
 class InversionExperiment(Experiment):
     @property
     def _wandb_project_name(self) -> str:
-        return "emb-inv-3"
+        return "emb-inv-4"
 
     def load_model(self) -> transformers.PreTrainedModel:
         return InversionModel(
