@@ -119,6 +119,7 @@ def test_trainer_gpt2():
     model_args, data_args, training_args = parser.parse_args_into_dataclasses(
         args=DEFAULT_ARGS
     )
+    training_args.experiment = "inversion_from_logits"
     model_args.embedder_model_name = "gpt2"
     # model_args.embedder_model_name = "meta-llama/Llama-2-7b-hf"
     model_args.embedder_model_api = None

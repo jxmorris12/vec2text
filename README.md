@@ -44,7 +44,7 @@ vec2text.invert_strings(
         "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity"
     ],
     corrector=corrector,
-    num_recursive_steps=20,
+    num_steps=20,
 )
 ['Jack Morris is a PhD student in tech at Cornell University in New York City',
  'It was the best time of the epoch, it was the worst time of the epoch, it was the best time of the age of wisdom, it was the age of incredulity, it was the age of betrayal']
@@ -59,7 +59,7 @@ vec2text.invert_strings(
         "It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of foolishness, it was the epoch of belief, it was the epoch of incredulity"
     ],
     corrector=corrector,
-    num_recursive_steps=20,
+    num_steps=20,
     sequence_beam_width=4,
 )
 ['Jack Morris is a PhD student at Cornell Tech in New York City',

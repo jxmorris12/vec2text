@@ -17,6 +17,7 @@ from vec2text.collator import DataCollatorForCorrection
 from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
 from vec2text.models import (
     CorrectorEncoderModel,
+    InversionFromLogitsModel,
     InversionModel,
     InversionModelBagOfWords,
     InversionModelDecoderOnly,
@@ -542,6 +543,17 @@ class InversionExperiment(Experiment):
         )
 
 
+class InversionFromLogitsExperiment(InversionExperiment):
+    @property
+    def _wandb_project_name(self) -> str:
+        return "emb-inv-logits-4"
+
+    def load_model(self) -> transformers.PreTrainedModel:
+        return InversionFromLogitsModel(
+            config=self.config,
+        )
+
+
 class InversionExperimentDecoderOnly(InversionExperiment):
     def load_model(self) -> transformers.PreTrainedModel:
         model_args = self.model_args
@@ -621,12 +633,12 @@ class CorrectorExperiment(Experiment):
 
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
-        _, inversion_trainer = aliases.load_experiment_and_trainer_from_alias(
+        _, inversion_trainer = vec2text.aliases.load_experiment_and_trainer_from_alias(
             alias=self.training_args.corrector_model_alias,
             max_seq_length=self.model_args.max_seq_length,
             use_less_data=self.data_args.use_less_data,
         )
-        return aliases.trainers.Corrector(
+        return vec2text.trainers.Corrector(
             model=model,
             inversion_trainer=inversion_trainer,
             args=self.training_args,
@@ -644,6 +656,7 @@ class CorrectorExperiment(Experiment):
 EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "inversion_decoder_only": InversionExperimentDecoderOnly,
+    "inversion_from_logits": InversionFromLogitsExperiment,
     "corrector": CorrectorExperiment,
     "corrector_encoder": CorrectorExperiment,  # backwards-compatible; does same thing as just 'corrector'
     #

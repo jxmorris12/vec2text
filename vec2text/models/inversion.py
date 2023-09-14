@@ -79,28 +79,7 @@ class InversionModel(transformers.PreTrainedModel):
         self.embedder_is_decoder = False
 
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
-        if ("CausalLM" in str(type(embedder))) or (
-            "LMHead" in str(type(embedder))
-        ):  # hacky way of checking if model is a pre-trained HF decoder
-            self.embedder_dim = 768
-            self.embedder_is_decoder = True
-            bottleneck_dim = (
-                768  # 768 * 30k = 23m params. TODO: is this rank reduction harmful?
-            )
-            # todo: make prettier
-            self.num_zeros_to_add =  768 - ((embedder.config.vocab_size + 768) % 768)
-            self.num_repeat_tokens = round((embedder.config.vocab_size + self.num_zeros_to_add)/768)
-            self.sequence_weights = torch.nn.Parameter(
-                torch.randn((self.num_repeat_tokens, self.embedder_dim, self.embedder_dim), dtype=torch.float32),
-                requires_grad=True
-            )
-            self.sequence_embedding_transform = nn.Sequential(
-                nn.Linear(self.embedder_dim, bottleneck_dim),
-                nn.Dropout(self.encoder_decoder.config.dropout_rate),
-                nn.GELU(), 
-                nn.Linear(bottleneck_dim, encoder_hidden_dim),
-            )
-        elif embedder_model_api:
+        if embedder_model_api:
             assert use_frozen_embeddings_as_input, "must precompute embeddings w/ api"
             # Hard-code OpenAI embedding dim
             bottleneck_dim = self.embedder_dim
@@ -113,7 +92,7 @@ class InversionModel(transformers.PreTrainedModel):
         self.embedder_no_grad = embedder_no_grad
         self.use_frozen_embeddings_as_input = use_frozen_embeddings_as_input
         self.bottleneck_dim = bottleneck_dim
-        
+
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
             nn.Dropout(self.encoder_decoder.config.dropout_rate),
@@ -180,12 +159,6 @@ class InversionModel(transformers.PreTrainedModel):
                 ), "output missing hidden states - did you remember to initialize the model with output_hidden_states=True?"
                 hidden_state = outputs.hidden_states[self.embeddings_from_layer_n]
                 embeddings = mean_pool(hidden_state, attention_mask)
-            elif self.embedder_is_decoder:
-                # embeddings = outputs.logits[:, -1, :]# (batch, sequence_length, vocab_size)
-                embeddings = outputs.logits[:, -1, :]  # .log_softmax(dim=2)
-                zeros = torch.zeros((embeddings.shape[0], self.num_zeros_to_add), dtype=embeddings.dtype, device=embeddings.device)
-                embeddings = torch.cat((embeddings, zeros), dim=1)
-                hidden_state = outputs.hidden_states[-1]
             else:
                 hidden_state = outputs.last_hidden_state
                 embeddings = mean_pool(hidden_state, attention_mask)
@@ -254,15 +227,7 @@ class InversionModel(transformers.PreTrainedModel):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-
-        if self.embedder_is_decoder:
-            # TODO prob need to reshape here
-            embeddings = embeddings.reshape((embeddings.shape[0], self.num_repeat_tokens, -1))
-            embeddings = torch.einsum('bsd,sdw->bsw', embeddings, self.sequence_weights)
-            embeddings = self.sequence_embedding_transform(embeddings)
-        elif self.embedding_transform_strategy == "none":
-            pass
-        elif self.embedding_transform_strategy == "repeat":
+        if self.embedding_transform_strategy == "repeat":
             repeated_embeddings = self.embedding_transform(embeddings)
             # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
             embeddings = repeated_embeddings.reshape(

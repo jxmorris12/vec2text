@@ -11,8 +11,6 @@ DPR_PATH = "/home/jxm3/research/retrieval/DPR/dpr/downloads/data/retriever/{name
 NQ_DEV = "nq-dev"
 NQ_TRAIN = "nq-train"
 
-MSMARCO_PATH = "/home/jxm3/research/retrieval/data/msmarco/corpus.jsonl"
-
 
 def create_passage__dpr(ctx: dict):
     """(from dpr code)"""
@@ -75,50 +73,10 @@ def load_dpr_corpus(name: str) -> datasets.Dataset:
     return dataset
 
 
-def load_msmarco_corpus_uncached(path: str) -> List[str]:
-    assert os.path.exists(path), f"dataset not found: {path}"
-    logging.info("Loading MSMarco dataset from path %s", path)
-    # TODO: change to ascii?
-    items = open(path, "r", encoding="utf-8").readlines()
-    contexts: List[str] = list()
-
-    ######################################################################
-    string_from_dataset = json.loads(items[0])["text"]
-    color = "#" + "".join(hex(ord(x))[2:] for x in string_from_dataset)[:6]
-    ######################################################################
-
-    for item_text in tqdm.tqdm(
-        items, colour=color, desc="Loading dataset", leave=False
-    ):
-        item = json.loads(item_text)
-        contexts.append(item["text"])
-
-    logging.info("Loaded dataset.")
-    return contexts
-
-
-def load_msmarco_corpus(path: str) -> datasets.Dataset:
-    cache_path = (
-        datasets.config.HF_DATASETS_CACHE
-    )  # something like /home/jxm3/.cache/huggingface/datasets
-    dataset_path = os.path.join(cache_path, "emb_inv_msmarco")
-
-    logging.info("checking dataset path %s", dataset_path)
-
-    if os.path.exists(dataset_path):
-        logging.info("Loading MSMARCO dataset %s path %s", dataset_path)
-        dataset = datasets.load_from_disk(dataset_path)
-    else:
-        logging.info("Loading MSMARCO dataset %s from JSON (slow) at path %s", path)
-        corpus = load_msmarco_corpus_uncached(path=path)
-        dataset = datasets.Dataset.from_list([{"text": t} for t in corpus])
-        os.makedirs(os.path.join(cache_path, "emb_inv_msmarco"), exist_ok=True)
-        dataset.save_to_disk(dataset_path)
-        logging.info(
-            "Saved MSMarco dataset as HF from %s to path %s", path, dataset_path
-        )
-
-    return dataset
+def load_msmarco_corpus() -> datasets.Dataset:
+    # has columns ["title", "text"]. only one split ("train")
+    dataset_dict = datasets.load_dataset("Tevatron/msmarco-passage-corpus")
+    return dataset_dict["train"]
 
 
 def load_luar_reddit() -> datasets.Dataset:
@@ -137,7 +95,7 @@ def dataset_from_args(data_args) -> datasets.DatasetDict:
             }
         )
     elif data_args.dataset_name == "msmarco":
-        raw_datasets = load_msmarco_corpus(MSMARCO_PATH)
+        raw_datasets = load_msmarco_corpus()
         raw_datasets = raw_datasets.train_test_split(test_size=0.01)
         raw_datasets["validation"] = raw_datasets["test"]
     elif data_args.dataset_name == "luar_reddit":
