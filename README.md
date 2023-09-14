@@ -127,7 +127,7 @@ for alpha in np.arange(0.0, 1.0, 0.1):
       sequence_beam_width=4,
   )[0]
   print(f'alpha={alpha:.1f}\t', text)
-  
+
 alpha=0.0	 Jack Morris is a PhD student at Cornell Tech in New York City
 alpha=0.1	 Jack Morris is a PhD student at Cornell Tech in New York City
 alpha=0.2	 Jack Morris is a PhD student at Cornell Tech in New York City

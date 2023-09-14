@@ -140,6 +140,35 @@ def test_trainer_gpt2():
     print("metrics:", metrics)
 
 
+def test_trainer_gpt2_with_suffix():
+    parser = transformers.HfArgumentParser(
+        (ModelArguments, DataArguments, TrainingArguments)
+    )
+    model_args, data_args, training_args = parser.parse_args_into_dataclasses(
+        args=DEFAULT_ARGS
+    )
+    training_args.experiment = "inversion_from_logits"
+    model_args.embedder_model_name = "gpt2"
+    # model_args.embedder_model_name = "meta-llama/Llama-2-7b-hf"
+    model_args.embedder_model_api = None
+    model_args.model_name_or_path = "t5-small"
+    model_args.use_frozen_embeddings_as_input = False  # too big (1.1 TB for 8M logits)
+    data_args.dataset_name = "msmarco"
+    model_args.suffix_conditioning = True
+    trainer = load_trainer(
+        model_args=model_args, data_args=data_args, training_args=training_args
+    )
+
+    with tempfile.TemporaryDirectory() as temp_dir:
+        TRAINER_STATE_NAME = "state.json"
+        trainer.state.save_to_json(os.path.join(temp_dir, TRAINER_STATE_NAME))
+    train_result = trainer.train(resume_from_checkpoint=None)
+    metrics = train_result.metrics
+    assert metrics["train_loss"] > 0
+
+    print("metrics:", metrics)
+
+
 # def test_trainer_luar_data():
 #     parser = transformers.HfArgumentParser(
 #         (ModelArguments, DataArguments, TrainingArguments)
