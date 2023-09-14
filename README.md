@@ -101,6 +101,48 @@ vec2text.invert_embeddings(
 
 This function also takes the same optional hyperparameters, `num_steps` and `sequence_beam_width`.
 
+### Interpolation
+
+You can mix two embeddings together for interesting results. Given embeddings of the previous two inputs, we can invert their mean:
+
+```python
+vec2text.invert_embeddings(
+    embeddings=embeddings.mean(dim=0, keepdim=True).cuda(),
+    corrector=corrector
+)
+['Morris was in the age of physics, the age of astronomy, the age of physics, the age of physics PhD at New York']
+```
+
+Or do linear interpolation (this isn't particularly interesting, feel free to submit a PR with a cooler example):
+
+```python
+import numpy as np
+
+for alpha in np.arange(0.0, 1.0, 0.1):
+  mixed_embedding = torch.lerp(input=embeddings[0], end=embeddings[1], weight=alpha)
+  text = vec2text.invert_embeddings(
+      embeddings=mixed_embedding[None].cuda(),
+      corrector=corrector,
+      num_steps=20,
+      sequence_beam_width=4,
+  )[0]
+  print(f'alpha={alpha:.1f}\t', text)
+  
+alpha=0.0	 Jack Morris is a PhD student at Cornell Tech in New York City
+alpha=0.1	 Jack Morris is a PhD student at Cornell Tech in New York City
+alpha=0.2	 Jack Morris is a PhD student at Cornell Tech in New York City
+alpha=0.3	 Jack Morris is a PhD student at Cornell Institute of Technology in New York City
+alpha=0.4	 Jack Morris was a PhD student at Cornell Tech in New York City It is the epoch of wisdom, it is the epoch of incredulity
+alpha=0.5	 Jack Morris is a Ph.D. student at Cornell Tech in New York City It was the epoch of wisdom, it was the epoch of incredulity, it was the epoch of times
+alpha=0.6	 James Morris is a PhD student at New York Tech It was the epoch of wisdom, it was the age of incredulity, it was the best of times
+alpha=0.7	 It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of incredulity, it was the epoch of incredulity at Morris, Ph.D
+alpha=0.8	 It was the best of times, it was the worst of times, it was the epoch of wisdom, it was the age of incredulity, it was the age of incredulity
+alpha=0.9	 It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of incredulity, it was the age of belief, it was the epoch of foolishness
+  ```
+
+
+
+
 ## Pre-trained models
 
 Currently we only support models for inverting OpenAI `text-embedding-ada-002` embeddings but are hoping to add more soon. (We can provide the GTR inverters used in the paper upon request.)
