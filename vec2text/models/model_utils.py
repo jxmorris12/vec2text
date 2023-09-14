@@ -6,7 +6,7 @@ import torch.nn as nn
 import transformers
 from sentence_transformers import SentenceTransformer
 
-MODEL_NAMES = [
+EMBEDDER_MODEL_NAMES = [
     "bert",
     "contriever",
     "dpr",
@@ -18,6 +18,8 @@ MODEL_NAMES = [
     "dpr_st",
     "gtr_base_st",
     "paraphrase-distilroberta",
+    "meta-llama/Llama-2-7b-hf",
+    "gpt2",
 ]
 
 

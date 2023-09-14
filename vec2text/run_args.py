@@ -9,7 +9,7 @@ from transformers import MODEL_FOR_CAUSAL_LM_MAPPING
 from vec2text.models import (
     EMBEDDING_TRANSFORM_STRATEGIES,
     FREEZE_STRATEGIES,
-    MODEL_NAMES,
+    EMBEDDER_MODEL_NAMES,
 )
 
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
@@ -42,7 +42,7 @@ class ModelArguments:
         default="gtr_base",
         metadata={
             "help": "Model to get embeddings from (locally)",
-            "choices": MODEL_NAMES,
+            "choices": EMBEDDER_MODEL_NAMES,
         },
     )
     embedder_model_api: Optional[str] = field(

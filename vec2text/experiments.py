@@ -12,7 +12,7 @@ import datasets
 import torch
 import transformers
 
-from vec2text import aliases, trainers
+import vec2text
 from vec2text.collator import DataCollatorForCorrection
 from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
 from vec2text.models import (
@@ -533,7 +533,7 @@ class InversionExperiment(Experiment):
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
 
-        return trainers.InversionTrainer(
+        return vec2text.trainers.InversionTrainer(
             model=model,
             args=self.training_args,
             train_dataset=train_dataset,
@@ -575,7 +575,7 @@ class InversionExperimentNonAutoregressive(Experiment):
         logger.info(
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
-        return trainers.InversionTrainerNonAutoregressive(
+        return vec2text.trainers.InversionTrainerNonAutoregressive(
             model=model,
             args=self.training_args,
             train_dataset=train_dataset,
@@ -605,7 +605,7 @@ class InversionExperimentBagOfWords(Experiment):
         logger.info(
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
-        return trainers.InversionTrainerBagOfWords(
+        return vec2text.trainers.InversionTrainerBagOfWords(
             model=model,
             args=self.training_args,
             train_dataset=train_dataset,
@@ -626,7 +626,7 @@ class CorrectorExperiment(Experiment):
             max_seq_length=self.model_args.max_seq_length,
             use_less_data=self.data_args.use_less_data,
         )
-        return trainers.Corrector(
+        return aliases.trainers.Corrector(
             model=model,
             inversion_trainer=inversion_trainer,
             args=self.training_args,

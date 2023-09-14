@@ -5,13 +5,12 @@ import torch
 import transformers
 
 import vec2text
-from vec2text import Corrector
 from vec2text.models.model_utils import device
 
 SUPPORTED_MODELS = ["text-embedding-ada-002"]
 
 
-def load_corrector(embedder: str) -> Corrector:
+def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
     """Gets the Corrector object for the given embedder.
 
     For now, we just support inverting OpenAI Ada 002 embeddings; we plan to
@@ -53,7 +52,7 @@ def load_corrector(embedder: str) -> Corrector:
 
 def invert_embeddings(
     embeddings: torch.Tensor,
-    corrector: Corrector,
+    corrector: vec2text.trainers.Corrector,
     num_steps: int = None,
     sequence_beam_width: int = 0,
 ) -> List[str]:
@@ -94,7 +93,7 @@ def invert_embeddings(
 
 def invert_strings(
     strings: List[str],
-    corrector: Corrector,
+    corrector: vec2text.trainers.Corrector,
     num_steps: int = None,
     sequence_beam_width: int = 0,
 ) -> List[str]:
