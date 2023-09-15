@@ -94,16 +94,16 @@ class InversionFromLogitsModel(InversionModel):
             # below message will go away when we get data with suffixes
             if suffix_ids is None:
                 print("warning: suffix-conditioning enabled but no suffix passed")
-                suffix_length = 1
-                embeddings = embeddings[:, -1, :]  # next-token logits
-            else:
-                suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(
-                    suffix_ids
-                )
-                suffix_embeddings = self.suffix_transform(suffix_embeddings)
-                #
-                suffix_length = suffix_ids.shape[1]
-                embeddings = embeddings[:, -suffix_length:, :]
+                suffix_ids = torch.tensor([[0]] * len(embeddings), dtype=torch.long, device=self.device)
+                # embeddings = embeddings[:, -1, :]  # next-token logits
+            suffix_length = suffix_ids.shape[1]
+            embeddings = embeddings[:, -suffix_length:, :]
+            suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(
+                suffix_ids
+            )
+            suffix_embeddings = self.suffix_transform(suffix_embeddings)
+            #
+            suffix_length = suffix_ids.shape[1]
             suffix_position_embedding = self.suffix_position_embedding[
                 None, :suffix_length, ...
             ]
@@ -119,17 +119,28 @@ class InversionFromLogitsModel(InversionModel):
             embeddings = embeddings.mean(dim=1)
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
             #
-
+            embeddings = self.embedding_transform(embeddings)
+            attention_mask = torch.ones(
+                (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
+            )
+            # 
+            embeddings = torch.cat(
+                (embeddings, suffix_embeddings), dim=1
+            )
+            suffix_attention_mask = (suffix_ids != 0).int()
+            attention_mask = torch.cat(
+                (attention_mask, suffix_attention_mask), dim=1
+            )
         else:
             embeddings = embeddings[:, -1, :]  # next-token logits
             embeddings = embeddings.reshape(
                 (embeddings.shape[0], self.num_repeat_tokens, -1)
             )
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
-        embeddings = self.embedding_transform(embeddings)
-        attention_mask = torch.ones(
-            (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
-        )
+            embeddings = self.embedding_transform(embeddings)
+            attention_mask = torch.ones(
+                (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
+            )
         return embeddings, attention_mask
 
     def _process_embedder_output(
