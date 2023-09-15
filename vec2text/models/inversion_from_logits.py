@@ -99,14 +99,10 @@ class InversionFromLogitsModel(InversionModel):
                 )
                 # embeddings = embeddings[:, -1, :]  # next-token logits
             suffix_length = suffix_ids.shape[1]
-            embeddings = embeddings[:, -suffix_length:, :]
             suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(suffix_ids)
             suffix_embeddings = self.suffix_transform(suffix_embeddings)
             #
-            suffix_length = suffix_ids.shape[1]
-            suffix_position_embedding = self.suffix_position_embedding[
-                None, :suffix_length, ...
-            ]
+            embeddings = embeddings[:, -suffix_length:, :]
             embeddings = embeddings.reshape(
                 (
                     embeddings.shape[0],
@@ -115,6 +111,9 @@ class InversionFromLogitsModel(InversionModel):
                     self.embedder_dim,
                 )
             )
+            suffix_position_embedding = self.suffix_position_embedding[
+                None, :suffix_length, ...
+            ]
             embeddings = embeddings + suffix_position_embedding
             embeddings = embeddings.mean(dim=1)
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
@@ -128,9 +127,11 @@ class InversionFromLogitsModel(InversionModel):
             suffix_attention_mask = (suffix_ids != 0).int()
             attention_mask = torch.cat((attention_mask, suffix_attention_mask), dim=1)
         else:
-            embeddings = embeddings[:, -1, :]  # next-token logits
+            if len(embeddings.shape) == 3:
+                # Get next-token prediction.
+                embeddings = embeddings[:, -1, :]
             embeddings = embeddings.reshape(
-                (embeddings.shape[0], self.num_repeat_tokens, -1)
+                (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
             )
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
             embeddings = self.embedding_transform(embeddings)
@@ -197,6 +198,7 @@ class InversionFromLogitsModel(InversionModel):
             else:
                 suffix_ids = None
         else:
+            suffix_ids = None
             prefix_length = None
 
         inputs_embeds, attention_mask = self.embed_and_project(

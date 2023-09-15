@@ -45,7 +45,7 @@ logger = logging.getLogger(__name__)
 
 # We maintain our own cache because huggingface datasets caching
 # doesn't work properly.
-DATASET_CACHE_PATH = "/home/jxm3/.cache/inversion"
+DATASET_CACHE_PATH = os.environ.get("VEC2TEXT_CACHE", "/home/jxm3/.cache/inversion")
 
 
 def md5_hash_kwargs(**kwargs) -> str:
@@ -364,6 +364,8 @@ class Experiment(abc.ABC):
             precompute_batch_size = self.training_args.per_device_train_batch_size
             # precompute_batch_size = 8192
             print(f"[Precomputing embeddings with batch size: {precompute_batch_size}]")
+            assert torch.cuda.is_available()
+            model = model.to(device)
             tokenized_datasets = tokenized_datasets.map(
                 functools.partial(embed_dataset_batch, model),
                 batched=True,
@@ -456,6 +458,12 @@ class Experiment(abc.ABC):
             "embedder_model_api": str(self.model_args.embedder_model_api),
         }
 
+        # Only set this if it's true, for backwards-compatibility with
+        # when we forgot to cache using this argument.
+        if self.model_args.use_frozen_embeddings_as_input:
+            dataset_kwargs["use_frozen_embeddings_as_input"] = "True",
+            dataset_kwargs["suffix_conditioning"] = str(self.model_args.suffix_conditioning)
+
         # os.environ["TOKENIZERS_PARALLELISM"] = "True"
         print(
             "Loading datasets with TOKENIZERS_PARALLELISM =",
@@ -477,7 +485,11 @@ class Experiment(abc.ABC):
                 tokenizer=tokenizer,
                 embedder_tokenizer=embedder_tokenizer,
             )
-            train_datasets.save_to_disk(train_dataset_path)
+            print("saving train_dataset to path:", train_dataset_path)
+            train_datasets.save_to_disk(
+                train_dataset_path,
+                max_shard_size="2GB",
+            )
         ######################################################################
         val_dataset_kwargs = {
             "dataset_name": "__".join(
@@ -497,6 +509,7 @@ class Experiment(abc.ABC):
                 tokenizer=tokenizer,
                 embedder_tokenizer=embedder_tokenizer,
             )
+            print("saving val_dataset to path:", val_dataset_path)
             val_datasets_dict.save_to_disk(val_dataset_path)
         ######################################################################
         val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
