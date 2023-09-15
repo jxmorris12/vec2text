@@ -94,13 +94,13 @@ class InversionFromLogitsModel(InversionModel):
             # below message will go away when we get data with suffixes
             if suffix_ids is None:
                 print("warning: suffix-conditioning enabled but no suffix passed")
-                suffix_ids = torch.tensor([[0]] * len(embeddings), dtype=torch.long, device=self.device)
+                suffix_ids = torch.tensor(
+                    [[0]] * len(embeddings), dtype=torch.long, device=self.device
+                )
                 # embeddings = embeddings[:, -1, :]  # next-token logits
             suffix_length = suffix_ids.shape[1]
             embeddings = embeddings[:, -suffix_length:, :]
-            suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(
-                suffix_ids
-            )
+            suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(suffix_ids)
             suffix_embeddings = self.suffix_transform(suffix_embeddings)
             #
             suffix_length = suffix_ids.shape[1]
@@ -123,14 +123,10 @@ class InversionFromLogitsModel(InversionModel):
             attention_mask = torch.ones(
                 (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
             )
-            # 
-            embeddings = torch.cat(
-                (embeddings, suffix_embeddings), dim=1
-            )
+            #
+            embeddings = torch.cat((embeddings, suffix_embeddings), dim=1)
             suffix_attention_mask = (suffix_ids != 0).int()
-            attention_mask = torch.cat(
-                (attention_mask, suffix_attention_mask), dim=1
-            )
+            attention_mask = torch.cat((attention_mask, suffix_attention_mask), dim=1)
         else:
             embeddings = embeddings[:, -1, :]  # next-token logits
             embeddings = embeddings.reshape(
@@ -174,6 +170,7 @@ class InversionFromLogitsModel(InversionModel):
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
         if self.config.suffix_conditioning:
+            assert labels is not None
             batch_size, seq_length = labels.shape
             true_seq_length = (labels >= 0).sum(1).min()
             if self.training:
