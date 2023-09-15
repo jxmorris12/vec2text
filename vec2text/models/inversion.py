@@ -82,6 +82,7 @@ class InversionModel(transformers.PreTrainedModel):
         if embedder_model_api:
             assert use_frozen_embeddings_as_input, "must precompute embeddings w/ api"
             # Hard-code OpenAI embedding dim
+            self.embedder_dim = 1536
             bottleneck_dim = self.embedder_dim
         elif isinstance(embedder, SentenceTransformer):
             self.embedder_dim = embedder.get_sentence_embedding_dimension()
