@@ -22,7 +22,6 @@ from vec2text.models import (
     InversionModelBagOfWords,
     InversionModelDecoderOnly,
     InversionModelNonAutoregressive,
-    load_embedder_and_tokenizer,
 )
 from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
@@ -585,7 +584,6 @@ class InversionFromLogitsExperiment(InversionExperiment):
 
 class InversionExperimentDecoderOnly(InversionExperiment):
     def load_model(self) -> transformers.PreTrainedModel:
-        model_args = self.model_args
         return InversionModelDecoderOnly(
             config=self.config,
         )
