@@ -175,25 +175,22 @@ class InversionFromLogitsModel(InversionModel):
         # Unused: input_ids, attention_mask
         if self.config.suffix_conditioning:
             batch_size, seq_length = labels.shape
+            true_seq_length = (labels >= 0).sum(1).min()
             if self.training:
                 # Randomly create a suffix from the input.
                 # TODO: Pass in suffix directly from (prompted) data.
                 # # Remove this hackiness!
                 prefix_length = torch.randint(
                     low=1,  # inclusive
-                    high=seq_length,  # exclusive
+                    high=true_seq_length,  # exclusive
                     size=(1,),
                     dtype=torch.long,
                 ).item()
             else:
-                prefix_length = seq_length // 2
+                prefix_length = true_seq_length // 2
 
             if labels is not None:
-                suffix_ids = labels.where(
-                    torch.arange(seq_length, device=self.device)[None, :]
-                    <= prefix_length,
-                    self.encoder_decoder.config.pad_token_id,
-                )
+                suffix_ids = labels[:, prefix_length:]
                 suffix_ids = suffix_ids.clamp(min=0)  # replace -100 with 0.
                 labels = labels.where(
                     torch.arange(seq_length, device=self.device)[None, :]

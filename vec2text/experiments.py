@@ -546,7 +546,7 @@ class InversionExperiment(Experiment):
 class InversionFromLogitsExperiment(InversionExperiment):
     @property
     def _wandb_project_name(self) -> str:
-        return "emb-inv-logits-4"
+        return "emb-inv-logits-1"
 
     def load_model(self) -> transformers.PreTrainedModel:
         return InversionFromLogitsModel(
