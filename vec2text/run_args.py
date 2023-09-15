@@ -305,6 +305,18 @@ class TrainingArguments(transformers.TrainingArguments):
             "help": "Number of steps between eval (will be scaled as if batch size is 32)"
         },
     )
+    mock_embedder: bool = field(
+        default=False,
+        metadata={
+            "help": (
+                "If true, will delete the embedder and replace all embedder logits with"
+                " zeros once training starts. You probably don't want to do this. But "
+                " if you precomputed all the embeddings for train and val, this will"
+                " work fine, except the embedding-based metrics (just cosine similarity"
+                " I think) will be broken."
+            )
+        },
+    )
 
     include_inputs_for_metrics: bool = True
 

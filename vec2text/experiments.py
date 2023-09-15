@@ -27,7 +27,7 @@ from vec2text.models import (
 from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 from vec2text.tokenize_data import embed_dataset_batch, tokenize_function
-from vec2text.utils import torch_main_worker_finish_first
+from vec2text.utils import MockEmbedder, torch_main_worker_finish_first
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -125,8 +125,8 @@ class Experiment(abc.ABC):
 
         # Log on each process a small summary of training.
         logger.warning(
-            f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}"
-            + f"distributed training: {bool(training_args.local_rank != -1)}, 16-bits training: {training_args.fp16}"
+            f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
+            + f"fp16 training: {training_args.fp16}, bf16 training: {training_args.bf16}"
         )
         logger.info(f"Training/evaluation parameters {training_args}")
 
@@ -461,8 +461,10 @@ class Experiment(abc.ABC):
         # Only set this if it's true, for backwards-compatibility with
         # when we forgot to cache using this argument.
         if self.model_args.use_frozen_embeddings_as_input:
-            dataset_kwargs["use_frozen_embeddings_as_input"] = "True",
-            dataset_kwargs["suffix_conditioning"] = str(self.model_args.suffix_conditioning)
+            dataset_kwargs["use_frozen_embeddings_as_input"] = "True"
+            dataset_kwargs["suffix_conditioning"] = str(
+                self.model_args.suffix_conditioning
+            )
 
         # os.environ["TOKENIZERS_PARALLELISM"] = "True"
         print(
@@ -547,6 +549,20 @@ class InversionExperiment(Experiment):
             f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
         )
 
+        if self.training_args.mock_embedder:
+            # This mode allows us to get the embedders off the GPU during training
+            # once we've computed all the embeddings we need. :)
+            assert (
+                model.config.use_frozen_embeddings_as_input
+            ), "must use frozen embeddings if mock_embedder=True"
+            print(
+                "IMPORTANT: Mocking embedder for the rest of training (to save GPU memory)."
+                " Do not trust embedding-based evaluation metrics."
+            )
+            model.embedder.cpu()
+            del model.embedder
+            model.embedder = MockEmbedder(embedder_dim=model.embedder_dim)
+
         return vec2text.trainers.InversionTrainer(
             model=model,
             args=self.training_args,
@@ -570,10 +586,6 @@ class InversionFromLogitsExperiment(InversionExperiment):
 class InversionExperimentDecoderOnly(InversionExperiment):
     def load_model(self) -> transformers.PreTrainedModel:
         model_args = self.model_args
-
-        embedder, embedder_tokenizer = load_embedder_and_tokenizer(
-            name=model_args.embedder_model_name
-        )
         return InversionModelDecoderOnly(
             config=self.config,
         )

@@ -414,6 +414,9 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_retokenized = self.embedder_tokenizer(
                 decoded_preds, padding=True, truncation=False, return_tensors="pt"
             )["input_ids"].to(preds_sample.device)
+            preds_sample_retokenized = preds_sample_retokenized[
+                : self.args.per_device_eval_batch_size, :
+            ]
             pad_token_id = self.pad_token_id
             preds_emb = self.call_embedding_model(
                 input_ids=preds_sample_retokenized,
@@ -424,6 +427,9 @@ class BaseTrainer(transformers.Trainer):
             preds_sample_labels_retokenized = self.embedder_tokenizer(
                 decoded_labels, padding=True, truncation=False, return_tensors="pt"
             )["input_ids"].to(preds_sample.device)
+            preds_sample_labels_retokenized = preds_sample_labels_retokenized[
+                : self.args.per_device_eval_batch_size, :
+            ]
             labels_emb = self.call_embedding_model(
                 input_ids=preds_sample_labels_retokenized,
                 attention_mask=(preds_sample_labels_retokenized != pad_token_id).to(
@@ -456,11 +462,13 @@ class BaseTrainer(transformers.Trainer):
         output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)
         metric_key_prefix = kwargs["metric_key_prefix"]
         # TODO compute some data metrics here too.
-        generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
-        generation_metrics = {
-            f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
-        }
-        output.metrics.update(generation_metrics)
+        if self.args.local_rank <= 0:
+            # Generate some text on worker 0 and compute metrics.
+            generation_metrics = self.eval_generation_metrics(dataloader=dataloader)
+            generation_metrics = {
+                f"{metric_key_prefix}_{k}": v for k, v in generation_metrics.items()
+            }
+            output.metrics.update(generation_metrics)
         return output
 
     def _remap_state_dict(self, state_dict: Dict) -> Dict:

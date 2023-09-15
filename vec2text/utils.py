@@ -212,3 +212,19 @@ def embed_api(
     # print(torch.tensor(embeddings).abs().sum(dim=-1).tolist())
     # print()
     return torch.tensor(embeddings, device=input_ids.device, dtype=torch.float32)
+
+
+class MockEmbedder:
+    embedder_dim: int
+
+    def __init__(self, embedder_dim: int):
+        self.embedder_dim = embedder_dim
+
+    def forward(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        return torch.zeros(
+            (input_ids.shape[0], self.embedder_dim),
+            dtype=torch.float32,
+            device=input_ids.device,
+        )

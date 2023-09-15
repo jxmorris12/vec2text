@@ -65,6 +65,7 @@ class InversionModel(transformers.PreTrainedModel):
         embedder, embedder_tokenizer = load_embedder_and_tokenizer(
             name=config.embedder_model_name
         )
+
         tokenizer = load_tokenizer(
             config.model_name_or_path,
             max_length=config.max_seq_length,
