@@ -146,7 +146,7 @@ class InversionFromLogitsModel(InversionModel):
         attention_mask: torch.Tensor,
         return_sequence: bool = False,
     ) -> torch.Tensor:
-        embeddings = outputs.logits
+        embeddings = outputs.logits.log_softmax(dim=1)
         zeros = torch.zeros(
             (*embeddings.shape[0:2], self.num_zeros_to_add),
             dtype=embeddings.dtype,
