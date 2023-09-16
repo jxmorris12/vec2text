@@ -92,6 +92,8 @@ def load_msmarco_corpus() -> datasets.Dataset:
 
 
 def create_ompi_ex(ex: Dict[str, str]) -> Dict[str, str]:
+    ex["user"] = ex["user"].strip()
+    ex["system"] = ex["system"].strip()
     ex["text"] = ex["system"] + "\n\n" + ex["user"]
     ex["prefix"] = ex["system"] + "\n\n"
     ex["suffix"] = ex["user"]
