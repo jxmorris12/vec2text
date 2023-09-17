@@ -18,6 +18,7 @@ EMBEDDER_MODEL_NAMES = [
     "dpr_st",
     "gtr_base_st",
     "paraphrase-distilroberta",
+    "meta-llama/Llama-2-7b-chat-hf",
     "meta-llama/Llama-2-7b-hf",
     "gpt2",
 ]
@@ -75,7 +76,7 @@ def stack_pool(
     return pooled_outputs
 
 
-def load_embedder_and_tokenizer(name: str):
+def load_embedder_and_tokenizer(name: str, torch_dtype: str):
     # TODO make abstract/argparse for it etc.
     model_kwargs = {
         # "low_cpu_mem_usage": True, # Not compatible with DeepSpeed
@@ -152,11 +153,20 @@ def load_embedder_and_tokenizer(name: str):
         )
         # tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
     elif name.startswith("meta-llama/") or name.startswith("gpt2"):
+        if torch_dtype == "float32":
+            torch_dtype = torch.float32
+        elif torch_dtype == "float16":
+            torch_dtype = torch.float16
+        elif torch_dtype == "bfloat16":
+            torch_dtype = torch.bfloat16
         model = transformers.AutoModelForCausalLM.from_pretrained(
             name,
             **model_kwargs,
             token=os.environ.get("LLAMA_TOKEN"),
+            torch_dtype=torch_dtype
         )
+        if torch_dtype is not torch.float32:
+            model.to_bettertransformer()
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)
         tokenizer.pad_token = tokenizer.eos_token
     else:

@@ -48,6 +48,13 @@ class ModelArguments:
     embedder_model_api: Optional[str] = field(
         default=None, metadata={"help": "API to get embeddings from"}
     )
+    embedder_torch_dtype: str = field(
+        default="float32",
+        metadata={
+            "help": "torch dtype of embedder",
+            "choices": ["float32", "float16", "bfloat16"]
+        },
+    )
     embedding_transform_strategy: str = field(
         default="repeat",
         metadata={
