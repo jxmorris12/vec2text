@@ -2,14 +2,26 @@ import json
 import logging
 import os
 import random
-from typing import List, Set
+from typing import Dict, List, Set
 
 import datasets
 import tqdm
 
-DPR_PATH = "/home/jxm3/research/retrieval/DPR/dpr/downloads/data/retriever/{name}.json"
+from vec2text.run_args import DataArguments
+
+DPR_PATH = os.environ.get(
+    "VEC2TEXT_DPR_PATH",
+    "/home/jxm3/research/retrieval/DPR/dpr/downloads/data/retriever/{name}.json",
+)
 NQ_DEV = "nq-dev"
 NQ_TRAIN = "nq-train"
+
+
+def retain_dataset_columns(
+    d: datasets.Dataset, allowed_columns: List[str]
+) -> datasets.Dataset:
+    column_names_to_remove = [c for c in d.features if c not in allowed_columns]
+    return d.remove_columns(column_names_to_remove)
 
 
 def create_passage__dpr(ctx: dict):
@@ -79,6 +91,24 @@ def load_msmarco_corpus() -> datasets.Dataset:
     return dataset_dict["train"]
 
 
+def create_ompi_ex(ex: Dict[str, str]) -> Dict[str, str]:
+    ex["user"] = ex["user"].strip()
+    ex["system"] = ex["system"].strip()
+    ex["text"] = ex["system"] + "\n\n" + ex["user"]
+    ex["prefix"] = ex["system"] + "\n\n"
+    ex["suffix"] = ex["user"]
+    return ex
+
+
+def load_one_million_paired_instructions() -> datasets.Dataset:
+    # has only "train" split, and "system" (system prompt)
+    # and "user" (user input) columns
+    dataset_dict = datasets.load_dataset("wentingzhao/one-million-paired-instructions")
+    dataset_dict = dataset_dict.map(create_ompi_ex)
+
+    return dataset_dict["train"]
+
+
 def load_luar_reddit() -> datasets.Dataset:
     d = datasets.load_dataset("friendshipkim/reddit_eval_embeddings_luar")
     d = d.rename_column("full_text", "text")
@@ -86,7 +116,8 @@ def load_luar_reddit() -> datasets.Dataset:
     return d
 
 
-def dataset_from_args(data_args) -> datasets.DatasetDict:
+def dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
+    """Loads a dataset from data_args create in `run_args`."""
     if data_args.dataset_name == "nq":
         raw_datasets = datasets.DatasetDict(
             {
@@ -96,6 +127,10 @@ def dataset_from_args(data_args) -> datasets.DatasetDict:
         )
     elif data_args.dataset_name == "msmarco":
         raw_datasets = load_msmarco_corpus()
+        raw_datasets = raw_datasets.train_test_split(test_size=0.01)
+        raw_datasets["validation"] = raw_datasets["test"]
+    elif data_args.dataset_name == "one_million_paired_instructions":
+        raw_datasets = load_one_million_paired_instructions()
         raw_datasets = raw_datasets.train_test_split(test_size=0.01)
         raw_datasets["validation"] = raw_datasets["test"]
     elif data_args.dataset_name == "luar_reddit":
@@ -131,13 +166,6 @@ def load_arxiv_val() -> datasets.Dataset:
     d = datasets.load_dataset("ccdv/arxiv-summarization")["validation"]
     d = d.rename_column("abstract", "text")
     return d
-
-
-def retain_dataset_columns(
-    d: datasets.Dataset, allowed_columns: List[str]
-) -> datasets.Dataset:
-    column_names_to_remove = [c for c in d.features if c not in allowed_columns]
-    return d.remove_columns(column_names_to_remove)
 
 
 def load_beir_corpus(name: str) -> List[str]:

@@ -21,6 +21,9 @@ EMBEDDER_MODEL_NAMES = [
     "meta-llama/Llama-2-7b-chat-hf",
     "meta-llama/Llama-2-7b-hf",
     "gpt2",
+    "gpt2-medium",
+    "gpt2-large",
+    "gpt2-xl",
 ]
 
 

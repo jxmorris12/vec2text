@@ -153,7 +153,7 @@ def test_trainer_gpt2_with_suffix():
     model_args.embedder_model_api = None
     model_args.model_name_or_path = "t5-small"
     model_args.use_frozen_embeddings_as_input = False  # too big (1.1 TB for 8M logits)
-    data_args.dataset_name = "msmarco"
+    data_args.dataset_name = "one_million_paired_instructions"
     model_args.suffix_conditioning = True
     trainer = load_trainer(
         model_args=model_args, data_args=data_args, training_args=training_args
