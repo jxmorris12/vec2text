@@ -15,7 +15,7 @@ from vec2text.models import (
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
-DATASET_NAMES = ["nq", "luar_reddit", "msmarco"]
+DATASET_NAMES = ["nq", "luar_reddit", "msmarco", "one_million_paired_instructions"]
 
 
 @dataclass
@@ -337,7 +337,8 @@ class TrainingArguments(transformers.TrainingArguments):
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
         self.dataloader_pin_memory = True
-        num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
+        #num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
+        num_workers = torch.cuda.device_count()
         os.environ["RAYON_RS_NUM_CPUS"] = str(
             num_workers
         )  # Sets threads for hf tokenizers
