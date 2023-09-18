@@ -228,3 +228,12 @@ class MockEmbedder:
             dtype=torch.float32,
             device=input_ids.device,
         )
+
+    def __call__(
+        self, input_ids: torch.Tensor, attention_mask: torch.Tensor
+    ) -> torch.Tensor:
+        return torch.zeros(
+            (input_ids.shape[0], self.embedder_dim),
+            dtype=torch.float32,
+            device=input_ids.device,
+        )

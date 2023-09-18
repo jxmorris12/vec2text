@@ -366,17 +366,11 @@ class Experiment(abc.ABC):
             assert torch.cuda.is_available()
             model = model.to(device)
 
-            if torch.cuda.device_count() > 1:
-                # use all devices for precomputation if available
-                dp_embedder = torch.nn.DataParallel(model.embedder.to(device))
-            else:
-                dp_embedder = model.embedder
-
-            # tokenized_datasets = tokenized_datasets.map(
-            #     functools.partial(embed_dataset_batch, model),
-            #     batched=True,
-            #     batch_size=self.training_args.per_device_train_batch_size,
-            # )
+            tokenized_datasets = tokenized_datasets.map(
+                functools.partial(embed_dataset_batch, model),
+                batched=True,
+                batch_size=self.training_args.per_device_train_batch_size,
+            )
         ###########################################################################
         max_eval_samples = min(
             len(tokenized_datasets["validation"]), self.data_args.max_eval_samples
@@ -426,12 +420,6 @@ class Experiment(abc.ABC):
         if self.model_args.use_frozen_embeddings_as_input:
             assert torch.cuda.is_available()
             model = model.to(device)
-
-            if torch.cuda.device_count() > 1:
-                # use all devices for precomputation if available
-                dp_embedder = torch.nn.DataParallel(model.embedder.to(device))
-            else:
-                dp_embedder = model.embedder
 
             val_datasets_dict = val_datasets_dict.map(
                 functools.partial(embed_dataset_batch, model),

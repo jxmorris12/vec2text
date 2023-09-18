@@ -1,5 +1,5 @@
 import random
-from typing import Callable, Dict, Optional, Union
+from typing import Callable, Dict
 
 import torch
 
@@ -65,7 +65,6 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
         )
 
     return batch
-
 
 
 def randomly_truncate_inputs(

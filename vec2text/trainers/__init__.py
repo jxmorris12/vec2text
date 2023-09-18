@@ -5,7 +5,7 @@
 # so that flake8 will "pass" with my code.
 # See link: stackoverflow.com/questions/31079047
 from .corrector import Corrector  # noqa: F401
-from .jailbreak_prompt_trainer import JailbreakPromptTrainer
 from .inversion import InversionTrainer  # noqa: F401
 from .inversion_bow import InversionTrainerBagOfWords  # noqa: F401
 from .inversion_na import InversionTrainerNonAutoregressive  # noqa: F401
+from .jailbreak_prompt_trainer import JailbreakPromptTrainer  # noqa: F401
