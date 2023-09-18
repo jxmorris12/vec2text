@@ -16,15 +16,15 @@ class InversionFromLogitsModel(InversionModel):
             "LMHead" in str(type(self.embedder))
         )
         encoder_hidden_dim = self.encoder_decoder.config.hidden_size
-        self.embedder_dim = 768
+        self.encoder_hidden_dim = encoder_hidden_dim
         self.embedder_is_decoder = True
-        bottleneck_dim = (
-            768  # 768 * 30k = 23m params. TODO: is this rank reduction harmful?
-        )
+        bottleneck_dim = self.bottleneck_dim
+
         # TODO: Make prettier & remove hardcoded values
-        self.num_zeros_to_add = 768 - ((self.embedder.config.vocab_size + 768) % 768)
+        embedder_dim = self.embedder_dim
+        self.num_zeros_to_add = embedder_dim - ((self.embedder.config.vocab_size + embedder_dim) % embedder_dim)
         self.num_repeat_tokens = round(
-            (self.embedder.config.vocab_size + self.num_zeros_to_add) / 768
+            (self.embedder.config.vocab_size + self.num_zeros_to_add) / embedder_dim
         )
         self.embedding_transform = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
@@ -33,23 +33,42 @@ class InversionFromLogitsModel(InversionModel):
             nn.Linear(bottleneck_dim, encoder_hidden_dim),
         )
         if self.config.suffix_conditioning:
-            # TODO remove hardcoded max sequence length
-            self.suffix_position_embedding = torch.nn.Parameter(
+            self.suffix_position_embedding = nn.Parameter(
                 torch.randn(
-                    (256, self.num_repeat_tokens, self.embedder_dim),
+                    (
+                        self.encoder_decoder.config.n_positions, 
+                        self.num_repeat_tokens, 
+                        encoder_hidden_dim
+                    ),
                     dtype=torch.float32,
                 ),
                 requires_grad=True,
             )
+            # 
+            self.logits_projection = nn.Linear(
+                (self.embedder.config.vocab_size + self.num_zeros_to_add),
+                encoder_hidden_dim
+            )
+            self.tri_rep_projection = nn.Sequential(
+                nn.Linear(
+                    encoder_hidden_dim * 3,
+                    encoder_hidden_dim * 3,
+                ),
+                nn.GELU(),
+                nn.Linear(
+                    encoder_hidden_dim * 3, encoder_hidden_dim
+                )
+            )
+            # 
             self.suffix_transform = nn.Sequential(
                 nn.Linear(encoder_hidden_dim, bottleneck_dim),
                 nn.Dropout(self.encoder_decoder.config.dropout_rate),
                 nn.GELU(),
                 nn.Linear(bottleneck_dim, encoder_hidden_dim),
             )
-        self.sequence_weights = torch.nn.Parameter(
+        self.sequence_weights = nn.Parameter(
             torch.randn(
-                (self.num_repeat_tokens, self.embedder_dim, self.embedder_dim),
+                (self.num_repeat_tokens, encoder_hidden_dim, encoder_hidden_dim),
                 dtype=torch.float32,
             ),
             requires_grad=True,
@@ -91,41 +110,56 @@ class InversionFromLogitsModel(InversionModel):
             )
 
         if self.config.suffix_conditioning:
-            # below message will go away when we get data with suffixes
+            # below message will go away when we get data with suffixes. it only happens during eval anyway.
             if suffix_ids is None:
                 print("warning: suffix-conditioning enabled but no suffix passed")
                 suffix_ids = torch.tensor(
                     [[0]] * len(embeddings), dtype=torch.long, device=self.device
                 )
-                # embeddings = embeddings[:, -1, :]  # next-token logits
             suffix_length = suffix_ids.shape[1]
+            suffix_position_embedding = self.suffix_position_embedding[
+                None, :suffix_length, ...
+            ]
+            # 
+            # Get embeddings for each token in suffix.
+            # 
+            suffix_length = suffix_ids.shape[1]
+            suffix_attention_mask = (suffix_ids != self.encoder_decoder.config.pad_token_id).int()
+            # add pad token so we can shift.
+            batch_size = suffix_ids.shape[0]
+            pad = torch.zeros((batch_size, 1), dtype=suffix_ids.dtype, device=suffix_ids.device)
+            suffix_ids = torch.cat((suffix_ids, pad), dim=1)
             suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(suffix_ids)
             suffix_embeddings = self.suffix_transform(suffix_embeddings)
-            #
-            embeddings = embeddings[:, -suffix_length:, :]
-            embeddings = embeddings.reshape(
+            suffix_embeddings_shifted = suffix_embeddings.roll(1, dims=1)
+            logits_projection = self.logits_projection(
+                embeddings[:, -suffix_length:, :]
+            )
+            tri_rep_cat = torch.cat([suffix_embeddings[:, :-1], suffix_embeddings_shifted[:, :-1], logits_projection], dim=2)
+            suffix_embeddings = self.tri_rep_projection(tri_rep_cat)
+            # 
+            # Get embeddings for each next-token logit from suffix.
+            # 
+            logit_embeddings = embeddings[:, -suffix_length:, :]
+            logit_embeddings = logit_embeddings.reshape(
                 (
-                    embeddings.shape[0],
+                    logit_embeddings.shape[0],
                     suffix_length,
                     self.num_repeat_tokens,
                     self.embedder_dim,
                 )
             )
-            suffix_position_embedding = self.suffix_position_embedding[
-                None, :suffix_length, ...
-            ]
-            embeddings = embeddings + suffix_position_embedding
-            embeddings = embeddings.mean(dim=1)
-            embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
-            #
-            embeddings = self.embedding_transform(embeddings)
+            logit_embeddings = self.embedding_transform(logit_embeddings)
+            logit_embeddings = torch.einsum("bsnd,ndw->bsnw", logit_embeddings, self.sequence_weights)
+            logit_embeddings = logit_embeddings.mean(dim=2) # mean across the sequence length
+            # 
+            # TODO add positional embeddings :-)
+            # 
+            embeddings = torch.cat((suffix_embeddings, logit_embeddings), dim=1)
             attention_mask = torch.ones(
-                (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
+                (logit_embeddings.shape[0], logit_embeddings.shape[1]), device=embeddings.device
             )
-            #
-            embeddings = torch.cat((embeddings, suffix_embeddings), dim=1)
-            suffix_attention_mask = (suffix_ids != 0).int()
-            attention_mask = torch.cat((attention_mask, suffix_attention_mask), dim=1)
+            attention_mask = torch.cat((suffix_attention_mask, attention_mask), dim=1)
         else:
             if len(embeddings.shape) == 3:
                 # Get next-token prediction.
@@ -138,6 +172,8 @@ class InversionFromLogitsModel(InversionModel):
             attention_mask = torch.ones(
                 (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
             )
+        
+        assert embeddings.shape == (attention_mask.shape[0], attention_mask.shape[1], self.encoder_hidden_dim)
         return embeddings, attention_mask
 
     def _process_embedder_output(
