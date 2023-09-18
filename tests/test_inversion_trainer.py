@@ -112,7 +112,7 @@ def test_trainer_decoder():
     print("metrics:", metrics)
 
 
-def test_trainer_gpt2():
+def test_trainer_gpt2_logits():
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )

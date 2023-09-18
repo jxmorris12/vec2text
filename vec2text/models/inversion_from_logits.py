@@ -68,7 +68,7 @@ class InversionFromLogitsModel(InversionModel):
             )
         self.sequence_weights = nn.Parameter(
             torch.randn(
-                (self.num_repeat_tokens, encoder_hidden_dim, encoder_hidden_dim),
+                (self.num_repeat_tokens, self.embedder_dim, self.embedder_dim),
                 dtype=torch.float32,
             ),
             requires_grad=True,
@@ -151,7 +151,7 @@ class InversionFromLogitsModel(InversionModel):
             )
             logit_embeddings = self.embedding_transform(logit_embeddings)
             logit_embeddings = torch.einsum("bsnd,ndw->bsnw", logit_embeddings, self.sequence_weights)
-            logit_embeddings = logit_embeddings.mean(dim=2) # mean across the sequence length
+            logit_embeddings = logit_embeddings.mean(dim=1) # mean across the sequence length
             # 
             # TODO add positional embeddings :-)
             # 
@@ -167,6 +167,7 @@ class InversionFromLogitsModel(InversionModel):
             embeddings = embeddings.reshape(
                 (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
             )
+            # breakpoint()
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
             embeddings = self.embedding_transform(embeddings)
             attention_mask = torch.ones(
@@ -182,7 +183,7 @@ class InversionFromLogitsModel(InversionModel):
         attention_mask: torch.Tensor,
         return_sequence: bool = False,
     ) -> torch.Tensor:
-        embeddings = outputs.logits.log_softmax(dim=1)
+        embeddings = outputs.logits.log_softmax(dim=2)
         zeros = torch.zeros(
             (*embeddings.shape[0:2], self.num_zeros_to_add),
             dtype=embeddings.dtype,
