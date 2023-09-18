@@ -78,9 +78,11 @@ class InversionFromLogitsModel(InversionModel):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
+        embedder: Optional[nn.Module] = None,
         return_sequence: bool = False,
     ) -> torch.Tensor:
-        model_output = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
+        embedder = embedder or self.embedder
+        model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
         return self._process_embedder_output(
             model_output, attention_mask, return_sequence=return_sequence
         )
@@ -161,16 +163,21 @@ class InversionFromLogitsModel(InversionModel):
                 )
             )
             logit_embeddings = self.embedding_transform(logit_embeddings)
+            breakpoint()
             logit_embeddings = torch.einsum(
                 "bsnd,ndw->bsnw", logit_embeddings, self.sequence_weights
             )
-            logit_embeddings = logit_embeddings.mean(
-                dim=2
-            )  # mean across the sequence length
+            logit_embeddings = logit_embeddings.mean(dim=2)
             #
             # TODO add positional embeddings :-)
             #
-            embeddings = torch.cat((suffix_embeddings, logit_embeddings), dim=1)
+            embeddings = torch.cat(
+                (
+                    suffix_embeddings + suffix_position_embedding,
+                    logit_embeddings + suffix_position_embedding,
+                ),
+                dim=1,
+            )
             attention_mask = torch.ones(
                 (logit_embeddings.shape[0], logit_embeddings.shape[1]),
                 device=embeddings.device,

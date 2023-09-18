@@ -170,11 +170,14 @@ class InversionModel(transformers.PreTrainedModel):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
+        embedder: Optional[nn.Module] = None,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
+        if embedder is None:
+            embedder = self.embedder
         # print("** call_embedding_model")
         if self.embedder_no_grad:
-            self.embedder.eval()
+            embedder.eval()
 
         if self.embedder_fake_with_zeros:
             batch_size = input_ids.shape[0]
@@ -191,14 +194,12 @@ class InversionModel(transformers.PreTrainedModel):
             )
         elif isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying
-            model_output = self.embedder(
+            model_output = embedder(
                 {"input_ids": input_ids, "attention_mask": attention_mask}
             )
             embeddings = model_output["sentence_embedding"]
         else:
-            model_output = self.embedder(
-                input_ids=input_ids, attention_mask=attention_mask
-            )
+            model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
             embeddings = self._process_embedder_output(model_output, attention_mask)
 
         if self.noise_level > 0:

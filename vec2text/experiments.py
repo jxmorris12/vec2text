@@ -360,22 +360,22 @@ class Experiment(abc.ABC):
         )
         ###########################################################################
         if self.model_args.use_frozen_embeddings_as_input:
-            precompute_batch_size = self.training_args.per_device_train_batch_size
-            # precompute_batch_size = 8192
-            print(f"[Precomputing embeddings with batch size: {precompute_batch_size}]")
+            print(
+                f"[Precomputing embeddings with batch size: {self.training_args.per_device_train_batch_size}]"
+            )
             assert torch.cuda.is_available()
             model = model.to(device)
 
             if torch.cuda.device_count() > 1:
                 # use all devices for precomputation if available
-                dp_model = torch.nn.DataParallel(model)
+                dp_embedder = torch.nn.DataParallel(model.embedder.to(device))
             else:
-                dp_model = model
+                dp_embedder = model.embedder
 
             tokenized_datasets = tokenized_datasets.map(
-                functools.partial(embed_dataset_batch, dp_model),
+                functools.partial(embed_dataset_batch, model, dp_embedder),
                 batched=True,
-                batch_size=precompute_batch_size,
+                batch_size=self.training_args.per_device_train_batch_size,
             )
         ###########################################################################
         max_eval_samples = min(
@@ -424,8 +424,17 @@ class Experiment(abc.ABC):
         val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
 
         if self.model_args.use_frozen_embeddings_as_input:
+            assert torch.cuda.is_available()
+            model = model.to(device)
+
+            if torch.cuda.device_count() > 1:
+                # use all devices for precomputation if available
+                dp_embedder = torch.nn.DataParallel(model.embedder.to(device))
+            else:
+                dp_embedder = model.embedder
+
             val_datasets_dict = val_datasets_dict.map(
-                functools.partial(embed_dataset_batch, model),
+                functools.partial(embed_dataset_batch, model, dp_embedder),
                 batched=True,
                 batch_size=self.training_args.per_device_train_batch_size,
             )
