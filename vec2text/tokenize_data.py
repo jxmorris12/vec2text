@@ -1,5 +1,5 @@
 import random
-from typing import Callable, Dict
+from typing import Callable, Dict, Union
 
 import torch
 
@@ -50,9 +50,15 @@ def tokenize_function(
     return tokenize_function_inner
 
 
-def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
+def embed_dataset_batch(
+    model: Union[torch.nn.DataParallel, InversionModel], batch: Dict
+) -> Dict:
     assert "embedder_input_ids" in batch.keys(), f"invalid keys {batch.keys()}"
     assert "embedder_attention_mask" in batch.keys(), f"invalid keys {batch.keys()}"
+
+    if isinstance(model, torch.nn.DataParallel):
+        model = model.module  # unwrap DataParallel model
+
     assert hasattr(model, "call_embedding_model")
 
     model_device = next(model.parameters()).device

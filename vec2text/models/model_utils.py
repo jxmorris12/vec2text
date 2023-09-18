@@ -166,7 +166,7 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
             name,
             **model_kwargs,
             token=os.environ.get("LLAMA_TOKEN"),
-            torch_dtype=torch_dtype
+            torch_dtype=torch_dtype,
         )
         if torch_dtype is not torch.float32:
             model.to_bettertransformer()

@@ -52,7 +52,7 @@ class ModelArguments:
         default="float32",
         metadata={
             "help": "torch dtype of embedder",
-            "choices": ["float32", "float16", "bfloat16"]
+            "choices": ["float32", "float16", "bfloat16"],
         },
     )
     embedding_transform_strategy: str = field(
@@ -337,7 +337,7 @@ class TrainingArguments(transformers.TrainingArguments):
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
         self.dataloader_pin_memory = True
-        #num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
+        # num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
         num_workers = torch.cuda.device_count()
         os.environ["RAYON_RS_NUM_CPUS"] = str(
             num_workers

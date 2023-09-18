@@ -365,8 +365,15 @@ class Experiment(abc.ABC):
             print(f"[Precomputing embeddings with batch size: {precompute_batch_size}]")
             assert torch.cuda.is_available()
             model = model.to(device)
+
+            if torch.cuda.device_count() > 1:
+                # use all devices for precomputation if available
+                dp_model = torch.nn.DataParallel(model)
+            else:
+                dp_model = model
+
             tokenized_datasets = tokenized_datasets.map(
-                functools.partial(embed_dataset_batch, model),
+                functools.partial(embed_dataset_batch, dp_model),
                 batched=True,
                 batch_size=precompute_batch_size,
             )

@@ -446,8 +446,8 @@ class BaseTrainer(transformers.Trainer):
             sim_result = {"emb_cos_sim": 0, "emb_cos_sim_sem": 0}
 
         # Store stuff for access later.
-        #self.preds_emb = preds_emb.cpu()
-        #self.labels_emb = labels_emb.cpu()
+        # self.preds_emb = preds_emb.cpu()
+        # self.labels_emb = labels_emb.cpu()
         self.preds_sample_list = preds_sample_list
         self.preds_sample_labels_list = preds_sample_labels_list
 
