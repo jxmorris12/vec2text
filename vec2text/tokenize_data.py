@@ -50,26 +50,22 @@ def tokenize_function(
     return tokenize_function_inner
 
 
-def embed_dataset_batch(
-    model: Union[torch.nn.DataParallel, InversionModel],
-    embedder: Optional[torch.nn.Module],
-    batch: Dict[str, torch.Tensor],
-) -> Dict:
+def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
     assert "embedder_input_ids" in batch.keys(), f"invalid keys {batch.keys()}"
     assert "embedder_attention_mask" in batch.keys(), f"invalid keys {batch.keys()}"
     assert hasattr(model, "call_embedding_model")
 
-    model_device = next(embedder.parameters()).device
+    model_device = next(model.parameters()).device
     with torch.no_grad():
         batch["frozen_embeddings"] = model.call_embedding_model(
             input_ids=torch.tensor(batch["embedder_input_ids"], device=model_device),
             attention_mask=torch.tensor(
                 batch["embedder_attention_mask"], device=model_device
             ),
-            embedder=embedder,
         )
 
     return batch
+
 
 
 def randomly_truncate_inputs(

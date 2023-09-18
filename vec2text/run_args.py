@@ -339,6 +339,7 @@ class TrainingArguments(transformers.TrainingArguments):
         self.dataloader_pin_memory = True
         # num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
         num_workers = torch.cuda.device_count()
+        num_workers = 0
         os.environ["RAYON_RS_NUM_CPUS"] = str(
             num_workers
         )  # Sets threads for hf tokenizers

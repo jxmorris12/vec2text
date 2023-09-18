@@ -170,11 +170,9 @@ class InversionModel(transformers.PreTrainedModel):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        embedder: Optional[nn.Module] = None,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
-        if embedder is None:
-            embedder = self.embedder
+        embedder = self.embedder
         # print("** call_embedding_model")
         if self.embedder_no_grad:
             embedder.eval()

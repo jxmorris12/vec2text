@@ -73,7 +73,7 @@ class Experiment(abc.ABC):
         self.model_args = model_args
         self.data_args = data_args
         self.training_args = training_args
-        # Add hash to output path.
+        # Set random seed, add hash to output path.
         transformers.set_seed(training_args.seed)
         training_args.output_dir = os.path.join(
             training_args.output_dir, self.kwargs_hash
@@ -328,7 +328,7 @@ class Experiment(abc.ABC):
         # Remove extra features except for 'frozen_embeddings' which could be embeddings
         # saved to disk.
         column_names = list(raw_datasets["train"].features)
-        ALLOWED_COLUMN_NAMES = {"frozen_embeddings"}  # "document_id"}
+        ALLOWED_COLUMN_NAMES = {"frozen_embeddings"}
         column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
 
         # this argument allows us to *train* on less data (1% of our training set).
@@ -372,11 +372,11 @@ class Experiment(abc.ABC):
             else:
                 dp_embedder = model.embedder
 
-            tokenized_datasets = tokenized_datasets.map(
-                functools.partial(embed_dataset_batch, model, dp_embedder),
-                batched=True,
-                batch_size=self.training_args.per_device_train_batch_size,
-            )
+            # tokenized_datasets = tokenized_datasets.map(
+            #     functools.partial(embed_dataset_batch, model),
+            #     batched=True,
+            #     batch_size=self.training_args.per_device_train_batch_size,
+            # )
         ###########################################################################
         max_eval_samples = min(
             len(tokenized_datasets["validation"]), self.data_args.max_eval_samples
@@ -434,7 +434,7 @@ class Experiment(abc.ABC):
                 dp_embedder = model.embedder
 
             val_datasets_dict = val_datasets_dict.map(
-                functools.partial(embed_dataset_batch, model, dp_embedder),
+                functools.partial(embed_dataset_batch, model),
                 batched=True,
                 batch_size=self.training_args.per_device_train_batch_size,
             )
