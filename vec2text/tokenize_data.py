@@ -61,9 +61,13 @@ def tokenize_function_llama_chat(
 
     def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
         if "prefix" not in examples:
-            # hacky way to turn datasets into the right format.
+            # hacky way to turn datasets into the right format for LLAMA chat.
             # "real" prompt datasets like one_million_paired_instructions
             # have "prefix" and "suffix" already.
+            # 
+            # so this is only for evaluation datasets that may not have
+            # actual prefix-suffix pairing.
+            # 
             examples["prefix"] = ["You are a language model."] * len(
                 examples[text_column_name]
             )
