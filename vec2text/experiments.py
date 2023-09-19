@@ -25,7 +25,11 @@ from vec2text.models import (
 )
 from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
-from vec2text.tokenize_data import embed_dataset_batch, tokenize_function
+from vec2text.tokenize_data import (
+    embed_dataset_batch,
+    tokenize_function,
+    tokenize_function_llama_chat,
+)
 from vec2text.utils import MockEmbedder, torch_main_worker_finish_first
 
 # Allow W&B to start slowly.
@@ -89,6 +93,10 @@ class Experiment(abc.ABC):
             **vars(self.model_args),
             **vars(self.training_args),
         )
+
+    @property
+    def is_llama_chat(self) -> bool:
+        return self.model_args.embedder_model_name in ["meta-llama/Llama-2-7b-chat-hf"]
 
     def _setup_logging(self) -> None:
         logging.basicConfig(
@@ -339,8 +347,11 @@ class Experiment(abc.ABC):
 
         print("using fast tokenizers:", tokenizer.is_fast, embedder_tokenizer.is_fast)
 
+        tokenize_fn = (
+            tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
+        )
         tokenized_datasets = raw_datasets.map(
-            tokenize_function(
+            tokenize_fn(
                 tokenizer,
                 embedder_tokenizer,
                 "text",
@@ -402,8 +413,11 @@ class Experiment(abc.ABC):
             )
             val_datasets_dict[name].set_format("pt")
 
+        tokenize_fn = (
+            tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
+        )
         val_datasets_dict = val_datasets_dict.map(
-            tokenize_function(
+            tokenize_fn(
                 tokenizer,
                 embedder_tokenizer,
                 "text",

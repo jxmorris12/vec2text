@@ -50,6 +50,66 @@ def tokenize_function(
     return tokenize_function_inner
 
 
+def tokenize_function_llama_chat(
+    tokenizer,
+    embedder_tokenizer,
+    text_column_name,
+    max_seq_length,
+    padding: bool = False,
+) -> Callable[[Dict], Dict]:
+    """Use special tokenization for LLAMA chat models."""
+
+    def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
+        if "prefix" not in examples:
+            # hacky way to turn datasets into the right format.
+            # "real" prompt datasets like one_million_paired_instructions
+            # have "prefix" and "suffix" already.
+            examples["prefix"] = ["You are a language model."] * len(
+                examples[text_column_name]
+            )
+            examples["suffix"] = examples[text_column_name]
+
+        output = tokenizer(
+            examples[text_column_name],
+            padding=padding,
+            truncation=True,
+            max_length=max_seq_length,
+        )
+
+        # copy to 'labels' for language modeling loss
+        # but set padding to -100
+        # github.com/huggingface/transformers/blob/cbe63949d76efd153a1f389f38fe9ce1287e06b0/src/transformers/models/t5/modeling_t5.py#L1504-L1507
+        output["labels"] = [
+            [
+                (-100 if token_id == tokenizer.pad_token_id else token_id)
+                for token_id in ids
+            ]
+            for ids in output["input_ids"]
+        ]
+        embedder_output = embedder_tokenizer(
+            text=[
+                f"[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n[INST] {instruction} [/INST]"
+                for (system_message, instruction) in zip(
+                    examples["prefix"], examples["suffix"]
+                )
+            ],
+            padding=True,
+            truncation=True,
+            max_length=max_seq_length,
+            return_tensors="pt",
+        )
+        embedder_output = {f"embedder_{k}": v for k, v in embedder_output.items()}
+
+        output["length"] = [
+            (torch.tensor(input_ids) != tokenizer.pad_token_id).sum().item()
+            for input_ids in output["input_ids"]
+        ]
+
+        return {**output, **embedder_output}
+
+    return tokenize_function_inner
+
+
 def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
     assert "embedder_input_ids" in batch.keys(), f"invalid keys {batch.keys()}"
     assert "embedder_attention_mask" in batch.keys(), f"invalid keys {batch.keys()}"

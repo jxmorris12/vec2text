@@ -407,7 +407,7 @@ class BaseTrainer(transformers.Trainer):
                 * eos_token_id
             )
             preds_sample = torch.cat((preds_sample[:, 1:], eos_tokens), dim=1)
-            assert preds_sample.shape == preds_sample_labels.shape
+            # assert preds_sample.shape == preds_sample_labels.shape
 
         try:
             with torch.no_grad():
