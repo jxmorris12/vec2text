@@ -224,7 +224,7 @@ class MockEmbedder:
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
         return torch.zeros(
-            (input_ids.shape[0], self.embedder_dim),
+            (input_ids.shape[0], input_ids.shape[1], self.embedder_dim),
             dtype=torch.float32,
             device=input_ids.device,
         )
@@ -233,7 +233,7 @@ class MockEmbedder:
         self, input_ids: torch.Tensor, attention_mask: torch.Tensor
     ) -> torch.Tensor:
         return torch.zeros(
-            (input_ids.shape[0], self.embedder_dim),
+            (input_ids.shape[0], input_ids.shape[1], self.embedder_dim),
             dtype=torch.float32,
             device=input_ids.device,
         )
