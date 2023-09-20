@@ -485,9 +485,11 @@ class Experiment(abc.ABC):
         # when we forgot to cache using this argument.
         if self.model_args.use_frozen_embeddings_as_input:
             dataset_kwargs["use_frozen_embeddings_as_input"] = "True"
-            dataset_kwargs["suffix_conditioning"] = str(
-                self.model_args.suffix_conditioning
-            )
+            # Deprecated arg below. We used to cache different
+            # embeddings for suffixes. Then they became the same.
+            # Removing the below line will invalidate other
+            # people's caches.
+            dataset_kwargs["suffix_conditioning"] = "True"
 
         # os.environ["TOKENIZERS_PARALLELISM"] = "True"
         print(

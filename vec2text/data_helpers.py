@@ -92,7 +92,7 @@ def load_msmarco_corpus() -> datasets.Dataset:
 
 
 def create_omi_ex(ex: Dict[str, str]) -> Dict[str, str]:
-    ex["text"] = +ex["user"]
+    ex["text"] = ex["user"]
     return ex
 
 
