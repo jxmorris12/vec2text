@@ -12,7 +12,7 @@ from huggingface_hub import login as huggingface_login
 
 from vec2text.aliases import load_model_from_alias
 
-huggingface_login()
+# huggingface_login()
 
 
 def main():

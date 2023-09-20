@@ -502,9 +502,13 @@ class BaseTrainer(transformers.Trainer):
             state_dict = self._remap_state_dict(state_dict)
             # workaround for FSDP bug https://github.com/pytorch/pytorch/issues/82963
             # which takes *args instead of **kwargs
-            load_result = model.load_state_dict(state_dict, strict=True)
+            missing_keys, unexpected_keys = model.load_state_dict(
+                state_dict, strict=False
+            )
+            assert all(
+                [k.startswith("embedder.") for k in missing_keys]
+            ), f"invalid missing keys: {missing_keys}"
             # release memory
             del state_dict
-            self._issue_warnings_after_load(load_result)
         else:
             raise ValueError("error loading from checkpoint")

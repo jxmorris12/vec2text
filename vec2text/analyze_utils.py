@@ -40,6 +40,13 @@ def load_experiment_and_trainer(
 
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
+    if checkpoint is None:
+        # This happens in a weird case, where no model is saved to saves/xxx/checkpoint-*/pytorch_model.bin
+        # because checkpointing never happened (likely a very short training run) but there is still a file
+        # available in saves/xxx/pytorch_model.bin.
+        checkpoint = checkpoint_folder
+    print("Loading model from checkpoint:", checkpoint)
+
     if args_str is not None:
         args = shlex.split(args_str)
         parser = HfArgumentParser((ModelArguments, DataArguments, TrainingArguments))
@@ -47,8 +54,14 @@ def load_experiment_and_trainer(
             args=args
         )
     else:
-        data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
-        model_args = torch.load(os.path.join(checkpoint, os.pardir, "model_args.bin"))
+        try:
+            data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
+            model_args = torch.load(
+                os.path.join(checkpoint, os.pardir, "model_args.bin")
+            )
+        except FileNotFoundError:
+            data_args = torch.load(os.path.join(checkpoint, "data_args.bin"))
+            model_args = torch.load(os.path.join(checkpoint, "model_args.bin"))
 
     if max_seq_length is not None:
         print(
@@ -91,6 +104,7 @@ def load_experiment_and_trainer(
         training_args.dataloader_num_workers = 0  # no multiprocessing :)
     training_args.use_wandb = False
     training_args.report_to = []
+    training_args.mock_embedder = False
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
     trainer.model._keys_to_ignore_on_save = []
