@@ -91,6 +91,20 @@ def load_msmarco_corpus() -> datasets.Dataset:
     return dataset_dict["train"]
 
 
+def create_omi_ex(ex: Dict[str, str]) -> Dict[str, str]:
+    ex["text"] = +ex["user"]
+    return ex
+
+
+def load_one_million_instructions() -> datasets.Dataset:
+    # has only "train" split, and "system" (system prompt)
+    # and "user" (user input) columns
+    dataset_dict = datasets.load_dataset("wentingzhao/one-million-instructions")
+    dataset_dict = dataset_dict.map(create_ompi_ex)
+
+    return dataset_dict["train"]
+
+
 def create_ompi_ex(ex: Dict[str, str]) -> Dict[str, str]:
     ex["user"] = ex["user"].strip()
     ex["system"] = ex["system"].strip()
@@ -127,6 +141,10 @@ def dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
         )
     elif data_args.dataset_name == "msmarco":
         raw_datasets = load_msmarco_corpus()
+        raw_datasets = raw_datasets.train_test_split(test_size=0.01)
+        raw_datasets["validation"] = raw_datasets["test"]
+    elif data_args.dataset_name == "one_million_instructions":
+        raw_datasets = load_one_million_instructions()
         raw_datasets = raw_datasets.train_test_split(test_size=0.01)
         raw_datasets["validation"] = raw_datasets["test"]
     elif data_args.dataset_name == "one_million_paired_instructions":
