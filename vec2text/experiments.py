@@ -98,6 +98,16 @@ class Experiment(abc.ABC):
     def is_llama_chat(self) -> bool:
         return self.model_args.embedder_model_name in ["meta-llama/Llama-2-7b-chat-hf"]
 
+    @property
+    def dataset_kwargs(self) -> Dict[str, str]:
+        return {
+            "model_name": self.model_args.model_name_or_path,
+            "embedder_name": self.model_args.embedder_model_name,
+            "max_seq_length": str(self.model_args.max_seq_length),
+            "use_less_data": str(self.data_args.use_less_data),
+            "embedder_model_api": str(self.model_args.embedder_model_api),
+        }
+
     def _setup_logging(self) -> None:
         logging.basicConfig(
             format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
@@ -108,16 +118,6 @@ class Experiment(abc.ABC):
         # if self.training_args.should_log:
         # The default of training_args.log_level is passive, so we set log level at info here to have that default.
         transformers.utils.logging.set_verbosity_error()
-
-        # For debugging
-        # transformers.logging.set_verbosity_debug()
-
-        # log_level = self.training_args.get_process_log_level()
-        # logger.setLevel(log_level)
-        # datasets.utils.logging.set_verbosity(log_level)
-        # transformers.utils.logging.set_verbosity(log_level)
-        # transformers.utils.logging.enable_default_handler()
-        # transformers.utils.logging.enable_explicit_format()
 
     def run(self):
         if self.training_args.do_eval:
@@ -377,11 +377,17 @@ class Experiment(abc.ABC):
             assert torch.cuda.is_available()
             model = model.to(device)
 
-            tokenized_datasets = tokenized_datasets.map(
-                functools.partial(embed_dataset_batch, model),
-                batched=True,
-                batch_size=self.training_args.per_device_train_batch_size,
-            )
+            new_tokenized_datasets = {}
+            for key, d in tokenized_datasets.items():
+                new_tokenized_datasets[key] = d.map(
+                    functools.partial(embed_dataset_batch, model),
+                    batched=True,
+                    batch_size=self.training_args.per_device_train_batch_size,
+                    new_fingerprint=(
+                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs)
+                    ),
+                )
+            tokenized_datasets = datasets.DatasetDict(new_tokenized_datasets)
         ###########################################################################
         max_eval_samples = min(
             len(tokenized_datasets["validation"]), self.data_args.max_eval_samples
@@ -435,11 +441,17 @@ class Experiment(abc.ABC):
             assert torch.cuda.is_available()
             model = model.to(device)
 
-            val_datasets_dict = val_datasets_dict.map(
-                functools.partial(embed_dataset_batch, model),
-                batched=True,
-                batch_size=self.training_args.per_device_train_batch_size,
-            )
+            new_tokenized_datasets = {}
+            for key, d in val_datasets_dict.items():
+                new_tokenized_datasets[key] = d.map(
+                    functools.partial(embed_dataset_batch, model),
+                    batched=True,
+                    batch_size=self.training_args.per_device_train_batch_size,
+                    new_fingerprint=(
+                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs)
+                    ),
+                )
+            val_datasets_dict = datasets.DatasetDict(new_tokenized_datasets)
         return val_datasets_dict
 
     def _load_val_datasets_uncached(
@@ -467,13 +479,7 @@ class Experiment(abc.ABC):
         tokenizer: transformers.AutoTokenizer,
         embedder_tokenizer: transformers.AutoTokenizer,
     ):
-        dataset_kwargs: Dict[str, str] = {
-            "model_name": self.model_args.model_name_or_path,
-            "embedder_name": self.model_args.embedder_model_name,
-            "max_seq_length": str(self.model_args.max_seq_length),
-            "use_less_data": str(self.data_args.use_less_data),
-            "embedder_model_api": str(self.model_args.embedder_model_api),
-        }
+        dataset_kwargs: Dict[str, str] = self.dataset_kwargs
 
         # Only set this if it's true, for backwards-compatibility with
         # when we forgot to cache using this argument.
@@ -495,6 +501,10 @@ class Experiment(abc.ABC):
         }
         train_dataset_path = os.path.join(
             DATASET_CACHE_PATH, (md5_hash_kwargs(**train_dataset_kwargs) + ".arrow")
+        )
+        # Optionally set a train dataset path override
+        train_dataset_path = os.environ.get(
+            "VEC2TEXT_TRAIN_DATASET_PATH", train_dataset_path
         )
         if os.path.exists(train_dataset_path):
             train_datasets = datasets.load_from_disk(train_dataset_path)
