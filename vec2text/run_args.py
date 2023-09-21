@@ -15,7 +15,7 @@ from vec2text.models import (
 MODEL_CONFIG_CLASSES = list(MODEL_FOR_CAUSAL_LM_MAPPING.keys())
 MODEL_TYPES = tuple(conf.model_type for conf in MODEL_CONFIG_CLASSES)
 
-DATASET_NAMES = ["nq", "luar_reddit", "msmarco", "one_million_paired_instructions"]
+DATASET_NAMES = ["nq", "luar_reddit", "msmarco", "one_million_paired_instructions", "one_million_instructions"]
 
 
 @dataclass
