@@ -132,7 +132,7 @@ class Experiment(abc.ABC):
 
         # Log on each process a small summary of training.
         logger.warning(
-            f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu} "
+            f"Process rank: {training_args.local_rank}, device: {training_args.device}, n_gpu: {training_args.n_gpu}, "
             + f"fp16 training: {training_args.fp16}, bf16 training: {training_args.bf16}"
         )
         logger.info(f"Training/evaluation parameters {training_args}")
@@ -339,7 +339,7 @@ class Experiment(abc.ABC):
         ALLOWED_COLUMN_NAMES = {"frozen_embeddings"}
         column_names = [c for c in column_names if c not in ALLOWED_COLUMN_NAMES]
 
-        # this argument allows us to *train* on less data (1% of our training set).
+        # this argument allows us to *train* on less data (for example 1% of our training set).
         if data_args.use_less_data and (data_args.use_less_data > 0):
             for key in raw_datasets:
                 new_length = min(len(raw_datasets[key]), data_args.use_less_data)
@@ -489,7 +489,7 @@ class Experiment(abc.ABC):
             # embeddings for suffixes. Then they became the same.
             # Removing the below line will invalidate other
             # people's caches.
-            dataset_kwargs["suffix_conditioning"] = "True"
+            dataset_kwargs["suffix_conditioning"] = "False"
 
         # os.environ["TOKENIZERS_PARALLELISM"] = "True"
         print(
@@ -504,6 +504,7 @@ class Experiment(abc.ABC):
         train_dataset_path = os.path.join(
             DATASET_CACHE_PATH, (md5_hash_kwargs(**train_dataset_kwargs) + ".arrow")
         )
+        breakpoint()
         # Optionally set a train dataset path override
         train_dataset_path = os.environ.get(
             "VEC2TEXT_TRAIN_DATASET_PATH", train_dataset_path
