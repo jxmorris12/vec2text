@@ -155,7 +155,15 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
             "medicalai/ClinicalBERT", **model_kwargs
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
-    elif name.startswith("meta-llama/") or name.startswith("gpt2"):
+    elif name.startswith("gpt2"):
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            name,
+            **model_kwargs,
+        )
+        model.to_bettertransformer()
+        tokenizer = transformers.AutoTokenizer.from_pretrained(name)
+        tokenizer.pad_token = tokenizer.eos_token
+    elif name.startswith("meta-llama/"):
         if torch_dtype == "float32":
             torch_dtype = torch.float32
         elif torch_dtype == "float16":
