@@ -504,7 +504,6 @@ class Experiment(abc.ABC):
         train_dataset_path = os.path.join(
             DATASET_CACHE_PATH, (md5_hash_kwargs(**train_dataset_kwargs) + ".arrow")
         )
-        breakpoint()
         # Optionally set a train dataset path override
         train_dataset_path = os.environ.get(
             "VEC2TEXT_TRAIN_DATASET_PATH", train_dataset_path
