@@ -1,7 +1,9 @@
+accelerate
 bert_score
 datasets
 evaluate
 openai
+optimum
 pre-commit
 pylcs
 rouge_score
