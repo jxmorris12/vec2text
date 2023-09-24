@@ -5,6 +5,7 @@
 # so that flake8 will "pass" with my code.
 # See link: stackoverflow.com/questions/31079047
 from .corrector import Corrector  # noqa: F401
+from .fewshot_inversion_trainer import FewshotInversionTrainer  # noqa: F401
 from .inversion import InversionTrainer  # noqa: F401
 from .inversion_bow import InversionTrainerBagOfWords  # noqa: F401
 from .inversion_na import InversionTrainerNonAutoregressive  # noqa: F401
