@@ -52,13 +52,10 @@ class InversionFromLogitsModel(InversionModel):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        return_sequence: bool = False,
     ) -> torch.Tensor:
         embedder = self.embedder
         model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
-        return self._process_embedder_output(
-            model_output, attention_mask, return_sequence=return_sequence
-        )
+        return self._process_embedder_output(model_output, attention_mask)
 
     def embed_and_project(
         self,
@@ -75,18 +72,14 @@ class InversionFromLogitsModel(InversionModel):
                 embeddings = self.call_embedding_model(
                     input_ids=embedder_input_ids,
                     attention_mask=embedder_attention_mask,
-                    return_sequence=True,
                 )
         else:
             embeddings = self.call_embedding_model(
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
-                return_sequence=True,
             )
 
-        if len(embeddings.shape) == 3:
-            # Get next-token prediction.
-            embeddings = embeddings[:, -1, :]
+        embeddings = embeddings.to(self.sequence_weights.dtype)
 
         if self.config.suffix_conditioning:
             # below message will go away when we get data with suffixes. it only happens during eval anyway.
@@ -145,7 +138,6 @@ class InversionFromLogitsModel(InversionModel):
         self,
         outputs: transformers.modeling_outputs.BaseModelOutput,
         attention_mask: torch.Tensor,
-        return_sequence: bool = False,
     ) -> torch.Tensor:
         try:
             embeddings = outputs.logits.log_softmax(dim=2)
@@ -157,12 +149,7 @@ class InversionFromLogitsModel(InversionModel):
             device=embeddings.device,
         )
         embeddings = torch.cat((embeddings, zeros), dim=2)
-        # hidden_state = outputs.hidden_states[-1]
-
-        if return_sequence:
-            return embeddings
-        else:
-            return embeddings[:, -1, :]
+        return embeddings[torch.arange(len(embeddings)), attention_mask.sum(1) - 1]
 
     def forward(
         self,

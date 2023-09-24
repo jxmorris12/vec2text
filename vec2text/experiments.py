@@ -384,7 +384,7 @@ class Experiment(abc.ABC):
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
                     new_fingerprint=(
-                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs)
+                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + "_3"
                     ),
                 )
             tokenized_datasets = datasets.DatasetDict(new_tokenized_datasets)
@@ -448,7 +448,7 @@ class Experiment(abc.ABC):
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
                     new_fingerprint=(
-                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs)
+                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + "_3"
                     ),
                 )
             val_datasets_dict = datasets.DatasetDict(new_tokenized_datasets)
@@ -504,7 +504,6 @@ class Experiment(abc.ABC):
         train_dataset_path = os.path.join(
             DATASET_CACHE_PATH, (md5_hash_kwargs(**train_dataset_kwargs) + ".arrow")
         )
-        breakpoint()
         # Optionally set a train dataset path override
         train_dataset_path = os.environ.get(
             "VEC2TEXT_TRAIN_DATASET_PATH", train_dataset_path

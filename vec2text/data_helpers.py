@@ -186,6 +186,12 @@ def load_arxiv_val() -> datasets.Dataset:
     return d
 
 
+def load_python_code_instructions_18k_alpaca() -> datasets.Dataset:
+    d = datasets.load_dataset("iamtarun/python_code_instructions_18k_alpaca")["train"]
+    d = d.rename_column("instruction", "text")
+    return d
+
+
 def load_beir_corpus(name: str) -> List[str]:
     from beir import util as beir_util
     from beir.datasets.data_loader import GenericDataLoader
@@ -285,6 +291,7 @@ def load_standard_val_datasets() -> datasets.DatasetDict:
     d = {
         "ag_news": load_ag_news_test(),
         "arxiv": load_arxiv_val(),
+        "python_code_alpaca": load_python_code_instructions_18k_alpaca(),
         # "xsum_doc": load_xsum_val("document"),
         # "xsum_summ": load_xsum_val("summary"),
         "wikibio": load_wikibio_val(),

@@ -10,6 +10,7 @@ import transformers
 from transformers import HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 
+import vec2text
 from vec2text import experiments
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 
@@ -89,22 +90,6 @@ def load_experiment_and_trainer(
         data_args.dataset_name = "nq"
         print("set dataset to nq")
 
-    training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
-    ########################################################################
-    from accelerate.state import PartialState
-
-    training_args._n_gpu = 1  # Don't load in DDP
-    training_args.local_rank = -1  # Don't load in DDP
-    training_args.distributed_state = PartialState()
-    training_args.deepspeed_plugin = None  # For backwards compatibility
-    ########################################################################
-    if do_eval:
-        print("Loading trainer for analysis – setting --do_eval=1")
-        training_args.do_eval = do_eval
-        training_args.dataloader_num_workers = 0  # no multiprocessing :)
-    training_args.use_wandb = False
-    training_args.report_to = []
-    training_args.mock_embedder = False
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
     trainer.model._keys_to_ignore_on_save = []
@@ -138,3 +123,38 @@ def load_results_from_folder(name: str) -> pd.DataFrame:
             d.update(d.pop("_eval_args"))
         data.append(d)
     return pd.DataFrame(data)
+
+
+def args_from_config(args_cls, config):
+    args = args_cls()
+    for key, value in vars(config).items():
+        if key in dir(args):
+            setattr(args, key, value)
+    return args
+
+
+def load_experiment_and_trainer_from_pretrained(name: str):
+    model = vec2text.models.InversionFromLogitsModel.from_pretrained(name)
+
+    model_args = args_from_config(ModelArguments, model.config)
+    data_args = args_from_config(DataArguments, model.config)
+    training_args = args_from_config(TrainingArguments, model.config)
+
+    data_args.use_less_data = 1000
+    ########################################################################
+    from accelerate.state import PartialState
+
+    training_args._n_gpu = 1  # Don't load in DDP
+    training_args.local_rank = -1  # Don't load in DDP
+    training_args.distributed_state = PartialState()
+    training_args.deepspeed_plugin = None  # For backwards compatibility
+    ########################################################################
+    training_args.dataloader_num_workers = 0  # no multiprocessing :)
+    training_args.use_wandb = False
+    training_args.report_to = []
+    training_args.mock_embedder = False
+
+    experiment = experiments.experiment_from_args(model_args, data_args, training_args)
+    trainer = experiment.load_trainer()
+    trainer.model = model
+    return experiment, trainer

@@ -44,7 +44,7 @@ CHECKPOINT_FOLDERS_DICT = {
     # openai corrector model trained for a lot longer:
     # https://wandb.ai/jack-morris/emb-correct-1/runs/5c1f59956a46e62e8f26f778e167348a/overview?workspace=user-jxmorris12
     "openai_msmarco__msl128__200epoch__correct": "/home/jxm3/research/retrieval/inversion/saves/c7be16d4af952eea8046a02a9d2a2113",
-    "TEST_MODEL": "/home/jxm3/research/retrieval/inversion/vec2text/saves/c52ed653690fee956069a64f69a0ce05",
+    "logits__gpt2": "/home/jxm3/research/retrieval/inversion/vec2text/saves/9a73ba8ce560ec71a1f7a46b31674841",
 }
 
 
