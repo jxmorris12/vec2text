@@ -68,9 +68,7 @@ def tokenize_function_llama_chat(
             # so this is only for evaluation datasets that may not have
             # actual prefix-suffix pairing.
             #
-            examples["prefix"] = ["You are a language model."] * len(
-                examples[text_column_name]
-            )
+            examples["prefix"] = [""] * len(examples[text_column_name])
             examples["suffix"] = examples[text_column_name]
 
         output = tokenizer(
@@ -92,7 +90,7 @@ def tokenize_function_llama_chat(
         ]
         embedder_output = embedder_tokenizer(
             text=[
-                f"[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n[INST] {instruction} [/INST]"
+                f"[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n[INST] {instruction} [/INST] The"
                 for (system_message, instruction) in zip(
                     examples["prefix"], examples["suffix"]
                 )
@@ -144,4 +142,4 @@ def randomly_truncate_inputs(
         for k, v in inputs.items()
     }
     # TODO fix eos and bos?
-    return truncated_inputs_with_pad
+    return truncated_inputs_with_

@@ -18,6 +18,9 @@ import transformers
 logger = logging.getLogger(__name__)
 
 
+DEFAULT_INPUT_STRING = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
+
+
 def preprocess_logits_for_metrics(logits, labels):
     if isinstance(logits, tuple):
         # Depending on the model and config, logits may contain extra tensors,
@@ -75,13 +78,16 @@ class BaseTrainer(transformers.Trainer):
         except AttributeError:
             return self.tokenizer.bos_token_id
 
-    def sanity_decode(self):
+    def sanity_decode(self, input_string: str = None):
         """Encodes and decodes a string as a sanity check."""
+        if input_string is None:
+            input_string = DEFAULT_INPUT_STRING
         self.model.eval()
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
-        input_string = "Twas brillig, and the slithy toves, Did gyre and gimble in the wabe, All mimsy were the borogoves, And the mome raths outgrabe."
         print("\tInput to encode ->", input_string)
-        inputs = self.embedder_tokenizer(input_string, return_tensors="pt")
+        inputs = self.embedder_tokenizer(
+            input_string, return_tensors="pt", max_length=64, padding="max_length"
+        )
         inputs = inputs.to(self.args.device)
         gen_kwargs = copy.copy(self.gen_kwargs)
         gen_kwargs["min_length"] = 1
@@ -103,7 +109,6 @@ class BaseTrainer(transformers.Trainer):
     def _log_preds_table(
         self, table_key: str, decoded_preds: List[str], decoded_labels: List[str]
     ):
-        # import pdb; pdb.set_trace()
         if not self.args.use_wandb:
             return
         elif not (self.args.local_rank <= 0):
@@ -326,6 +331,7 @@ class BaseTrainer(transformers.Trainer):
             "exact_match": mean(exact_matches),
             "exact_match_sem": sem(exact_matches),
         }
+
         return {**set_token_metrics, **gen_metrics}
 
     def eval_generation_metrics(

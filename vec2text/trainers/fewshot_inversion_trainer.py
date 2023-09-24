@@ -8,32 +8,36 @@ from vec2text.trainers.base import BaseTrainer
 
 
 def make_example_str_input_from_train_row(
-        embedding: torch.Tensor, 
-        embedder_tokenizer: transformers.PreTrainedTokenizer,
-        k: int,
-    ) -> str:
-    topk_tokens = embedding[:embedder_tokenizer.vocab_size].topk(k=k)
-    json_str = '{ '
+    embedding: torch.Tensor,
+    embedder_tokenizer: transformers.PreTrainedTokenizer,
+    k: int,
+) -> str:
+    topk_tokens = embedding[: embedder_tokenizer.vocab_size].topk(k=k)
+    json_str = "{ "
     for tid, p in zip(topk_tokens.indices, topk_tokens.values):
         t = embedder_tokenizer.decode([tid]).encode()
-        json_str += f'  {t}: {p:.4f}  '
-    json_str += ' }'
+        json_str += f"  {t}: {p:.4f}  "
+    json_str += " }"
     return f"""Top tokens: {json_str}
 Output:"""
 
+
 def make_example_str_from_train_row(
-        input_ids: torch.Tensor, 
-        embedding: torch.Tensor, 
-        embedder_tokenizer: transformers.PreTrainedTokenizer,
-        k: int,
-    ) -> str:
+    input_ids: torch.Tensor,
+    embedding: torch.Tensor,
+    embedder_tokenizer: transformers.PreTrainedTokenizer,
+    k: int,
+) -> str:
     input_str = make_example_str_input_from_train_row(
-        embedding=embedding,
-        k=k,
-        embedder_tokenizer=embedder_tokenizer
+        embedding=embedding, k=k, embedder_tokenizer=embedder_tokenizer
     )
-    output = embedder_tokenizer.decode(input_ids, skip_special_tokens=True).strip().replace("\n", "\\n")
+    output = (
+        embedder_tokenizer.decode(input_ids, skip_special_tokens=True)
+        .strip()
+        .replace("\n", "\\n")
+    )
     return input_str + " " + output
+
 
 class FewshotInversionTrainer(BaseTrainer):
     """This class is a mock 'trainer' that can be used to evaluate how good an LLM is (like GPT-4) at inversion."""
@@ -41,22 +45,34 @@ class FewshotInversionTrainer(BaseTrainer):
     train_dataset: datasets.Dataset
     num_tokens_per_example: int
 
-    def __init__(self, *args, embedder_tokenizer: transformers.PreTrainedTokenizer, train_dataset: datasets.Dataset, num_tokens_per_example: int = 10, **kwargs):
-        super().__init__(*args, model=torch.nn.Linear(1,1), model_init=None, **kwargs)
+    def __init__(
+        self,
+        *args,
+        embedder_tokenizer: transformers.PreTrainedTokenizer,
+        train_dataset: datasets.Dataset,
+        num_tokens_per_example: int = 10,
+        **kwargs,
+    ):
+        super().__init__(*args, model=torch.nn.Linear(1, 1), model_init=None, **kwargs)
         self.num_tokens_per_example = num_tokens_per_example
         self.prompt_str = "Given the top-K predicted tokens and log-probabilities from a language model, please predict what the input was.\n\n"
         self.embedder_tokenizer = embedder_tokenizer
         for row in train_dataset:
-            assert "frozen_embeddings" in row, f"need embedding for few shot - got keys {row.keys()}"
+            assert (
+                "frozen_embeddings" in row
+            ), f"need embedding for few shot - got keys {row.keys()}"
             self.prompt_str += make_example_str_from_train_row(
                 input_ids=row["embedder_input_ids"],
-                embedding=row["frozen_embeddings"], 
+                embedding=row["frozen_embeddings"],
                 embedder_tokenizer=self.embedder_tokenizer,
-                k=self.num_tokens_per_example)
+                k=self.num_tokens_per_example,
+            )
             self.prompt_str += "\n\n"
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        import pdb; pdb.set_trace()
+        import pdb
+
+        pdb.set_trace()
         decoded_inputs = self.embedder_tokenizer.batch_decode(
             inputs["embedder_input_ids"], skip_special_tokens=True
         )

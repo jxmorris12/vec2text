@@ -139,16 +139,15 @@ class InversionFromLogitsModel(InversionModel):
         outputs: transformers.modeling_outputs.BaseModelOutput,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        try:
-            embeddings = outputs.logits.log_softmax(dim=2)
-        except AttributeError:
-            embeddings = outputs
+        embeddings = outputs.logits.log_softmax(dim=2)
         zeros = torch.zeros(
             (*embeddings.shape[0:2], self.num_zeros_to_add),
             dtype=embeddings.dtype,
             device=embeddings.device,
         )
         embeddings = torch.cat((embeddings, zeros), dim=2)
+        # import pdb; pdb.set_trace()
+        # return embeddings[:, -1, :]
         return embeddings[torch.arange(len(embeddings)), attention_mask.sum(1) - 1]
 
     def forward(
