@@ -5,7 +5,7 @@ import os
 import random
 
 # import statistics
-from typing import Dict, List, Tuple, Union
+from typing import Callable, Dict, List, Tuple, Union
 
 import evaluate
 import nltk
@@ -14,6 +14,8 @@ import scipy.stats
 import torch
 import tqdm
 import transformers
+
+import vec2text
 
 logger = logging.getLogger(__name__)
 
@@ -49,6 +51,8 @@ def count_overlapping_ngrams(s1: str, s2: str, n: int) -> int:
 
 
 class BaseTrainer(transformers.Trainer):
+    additional_metrics: List[Callable[..., Dict[str, float]]]
+
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.preprocess_logits_for_metrics = preprocess_logits_for_metrics
@@ -57,12 +61,17 @@ class BaseTrainer(transformers.Trainer):
         self.metric_bleu = evaluate.load("sacrebleu")
         # self.metric_bertscore = evaluate.load("bertscore")
         # self.metric_rouge = evaluate.load("rouge")
+        self.additional_metrics = []
+
         self.gen_kwargs = {
             "early_stopping": False,
             "num_beams": 1,
             "do_sample": False,
             "no_repeat_ngram_size": 0,
         }
+
+    def enable_emb_cos_sim_metric(self) -> None:
+        self.additional_metrics.append(vec2text.metrics.EmbeddingCosineSimilarity())
 
     @property
     def pad_token_id(self) -> int:
@@ -332,7 +341,11 @@ class BaseTrainer(transformers.Trainer):
             "exact_match_sem": sem(exact_matches),
         }
 
-        return {**set_token_metrics, **gen_metrics}
+        all_metrics = {**set_token_metrics, **gen_metrics}
+        for metric in self.additional_metrics:
+            all_metrics.update(metric(references_str, predictions_str))
+
+        return all_metrics
 
     def eval_generation_metrics(
         self, dataloader: torch.utils.data.DataLoader
@@ -444,10 +457,18 @@ class BaseTrainer(transformers.Trainer):
                     ),
                 )
                 emb_cos_sims = torch.nn.CosineSimilarity(dim=1)(preds_emb, labels_emb)
+                emb_topk_equal = (
+                    (preds_emb[:, :32000].argmax(1) == labels_emb[:, :32000].argmax(1))
+                    .float()
+                    .cpu()
+                )
                 sim_result = {
                     "emb_cos_sim": emb_cos_sims.mean().item(),
                     "emb_cos_sim_sem": sem(emb_cos_sims.cpu().numpy()),
+                    "emb_top1_equal": emb_topk_equal.mean().item(),
+                    "emb_top1_equal_sem": sem(emb_topk_equal),
                 }
+
         except TypeError:
             sim_result = {"emb_cos_sim": 0, "emb_cos_sim_sem": 0}
 
