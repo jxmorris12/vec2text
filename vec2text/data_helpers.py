@@ -123,6 +123,15 @@ def load_one_million_paired_instructions() -> datasets.Dataset:
     return dataset_dict["train"]
 
 
+def load_one_million_instructions() -> datasets.Dataset:
+    # has only "train" split, and "system" (system prompt)
+    # and "user" (user input) columns
+    dataset_dict = datasets.load_dataset("wentingzhao/one-million-instructions")
+    dataset_dict = dataset_dict.map(create_ompi_ex)
+
+    return dataset_dict["train"]
+
+
 def load_luar_reddit() -> datasets.Dataset:
     d = datasets.load_dataset("friendshipkim/reddit_eval_embeddings_luar")
     d = d.rename_column("full_text", "text")
@@ -149,6 +158,10 @@ def dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
         raw_datasets["validation"] = raw_datasets["test"]
     elif data_args.dataset_name == "one_million_paired_instructions":
         raw_datasets = load_one_million_paired_instructions()
+        raw_datasets = raw_datasets.train_test_split(test_size=0.01)
+        raw_datasets["validation"] = raw_datasets["test"]
+    elif data_args.dataset_name == "one_million_instructions":
+        raw_datasets = load_one_million_instructions()
         raw_datasets = raw_datasets.train_test_split(test_size=0.01)
         raw_datasets["validation"] = raw_datasets["test"]
     elif data_args.dataset_name == "luar_reddit":

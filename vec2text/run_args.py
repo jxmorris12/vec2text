@@ -343,7 +343,7 @@ class TrainingArguments(transformers.TrainingArguments):
             ["wandb"] if (self.use_wandb and (self.local_rank <= 0)) else []
         )
         self.dataloader_pin_memory = True
-        num_workers = int(len(os.sched_getaffinity(0)) / torch.cuda.device_count())
+        num_workers = torch.cuda.device_count()
         os.environ["RAYON_RS_NUM_CPUS"] = str(
             num_workers
         )  # Sets threads for hf tokenizers

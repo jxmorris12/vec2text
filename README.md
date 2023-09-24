@@ -11,6 +11,20 @@ pip install vec2text
 
 [Link to Colab Demo](https://colab.research.google.com/drive/14RQFRF2It2Kb8gG3_YDhP_6qE0780L8h?usp=sharing)
 
+### Development
+
+If you're training a model you'll need to set up nltk:
+```python
+import nltk
+nltk.download('punkt')
+```
+
+Before pushing any code, please run precommit:
+```bash
+pre-commit run --all
+```
+
+
 ## Usage
 
 The library can be used to embed text and then invert it, or invert directly from embeddings. First you'll need to construct a `Corrector` object which wraps the necessary models, embedders, and tokenizers:
