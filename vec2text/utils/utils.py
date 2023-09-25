@@ -77,7 +77,7 @@ def torch_main_worker_finish_first(func: Callable):
         try:
             local_rank = torch.distributed.get_rank()
             ddp_enabled = True
-        except RuntimeError:
+        except (RuntimeError, ValueError):
             local_rank = -1
             ddp_enabled = False
         is_main_worker = local_rank <= 0
