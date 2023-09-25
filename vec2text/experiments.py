@@ -50,6 +50,8 @@ logger = logging.getLogger(__name__)
 # doesn't work properly.
 DATASET_CACHE_PATH = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
 
+# Noisy compilation from torch.compile
+torch._logging.set_logs(dynamo=logging.INFO)
 
 def md5_hash_kwargs(**kwargs) -> str:
     # We ignore special hf args that start with _ like '__cached__setup_devices'.
