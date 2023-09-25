@@ -142,4 +142,4 @@ def randomly_truncate_inputs(
         for k, v in inputs.items()
     }
     # TODO fix eos and bos?
-    return truncated_inputs_with_
+    return truncated_inputs_with_pad
