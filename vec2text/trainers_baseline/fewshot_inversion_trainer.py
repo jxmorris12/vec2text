@@ -1,30 +1,24 @@
-from typing import Dict, Iterable, List
-
 import functools
+from typing import Dict, Iterable, List
 
 import datasets
 import openai
 import torch
 import transformers
-
-from tenacity import (
-    retry,
-    stop_after_attempt,
-    wait_fixed,
-)
+from tenacity import retry, stop_after_attempt, wait_fixed
 
 from vec2text.trainers.base import BaseTrainer
 
 
 @retry(wait=wait_fixed(5), stop=stop_after_attempt(10))
 def call_openai_llm(
-        prompt: str,
-        gpt_version: str,
+    prompt: str,
+    gpt_version: str,
 ) -> str:
     full_prompts = [
-            {"role": "system", "content": "You are a helpful assistant."},
-            {"role": "user", "content": prompt },
-        ]
+        {"role": "system", "content": "You are a helpful assistant."},
+        {"role": "user", "content": prompt},
+    ]
     return openai.ChatCompletion.create(
         model=gpt_version,
         messages=full_prompts,
@@ -33,7 +27,6 @@ def call_openai_llm(
         # stop=["\n"],
         presence_penalty=0,
     )["choices"][0]["message"]["content"]
-
 
 
 def make_example_str_input_from_train_row(
@@ -61,8 +54,7 @@ def make_example_str_from_train_row(
         embedding=embedding, k=k, embedder_tokenizer=embedder_tokenizer
     )
     output = (
-        embedder_tokenizer.decode(input_ids, skip_special_tokens=True)
-        .strip()
+        embedder_tokenizer.decode(input_ids, skip_special_tokens=True).strip()
         # .replace("\n", "\\n")
     )
     return input_str + " " + output
@@ -114,29 +106,32 @@ class FewshotInversionTrainer(BaseTrainer):
                 embeddings = self.call_embedding_model(
                     input_ids=inputs["embedder_input_ids"],
                     attention_mask=inputs["embedder_attention_mask"],
-                ) 
-                embeddings = embeddings - self.unigram_embedding[None, :].to(embeddings.device)
-        prompt_suffixes = list(map(
-            functools.partial(
-                make_example_str_input_from_train_row,
-                embedder_tokenizer=self.embedder_tokenizer,
-                k=self.num_tokens_per_example,
-            ),
-            embeddings.cpu()
-        ))
+                )
+                embeddings = embeddings - self.unigram_embedding[None, :].to(
+                    embeddings.device
+                )
+        prompt_suffixes = list(
+            map(
+                functools.partial(
+                    make_example_str_input_from_train_row,
+                    embedder_tokenizer=self.embedder_tokenizer,
+                    k=self.num_tokens_per_example,
+                ),
+                embeddings.cpu(),
+            )
+        )
         full_prompts = [self.prompt_str + s for s in prompt_suffixes]
         # print(full_prompts[0])
         response_text = list(self._call_gpt(full_prompts))
-        return (
-            self.tokenizer(response_text, return_tensors='pt', padding='max_length', truncation=False).input_ids.to(
-            inputs["embedder_input_ids"].device)
-        )
+        return self.tokenizer(
+            response_text, return_tensors="pt", padding="max_length", truncation=False
+        ).input_ids.to(inputs["embedder_input_ids"].device)
 
     def _call_gpt(self, prompts: List[str]) -> Iterable[str]:
         # TODO implement caching...
         for p in prompts:
             yield call_openai_llm(
-                prompt=p, 
+                prompt=p,
                 gpt_version=self._gpt_version,
             )
 
