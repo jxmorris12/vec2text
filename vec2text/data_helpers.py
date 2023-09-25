@@ -123,6 +123,12 @@ def load_one_million_instructions() -> datasets.Dataset:
     return dataset_dict["train"]
 
 
+def load_anthropic_toxic_prompts() -> datasets.Dataset:
+    d = datasets.load_dataset("wentingzhao/anthropic-hh-first-prompt")["train"]
+    d = d.rename_column("user", "text")
+    return d
+
+
 def load_luar_reddit() -> datasets.Dataset:
     d = datasets.load_dataset("friendshipkim/reddit_eval_embeddings_luar")
     d = d.rename_column("full_text", "text")
@@ -294,6 +300,7 @@ def load_standard_val_datasets() -> datasets.DatasetDict:
     """Loads a pre-defined set of standard val datasets."""
     d = {
         "ag_news": load_ag_news_test(),
+        "anthropic_toxic_prompts": load_anthropic_toxic_prompts(),
         "arxiv": load_arxiv_val(),
         "python_code_alpaca": load_python_code_instructions_18k_alpaca(),
         # "xsum_doc": load_xsum_val("document"),

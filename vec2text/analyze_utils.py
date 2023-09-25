@@ -167,7 +167,7 @@ def load_gpt_fewshot_baseline_trainer(
     num_few_shot_examples: int = 3,
     num_tokens_per_example: int = 50,
 ):
-    args_str = f"--per_device_train_batch_size 256 --per_device_eval_batch_size 64 --max_seq_length {max_seq_len} --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name {dataset_name} --model_name_or_path t5-base --use_wandb=0 --embedder_model_name {embedder_model_name} --experiment inversion_from_logits --bf16=1 --embedder_torch_dtype bfloat16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0 --use_less_data 1000"
+    args_str = f"--per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_seq_length {max_seq_len} --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name {dataset_name} --model_name_or_path t5-base --use_wandb=0 --embedder_model_name {embedder_model_name} --experiment inversion_from_logits --bf16=1 --embedder_torch_dtype bfloat16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0 --use_less_data 1000"
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )
@@ -215,11 +215,11 @@ def load_jailbreak_baseline_trainer(
     prompt: str,
     dataset_name: str = "one_million_instructions",
     embedder_model_name: str = "meta-llama/Llama-2-7b-hf",
-    max_seq_len: int = 63,
+    max_seq_len: int = 32,
     num_few_shot_examples: int = 3,
     num_tokens_per_example: int = 50,
 ):
-    args_str = f"--per_device_train_batch_size 256 --per_device_eval_batch_size 64 --max_seq_length {max_seq_len} --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name {dataset_name} --model_name_or_path t5-base --use_wandb=0 --embedder_model_name {embedder_model_name} --experiment inversion_from_logits --bf16=1 --embedder_torch_dtype bfloat16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0 --use_less_data 1000"
+    args_str = f"--per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_seq_length {max_seq_len} --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name {dataset_name} --model_name_or_path t5-base --use_wandb=0 --embedder_model_name {embedder_model_name} --experiment inversion_from_logits --bf16=1 --embedder_torch_dtype bfloat16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0 --use_less_data 1000"
     parser = transformers.HfArgumentParser(
         (ModelArguments, DataArguments, TrainingArguments)
     )
