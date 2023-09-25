@@ -139,7 +139,10 @@ class InversionFromLogitsModel(InversionModel):
         outputs: transformers.modeling_outputs.BaseModelOutput,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        embeddings = outputs.logits.log_softmax(dim=2)
+        try:
+            embeddings = outputs.logits.log_softmax(dim=2)
+        except AttributeError:
+            embeddings = outputs
         zeros = torch.zeros(
             (*embeddings.shape[0:2], self.num_zeros_to_add),
             dtype=embeddings.dtype,
