@@ -1,3 +1,4 @@
+# not works
 from typing import Dict
 
 import torch
@@ -13,18 +14,33 @@ class JailbreakPromptTrainer(BaseTrainer):
     def __init__(self, *args, prompt: str = "", **kwargs):
         super().__init__(*args, model=torch.nn.Linear(1, 1), model_init=None, **kwargs)
         self.prompt = prompt
+        self.take_first_line = False
         self.max_length = 128
 
-    def _filter_prompt(self, s: str) -> str:
+    # def _filter_prompt(self, s: str) -> str:
+    #     try:
+    #         i = s.index(self.prompt)
+    #         return s[:i]
+    #     except ValueError:
+    #         # substring not found
+    #         return s
+
+    def _take_first_line(self, s: str) -> str:
+        # import pdb; pdb.set_trace()
+        s = s.strip()
         try:
-            i = s.index(self.prompt)
-            return s[:i]
+            nli = s.index("\n")
+            return s[:nli]
         except ValueError:
-            # substring not found
             return s
 
     def is_llama_chat(self) -> bool:
-        return self.embedder.config._name_or_path in ["meta-llama/Llama-2-7b-chat-hf"]
+        return self.embedder.config._name_or_path in [
+            "meta-llama/Llama-2-7b-chat-hf",
+            "meta-llama/Llama-2-13b-chat-hf",
+            "meta-llama/Llama-2-30b-chat-hf",
+            "meta-llama/Llama-2-70b-chat-hf",
+        ]
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         if "frozen_embeddings" in inputs:
@@ -59,6 +75,7 @@ class JailbreakPromptTrainer(BaseTrainer):
         else:
             new_inputs = [d + self.prompt for d in decoded_inputs]
         # print(new_inputs[0])
+        # import pdb; pdb.set_trace()
 
         new_inputs_tokenized = self.embedder_tokenizer(
             new_inputs,
@@ -75,9 +92,10 @@ class JailbreakPromptTrainer(BaseTrainer):
             max_new_tokens=self.max_length,
             do_sample=False,
         )
-        # pad away tokens that were in the original input
+        # # pad away tokens that were in the original input
         num_input_tokens = new_inputs_tokenized.input_ids.shape[1]
         generations = generations[:, num_input_tokens:]
+
         # need to swap tokenizers
         bos_tokens = torch.tensor(
             [[self.decoder_start_token_id]] * len(new_inputs),
@@ -89,9 +107,13 @@ class JailbreakPromptTrainer(BaseTrainer):
         )
         # filter out prompt. basically if the model starts outputting
         # the prompt we cut it off.
-        untokenized_generations = list(
-            map(self._filter_prompt, untokenized_generations)
-        )
+        # untokenized_generations = list(
+        #     map(self._filter_prompt, untokenized_generations)
+        # )
+        if self.take_first_line:
+            untokenized_generations = list(
+                map(self._take_first_line, untokenized_generations)
+            )
         retokenized_generations = self.tokenizer(
             untokenized_generations,
             truncation=True,

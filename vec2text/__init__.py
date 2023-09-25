@@ -3,6 +3,7 @@ from . import (  # noqa: F401
     collator,
     metrics,
     models,
+    prompts,
     trainers,
     trainers_baseline,
 )

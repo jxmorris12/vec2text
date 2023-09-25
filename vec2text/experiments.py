@@ -37,8 +37,8 @@ os.environ["WANDB__SERVICE_WAIT"] = "300"
 os.environ["_WANDB_STARTUP_DEBUG"] = "true"
 
 # Don't send telemetry to HF every time we train.
-os.environ["HF_DATASETS_OFFLINE"] = "1"
-os.environ["TRANSFORMERS_OFFLINE"] = "1"
+# os.environ["HF_DATASETS_OFFLINE"] = "1"
+# os.environ["TRANSFORMERS_OFFLINE"] = "1"
 
 os.environ["TOKENIZERS_PARALLELISM"] = "False"
 # os.environ["TOKENIZERS_PARALLELISM"] = "True"
@@ -96,7 +96,12 @@ class Experiment(abc.ABC):
 
     @property
     def is_llama_chat(self) -> bool:
-        return self.model_args.embedder_model_name in ["meta-llama/Llama-2-7b-chat-hf"]
+        return self.model_args.embedder_model_name in [
+            "meta-llama/Llama-2-7b-chat-hf",
+            "meta-llama/Llama-2-13b-chat-hf",
+            "meta-llama/Llama-2-30b-chat-hf",
+            "meta-llama/Llama-2-70b-chat-hf",
+        ]
 
     @property
     def dataset_kwargs(self) -> Dict[str, str]:
@@ -534,6 +539,7 @@ class Experiment(abc.ABC):
         assert val_dataset_path != train_dataset_path
         if os.path.exists(val_dataset_path):
             val_datasets_dict = datasets.load_from_disk(val_dataset_path)
+            print("loaded dict of val datasets from", val_dataset_path)
         else:
             val_datasets_dict = self._load_val_datasets_uncached(
                 model=model,
