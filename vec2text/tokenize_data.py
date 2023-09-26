@@ -90,7 +90,7 @@ def tokenize_function_llama_chat(
         ]
         embedder_output = embedder_tokenizer(
             text=[
-                f"[INST] <<SYS>>\n{system_message}\n<</SYS>>\n\n[INST] {instruction} [/INST] The"
+                f"[INST] <<SYS>>\n{system_message}\n<</SYS>>\n {instruction} [/INST]"
                 for (system_message, instruction) in zip(
                     examples["prefix"], examples["suffix"]
                 )

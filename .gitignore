@@ -10,6 +10,7 @@ vec2text.egg-info/
 embeddings/
 logs/
 notebooks/
+notebooks_logits/
 msmarco_msl128_hypotheses/
 results/
 saves/
