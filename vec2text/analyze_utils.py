@@ -60,9 +60,16 @@ def load_experiment_and_trainer(
             model_args = torch.load(
                 os.path.join(checkpoint, os.pardir, "model_args.bin")
             )
+            training_args = torch.load(os.path.join(checkpoint, os.pardir, "training_args.bin"))
         except FileNotFoundError:
             data_args = torch.load(os.path.join(checkpoint, "data_args.bin"))
             model_args = torch.load(os.path.join(checkpoint, "model_args.bin"))
+            training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
+
+    training_args.dataloader_num_workers = 0  # no multiprocessing :)
+    training_args.use_wandb = False
+    training_args.report_to = []
+    training_args.mock_embedder = False
 
     if max_seq_length is not None:
         print(
@@ -153,6 +160,11 @@ def load_experiment_and_trainer_from_pretrained(name: str):
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
+
+    training_args.per_device_train_batch_size = min(
+        training_args.per_device_train_batch_size,
+        32
+    )
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
