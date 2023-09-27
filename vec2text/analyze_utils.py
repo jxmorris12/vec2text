@@ -57,15 +57,17 @@ def load_experiment_and_trainer(
     else:
         try:
             data_args = torch.load(os.path.join(checkpoint, os.pardir, "data_args.bin"))
+        except FileNotFoundError:
+            data_args = torch.load(os.path.join(checkpoint, "data_args.bin"))
+        try:
             model_args = torch.load(
                 os.path.join(checkpoint, os.pardir, "model_args.bin")
             )
-            training_args = torch.load(
-                os.path.join(checkpoint, os.pardir, "training_args.bin")
-            )
         except FileNotFoundError:
-            data_args = torch.load(os.path.join(checkpoint, "data_args.bin"))
             model_args = torch.load(os.path.join(checkpoint, "model_args.bin"))
+        try:
+            training_args = torch.load(os.path.join(checkpoint, os.pardir, "training_args.bin"))
+        except FileNotFoundError:
             training_args = torch.load(os.path.join(checkpoint, "training_args.bin"))
 
     training_args.dataloader_num_workers = 0  # no multiprocessing :)
@@ -110,7 +112,7 @@ def load_experiment_and_trainer(
         trainer.model.layernorm = None
         # try again without trying to load layernorm
         trainer._load_from_checkpoint(checkpoint)
-    if sanity_decode:
+    if torch.cuda.is_available() and sanity_decode:
         trainer.sanity_decode()
     return experiment, trainer
 

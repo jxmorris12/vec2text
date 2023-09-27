@@ -189,12 +189,16 @@ class InversionFromLogitsModel(InversionModel):
             true_seq_length = (labels >= 0).sum(1).min()
             if self.training:
                 # Randomly create a suffix from the input.
-                prefix_length = torch.randint(
-                    low=1,  # inclusive
-                    high=true_seq_length,  # exclusive
-                    size=(1,),
-                    dtype=torch.long,
-                ).item()
+                if true_seq_length == 1:
+                    prefix_length = 1
+                else:
+                    prefix_length = torch.randint(
+                        low=1,  # inclusive
+                        high=true_seq_length,  # exclusive
+                        size=(1,),
+                        dtype=torch.long,
+                    ).item()
+
             else:
                 prefix_length = true_seq_length // 2
 
