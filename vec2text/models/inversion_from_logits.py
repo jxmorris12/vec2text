@@ -170,8 +170,6 @@ class InversionFromLogitsModel(InversionModel):
             device=embeddings.device,
         )
         embeddings = torch.cat((embeddings, zeros), dim=2)
-        # import pdb; pdb.set_trace()
-        # return embeddings[:, -1, :]
         return embeddings[torch.arange(len(embeddings)), attention_mask.sum(1) - 1]
 
     def forward(
@@ -185,6 +183,7 @@ class InversionFromLogitsModel(InversionModel):
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
+        print("1:", labels.shape, labels is None)
         if (suffix_ids is None) and self.config.suffix_conditioning:
             assert labels is not None
             batch_size, seq_length = labels.shape
@@ -204,9 +203,9 @@ class InversionFromLogitsModel(InversionModel):
                 prefix_length = true_seq_length // 2
 
             if labels is not None:
+                # create suffix based on the labels and selected prefix_length.
                 suffix_ids = labels[:, prefix_length:]
                 suffix_ids = suffix_ids.clamp(min=0)  # replace -100 with 0.
-                ORIGINAL_LABELS = labels # tmp
                 labels = labels.where(
                     torch.arange(seq_length, device=self.device)[None, :]
                     < prefix_length,
@@ -214,11 +213,9 @@ class InversionFromLogitsModel(InversionModel):
                 )
                 ignore_token_id = -100
                 eos_token_id = self.tokenizer.eos_token_id
-                pad_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * ignore_token_id
-                labels = torch.cat((labels, pad_tokens), dim=1)
-                first_pad_token_id = ((labels == ignore_token_id) | (labels == eos_token_id)).long().argmax(dim=1)
+                first_ignore_token_id = ((labels == ignore_token_id) | (labels == eos_token_id)).long().argmax(dim=1)
                 eos_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * eos_token_id
-                labels = labels.scatter(dim=1, index=first_pad_token_id[:, None], src=eos_tokens)
+                labels = labels.scatter(dim=1, index=first_ignore_token_id[:, None], src=eos_tokens)
             else:
                 suffix_ids = None
 
