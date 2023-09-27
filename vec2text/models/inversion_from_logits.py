@@ -57,7 +57,7 @@ class InversionFromLogitsModel(InversionModel):
             ),
             requires_grad=True,
         )
-        self._zero_except_topk = config.embedding_zero_except_topk
+        self._zero_except_topk = vars(config).get("embedding_zero_except_topk")
         print("Set zero-except-top-K value =", self._zero_except_topk)
 
     def call_embedding_model(
