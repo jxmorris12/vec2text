@@ -134,6 +134,12 @@ class ModelArguments:
             "help": "Number of times to repeat embedding along T5 input sequence length."
         },
     )
+    embedding_zero_except_topk: Optional[int] = field(
+        default=None,
+        metadata={
+            "help": "For inverting with logits, will set all numbers in embedding except the top-K to -30."
+        },
+    )
     embedder_no_grad: bool = field(
         default=True, metadata={"help": "Whether to disable grads for DPR"}
     )

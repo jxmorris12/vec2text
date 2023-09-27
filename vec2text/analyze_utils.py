@@ -167,8 +167,7 @@ def load_experiment_and_trainer_from_pretrained(name: str):
     training_args.mock_embedder = False
 
     training_args.per_device_train_batch_size = min(
-        training_args.per_device_train_batch_size,
-        32
+        training_args.per_device_train_batch_size, 32
     )
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)

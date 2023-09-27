@@ -386,13 +386,15 @@ class Experiment(abc.ABC):
 
             new_tokenized_datasets = {}
             for key, d in tokenized_datasets.items():
+                new_fingerprint = (
+                    d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
+                )
+                print("\tsaving precomputed embeddings to file:", new_fingerprint)
                 new_tokenized_datasets[key] = d.map(
                     functools.partial(embed_dataset_batch, model),
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
-                    new_fingerprint=(
-                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
-                    ),
+                    new_fingerprint=new_fingerprint,
                 )
             tokenized_datasets = datasets.DatasetDict(new_tokenized_datasets)
         ###########################################################################
@@ -516,6 +518,7 @@ class Experiment(abc.ABC):
             "VEC2TEXT_TRAIN_DATASET_PATH", train_dataset_path
         )
         if os.path.exists(train_dataset_path):
+            print("loading train dataset from path:", train_dataset_path)
             train_datasets = datasets.load_from_disk(train_dataset_path)
         else:
             train_datasets = self._load_train_dataset_uncached(

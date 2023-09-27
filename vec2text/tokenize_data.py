@@ -125,7 +125,6 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
                 batch["embedder_attention_mask"], device=model_device
             ),
         )
-
     return batch
 
 

@@ -1,25 +1,27 @@
 import collections
+import itertools
 import os
 import random
-import itertools
+
 import tqdm
 
 import vec2text
 
-
 args = itertools.product(
     list(vec2text.prompts.JAILBREAK_PROMPTS.keys()),
-    ["python_code_alpaca", "anthropic_toxic_prompts"],
+    ["one_million_instructions", "python_code_alpaca", "anthropic_toxic_prompts"],
     [
-        "meta-llama/Llama-2-7b-hf", "meta-llama/Llama-2-7b-chat-hf",
-        "meta-llama/Llama-2-13b-hf", "meta-llama/Llama-2-13b-chat-hf",
+        "meta-llama/Llama-2-7b-hf",
+        "meta-llama/Llama-2-7b-chat-hf",
+        "meta-llama/Llama-2-13b-hf",
+        "meta-llama/Llama-2-13b-chat-hf",
     ],
     [True, False],
 )
 
-ArgsList = collections.namedtuple('ArgsList', [
-    'prompt', 'dataset', 'model', 'take_first_line'
-])
+ArgsList = collections.namedtuple(
+    "ArgsList", ["prompt", "dataset", "model", "take_first_line"]
+)
 
 BASE_CMD = """python experiment_scripts/logits/evaluate_baseline.py \
 jailbreak \
