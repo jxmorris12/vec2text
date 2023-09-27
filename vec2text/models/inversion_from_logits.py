@@ -8,13 +8,12 @@ from vec2text.models.config import InversionConfig
 from vec2text.models.inversion import InversionModel
 
 
-def zero_embedding_topk(
+def zero_embedding_except_topk(
     embeddings: torch.Tensor, vocab_size: int, k: torch.Tensor, default_val: float
 ) -> torch.Tensor:
     # return embeddings
     topk = embeddings[:, :vocab_size].topk(k=k, dim=1)
     new_emb = torch.zeros_like(embeddings, device=embeddings.device) + default_val
-    # import pdb; pdb.set_trace()
     return new_emb.scatter_add(1, topk.indices, topk.values)
 
 
@@ -94,7 +93,7 @@ class InversionFromLogitsModel(InversionModel):
         embeddings = embeddings.to(self.sequence_weights.dtype)
 
         if self._zero_except_topk is not None:
-            embeddings = zero_embedding_topk(
+            embeddings = zero_embedding_except_topk(
                 embeddings,
                 vocab_size=self.embedder.config.vocab_size,
                 k=self._zero_except_topk,
