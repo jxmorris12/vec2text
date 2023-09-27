@@ -60,7 +60,9 @@ def load_experiment_and_trainer(
             model_args = torch.load(
                 os.path.join(checkpoint, os.pardir, "model_args.bin")
             )
-            training_args = torch.load(os.path.join(checkpoint, os.pardir, "training_args.bin"))
+            training_args = torch.load(
+                os.path.join(checkpoint, os.pardir, "training_args.bin")
+            )
         except FileNotFoundError:
             data_args = torch.load(os.path.join(checkpoint, "data_args.bin"))
             model_args = torch.load(os.path.join(checkpoint, "model_args.bin"))
