@@ -197,7 +197,6 @@ class InversionFromLogitsModel(InversionModel):
                         size=(1,),
                         dtype=torch.long,
                     ).item()
-
             else:
                 prefix_length = true_seq_length // 2
 
