@@ -185,7 +185,6 @@ class InversionFromLogitsModel(InversionModel):
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
-        print("forward input:", embedder_input_ids.shape, suffix_ids.shape if (suffix_ids is not None) else None, decoder_input_ids if (decoder_input_ids is None) else None)
         if (suffix_ids is None) and self.config.suffix_conditioning:
             assert labels is not None
             batch_size, seq_length = labels.shape
@@ -207,18 +206,19 @@ class InversionFromLogitsModel(InversionModel):
             if labels is not None:
                 suffix_ids = labels[:, prefix_length:]
                 suffix_ids = suffix_ids.clamp(min=0)  # replace -100 with 0.
+                ORIGINAL_LABELS = labels # tmp
                 labels = labels.where(
                     torch.arange(seq_length, device=self.device)[None, :]
                     < prefix_length,
                     -100,
                 )
-                pad_token_id = self.tokenizer.pad_token_id
+                ignore_token_id = -100
                 eos_token_id = self.tokenizer.eos_token_id
-                pad_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * pad_token_id
+                pad_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * ignore_token_id
                 labels = torch.cat((labels, pad_tokens), dim=1)
-                first_pad_token_id = ((labels == pad_token_id) | (labels == eos_token_id)).argmax(dim=1)
+                first_pad_token_id = ((labels == ignore_token_id) | (labels == eos_token_id)).long().argmax(dim=1)
                 eos_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * eos_token_id
-                labels = labels.scatter(dim=1, index=first_pad_token_id, src=eos_tokens)
+                labels = labels.scatter(dim=1, index=first_pad_token_id[:, None], src=eos_tokens)
             else:
                 suffix_ids = None
 
