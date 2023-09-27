@@ -6,13 +6,27 @@ import json
 import os
 from pprint import pprint
 
+from datasets import disable_caching
+
 import vec2text
+
+disable_caching()
+print("** DISABLED CACHING **")
+
 
 def create_arg_parser():
     parser = argparse.ArgumentParser(description="Argument Parser")
 
-    parser.add_argument("alias", type=str, help="baseline name", choices=["jailbreak", "fewshot"])
-    parser.add_argument("--prompt", type=str, choices=vec2text.prompts.JAILBREAK_PROMPTS.keys(), help="key for prompt to use:", default="00_output_simple")
+    parser.add_argument(
+        "alias", type=str, help="baseline name", choices=["jailbreak", "fewshot"]
+    )
+    parser.add_argument(
+        "--prompt",
+        type=str,
+        choices=vec2text.prompts.JAILBREAK_PROMPTS.keys(),
+        help="key for prompt to use:",
+        default="00_output_simple",
+    )
     parser.add_argument(
         "--max_seq_length", type=int, default=64, help="Maximum sequence length"
     )
@@ -20,18 +34,34 @@ def create_arg_parser():
         "--num_samples", type=int, default=200, help="Number of evaluation samples"
     )
     parser.add_argument(
-        "--embedder_model_name", type=str, default="meta-llama/Llama-2-7b-hf", help="model to invert"
+        "--embedder_model_name",
+        type=str,
+        default="meta-llama/Llama-2-7b-hf",
+        help="model to invert",
     )
     parser.add_argument(
-        "--dataset", type=str, default="python_code_alpaca", help="Dataset (if not regular val)",
-        choices=["one_million_instructions", "python_code_alpaca", "anthropic_toxic_prompts"]
+        "--dataset",
+        type=str,
+        default="python_code_alpaca",
+        help="Dataset (if not regular val)",
+        choices=[
+            "one_million_instructions",
+            "python_code_alpaca",
+            "anthropic_toxic_prompts",
+        ],
     )
     parser.add_argument(
-        "--gpt_version", type=str, default="gpt-3.5-turbo-0613", help="gpt version for api calls (for fewshot only)"
+        "--gpt_version",
+        type=str,
+        default="gpt-3.5-turbo-0613",
+        help="gpt version for api calls (for fewshot only)",
     )
 
     parser.add_argument(
-        "--take_first_line", type=bool, default=False, help="whether to only take first line of model response (for jailbreak strings only)"
+        "--take_first_line",
+        type=bool,
+        default=False,
+        help="whether to only take first line of model response (for jailbreak strings only)",
     )
 
     return parser
@@ -71,7 +101,9 @@ def main(args: argparse.ArgumentParser):
         trainer._gpt_version = args.gpt_version
     else:
         raise ValueError(f"unknown alias {args.alias}")
-    trainer.args.per_device_eval_batch_size = 4 if '13b' in args.embedder_model_name else 32 
+    trainer.args.per_device_eval_batch_size = (
+        4 if "13b" in args.embedder_model_name else 32
+    )
     trainer.enable_emb_cos_sim_metric()
 
     eval_dataset = trainer.eval_dataset[args.dataset]

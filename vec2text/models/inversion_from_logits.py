@@ -8,6 +8,16 @@ from vec2text.models.config import InversionConfig
 from vec2text.models.inversion import InversionModel
 
 
+def zero_embedding_topk(
+    embeddings: torch.Tensor, vocab_size: int, k: torch.Tensor, default_val: float
+) -> torch.Tensor:
+    # return embeddings
+    topk = embeddings[:, :vocab_size].topk(k=k, dim=1)
+    new_emb = torch.zeros_like(embeddings, device=embeddings.device) + default_val
+    # import pdb; pdb.set_trace()
+    return new_emb.scatter_add(1, topk.indices, topk.values)
+
+
 class InversionFromLogitsModel(InversionModel):
     def __init__(self, config: InversionConfig):
         super().__init__(config=config)
@@ -47,6 +57,8 @@ class InversionFromLogitsModel(InversionModel):
             ),
             requires_grad=True,
         )
+        self._zero_except_topk = config.embedding_zero_except_topk
+        print("Set zero-except-top-K value =", self._zero_except_topk)
 
     def call_embedding_model(
         self,
@@ -80,6 +92,14 @@ class InversionFromLogitsModel(InversionModel):
             )
 
         embeddings = embeddings.to(self.sequence_weights.dtype)
+
+        if self._zero_except_topk is not None:
+            embeddings = zero_embedding_topk(
+                embeddings,
+                vocab_size=self.embedder.config.vocab_size,
+                k=self._zero_except_topk,
+                default_val=-30.0,
+            )
 
         if self.config.suffix_conditioning:
             # below message will go away when we get data with suffixes. it only happens during eval anyway.

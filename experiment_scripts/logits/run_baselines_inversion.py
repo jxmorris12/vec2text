@@ -1,31 +1,24 @@
 import collections
-import itertools
 import os
 import random
-
+import itertools
 import tqdm
 
 import vec2text
+
 
 args = itertools.product(
     ["gpt-3.5-turbo-0613", "gpt-4-0613"],
     ["one_million_instructions", "python_code_alpaca", "anthropic_toxic_prompts"],
     [
-        "meta-llama/Llama-2-7b-hf",
-        "meta-llama/Llama-2-7b-chat-hf",
-        "meta-llama/Llama-2-13b-hf",
-        "meta-llama/Llama-2-13b-chat-hf",
+        "meta-llama/Llama-2-7b-hf", "meta-llama/Llama-2-7b-chat-hf",
+        "meta-llama/Llama-2-13b-hf", "meta-llama/Llama-2-13b-chat-hf",
     ],
 )
 
-ArgsList = collections.namedtuple(
-    "ArgsList",
-    [
-        "gpt",
-        "dataset",
-        "model",
-    ],
-)
+ArgsList = collections.namedtuple('ArgsList', [
+    'gpt', 'dataset', 'model',
+])
 
 BASE_CMD = """python experiment_scripts/logits/evaluate_baseline.py \
 fewshot \
