@@ -106,6 +106,8 @@ class InversionFromLogitsModel(InversionModel):
                 suffix_ids = torch.tensor(
                     [[0]] * len(embeddings), dtype=torch.long, device=self.device
                 )
+            
+            assert len(suffix_ids) == len(embeddings), f"got {len(suffix_ids)} suffixes and {len(embeddings)} embeddings?"
             #
             # Get embeddings for each token in suffix.
             #
@@ -179,10 +181,12 @@ class InversionFromLogitsModel(InversionModel):
         labels: Optional[torch.Tensor] = None,
         frozen_embeddings: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.Tensor] = None,
+        suffix_ids: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
-        if self.config.suffix_conditioning:
+        print("forward input:", embedder_input_ids.shape, suffix_ids.shape if (suffix_ids is not None) else None, decoder_input_ids if (decoder_input_ids is None) else None)
+        if (suffix_ids is None) and self.config.suffix_conditioning:
             assert labels is not None
             batch_size, seq_length = labels.shape
             true_seq_length = (labels >= 0).sum(1).min()
@@ -209,11 +213,15 @@ class InversionFromLogitsModel(InversionModel):
                     < prefix_length,
                     -100,
                 )
+                pad_token_id = self.tokenizer.pad_token_id
+                eos_token_id = self.tokenizer.eos_token_id
+                pad_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * pad_token_id
+                labels = torch.cat((labels, pad_tokens), dim=1)
+                first_pad_token_id = ((labels == pad_token_id) | (labels == eos_token_id)).argmax(dim=1)
+                eos_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * eos_token_id
+                labels = labels.scatter(dim=1, index=first_pad_token_id, src=eos_tokens)
             else:
                 suffix_ids = None
-        else:
-            suffix_ids = None
-            prefix_length = None
 
         inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,
