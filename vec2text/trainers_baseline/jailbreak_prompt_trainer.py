@@ -34,14 +34,6 @@ class JailbreakPromptTrainer(BaseTrainer):
         except ValueError:
             return s
 
-    def is_llama_chat(self) -> bool:
-        return self.embedder.config._name_or_path in [
-            "meta-llama/Llama-2-7b-chat-hf",
-            "meta-llama/Llama-2-13b-chat-hf",
-            "meta-llama/Llama-2-30b-chat-hf",
-            "meta-llama/Llama-2-70b-chat-hf",
-        ]
-
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
         if "frozen_embeddings" in inputs:
             del inputs["frozen_embeddings"]

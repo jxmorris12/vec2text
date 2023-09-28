@@ -106,7 +106,6 @@ class Experiment(abc.ABC):
         return self.model_args.embedder_model_name in [
             "meta-llama/Llama-2-7b-chat-hf",
             "meta-llama/Llama-2-13b-chat-hf",
-            "meta-llama/Llama-2-30b-chat-hf",
             "meta-llama/Llama-2-70b-chat-hf",
         ]
 

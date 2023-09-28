@@ -102,9 +102,11 @@ class InversionFromLogitsModel(InversionModel):
 
         if self.config.suffix_conditioning:
             if suffix_ids is None:
-                suffix_ids = torch.tensor(
-                    [[0]] * len(embeddings), dtype=torch.long, device=self.device
-                )
+                suffix_ids = torch.ones(
+                    (len(embeddings), 1), dtype=torch.long, device=self.device
+                ) * self.encoder_decoder.config.eos_token_id
+            
+            # print("suffix_ids =", suffix_ids)
             assert len(suffix_ids) == len(
                 embeddings
             ), f"got {len(suffix_ids)} suffixes and {len(embeddings)} embeddings?"
@@ -115,6 +117,7 @@ class InversionFromLogitsModel(InversionModel):
                 suffix_ids != self.encoder_decoder.config.pad_token_id
             ).int()
             # add pad token so we can shift.
+            # print("suffix_ids:", suffix_ids)
             suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(suffix_ids)
             suffix_embeddings = self.suffix_transform(suffix_embeddings)
             #
@@ -138,6 +141,7 @@ class InversionFromLogitsModel(InversionModel):
             attention_mask = torch.cat(
                 (suffix_attention_mask, logit_attention_mask), dim=1
             )
+            import pdb; pdb.set_trace()
         else:
             embeddings = embeddings.reshape(
                 (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
@@ -180,6 +184,7 @@ class InversionFromLogitsModel(InversionModel):
         frozen_embeddings: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.Tensor] = None,
         suffix_ids: Optional[torch.Tensor] = None,
+        past_key_values: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
@@ -198,34 +203,35 @@ class InversionFromLogitsModel(InversionModel):
                         size=(1,),
                         dtype=torch.long,
                     ).item()
-            else:
-                prefix_length = true_seq_length // 2
+                print("prefix_length:", prefix_length)
 
-            if labels is not None:
-                # create suffix based on the labels and selected prefix_length.
-                suffix_ids = labels[:, prefix_length:]
-                suffix_ids = suffix_ids.where(
-                    suffix_ids >= 0, self.encoder_decoder.config.pad_token_id
-                )  # replace -100 with 0.
-                labels = labels.where(
-                    torch.arange(seq_length, device=self.device)[None, :]
-                    < prefix_length,
-                    -100,
-                )
-                ignore_token_id = -100
-                eos_token_id = self.tokenizer.eos_token_id
-                first_ignore_token_id = (
-                    ((labels == ignore_token_id) | (labels == eos_token_id))
-                    .long()
-                    .argmax(dim=1)
-                )
-                eos_tokens = (
-                    torch.ones((batch_size, 1), dtype=torch.long, device=self.device)
-                    * eos_token_id
-                )
-                labels = labels.scatter(
-                    dim=1, index=first_ignore_token_id[:, None], src=eos_tokens
-                )
+                if labels is not None:
+                    # create suffix based on the labels and selected prefix_length.
+                    suffix_ids = labels[:, prefix_length:]
+                    suffix_ids = suffix_ids.where(
+                        suffix_ids >= 0, self.encoder_decoder.config.pad_token_id
+                    )  # replace -100 with 0.
+                    labels = labels.where(
+                        torch.arange(seq_length, device=self.device)[None, :]
+                        < prefix_length,
+                        -100,
+                    )
+                    ignore_token_id = -100
+                    eos_token_id = self.tokenizer.eos_token_id
+                    first_ignore_token_id = (
+                        ((labels == ignore_token_id) | (labels == eos_token_id))
+                        .long()
+                        .argmax(dim=1)
+                    )
+                    eos_tokens = (
+                        torch.ones((batch_size, 1), dtype=torch.long, device=self.device)
+                        * eos_token_id
+                    )
+                    labels = labels.scatter(
+                        dim=1, index=first_ignore_token_id[:, None], src=eos_tokens
+                    )
+                else:
+                    suffix_ids = None
             else:
                 suffix_ids = None
 
@@ -240,5 +246,5 @@ class InversionFromLogitsModel(InversionModel):
             attention_mask=attention_mask,
             labels=labels,
             decoder_input_ids=decoder_input_ids,
-            **kwargs
+            past_key_values=past_key_values,
         )

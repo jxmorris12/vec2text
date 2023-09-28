@@ -73,6 +73,13 @@ class BaseTrainer(transformers.Trainer):
     def enable_emb_cos_sim_metric(self) -> None:
         self.additional_metrics.append(vec2text.metrics.EmbeddingCosineSimilarity())
 
+    def is_llama_chat(self) -> bool:
+        return self.embedder.config._name_or_path in [
+            "meta-llama/Llama-2-7b-chat-hf",
+            "meta-llama/Llama-2-13b-chat-hf",
+            "meta-llama/Llama-2-70b-chat-hf",
+        ]
+
     @property
     def pad_token_id(self) -> int:
         try:

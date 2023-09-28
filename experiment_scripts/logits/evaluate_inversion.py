@@ -57,14 +57,14 @@ def main(args: argparse.ArgumentParser):
 
     # This code assumes models were trained on 7b param embedders.
     # It also assumes they have the same tokenizer...
-    for embedder_size in ["7b", "13b"]:
+    for embedder_size in ["7b", "13b", "70b"]:
         #
         trainer.enable_emb_cos_sim_metric()
         trainer.model.use_frozen_embeddings_as_input = False
 
         this_embedder_name = embedder_name.replace("7b", embedder_size)
         trainer.args.per_device_eval_batch_size = (
-            1 if "13b" in this_embedder_name else 32
+            32 if "7b" in this_embedder_name else 1
         )
         args.embedder_model_name = this_embedder_name
 
@@ -77,6 +77,7 @@ def main(args: argparse.ArgumentParser):
             continue
 
         trainer.model.cpu()
+        trainer.args.bf16_full_eval = True
         print("\tloading embedder for eval:", this_embedder_name)
         trainer.model.embedder = vec2text.models.load_embedder_and_tokenizer(
             this_embedder_name, torch_dtype=trainer.model.config.embedder_torch_dtype

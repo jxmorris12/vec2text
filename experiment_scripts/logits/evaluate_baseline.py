@@ -11,7 +11,7 @@ from datasets import disable_caching
 import vec2text
 
 disable_caching()
-print("** DISABLED CACHING **")
+print("** DISABLED HF DATASETS CACHING **")
 
 
 def create_arg_parser():

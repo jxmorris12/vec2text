@@ -47,34 +47,49 @@ class InversionFromLogitsTrainer(InversionTrainer):
         ex = self.embedder_tokenizer.batch_decode(
             inputs["embedder_input_ids"], skip_special_tokens=True
         )
-        # suffixes = [f" {s}" for s in self.test_suffixes]
-        suffixes = [" the", " and", " yes", " no", " okay", " maybe"]
-        # suffixes = [""] # , " and yes.", " yes okay.", " no you.", " okay?", " maybe..."]
-        print(f"counted {len(suffixes)} suffixes.")
-        ex_with_suffix = [(e + s) for e in ex for s in suffixes]
-        ex_with_suffix_tokenized = self.embedder_tokenizer(
-            ex_with_suffix,
-            return_tensors="pt",
-            padding=True,
-            truncation=False,
-        ).to(self.args.device)
-        suffix_tokenized = self.embedder_tokenizer(
-            suffixes,
-            return_tensors="pt",
-            padding=True,
-            truncation=False,
-        ).to(self.args.device)
-
+        suffixes = self.test_suffixes
         num_suffixes = len(suffixes)
-        suffix_ids = suffix_tokenized.input_ids[None, :, :]
+        ex_with_suffix_str = [(e + s) for e in ex for s in suffixes]
+        ex_with_suffix_tokenized = self.embedder_tokenizer(
+            ex_with_suffix_str,
+            return_tensors="pt",
+            padding=True,
+            truncation=False,
+        ).to(self.args.device)
 
-        suffix_ids = suffix_ids.where(
-            suffix_ids != 2, 0
-        )  # something I did by accident during training. an artifact if you will.
+        ex_with_suffix_tokenized_inverter = self.tokenizer(
+            ex_with_suffix_str,
+            return_tensors="pt",
+            padding=True,
+            truncation=False,
+        ).to(self.args.device)
+        
+        prefix_lengths = inputs["attention_mask"].sum(dim=1)
 
-        suffix_ids = suffix_ids.repeat((batch_size, 1, 1)).reshape(
-            (batch_size * num_suffixes, -1)
-        )
+        # TODO: figure out how to do this with tensors
+        suffix_ids = []
+        max_length = -1
+        for j in range(num_suffixes):
+            for i, p in enumerate(prefix_lengths):
+                suffix_ids_i = ex_with_suffix_tokenized_inverter.input_ids[i + j, p:]
+
+                # fix padding for something I did by accident during training. 
+                # an artifact if you will.
+                suffix_ids_i = [token_id for token_id in suffix_ids_i.tolist() if token_id not in [0, 1, 2]]
+
+                # put BOS token at the end to match training labels.
+                suffix_ids_i.append(1)
+
+                max_length = max(max_length, len(suffix_ids_i))
+                suffix_ids.append(suffix_ids_i)
+
+        # pad.
+        for i in range(len(suffix_ids)):
+            num_pad_tokens = max_length - len(suffix_ids[i])
+            suffix_ids[i].extend([0] * num_pad_tokens)
+
+        suffix_ids = torch.tensor(suffix_ids).to(self.args.device)
+        assert suffix_ids.shape[0] == (num_suffixes * batch_size)
 
         decoder_start_token_id = (
             self.model.encoder_decoder.config.decoder_start_token_id
@@ -87,17 +102,26 @@ class InversionFromLogitsTrainer(InversionTrainer):
             )
             * decoder_start_token_id
         )
+        with torch.no_grad():
+            frozen_embeddings = self.model.call_embedding_model(
+                **ex_with_suffix_tokenized
+            )
+        # print(self.embedder_tokenizer.batch_decode(ex_with_suffix_tokenized.input_ids))
 
         eos_token_id = self.model.encoder_decoder.config.eos_token_id
         past_key_values = None
         for step in range(2, 63):
             with torch.no_grad():
                 output = self.model(
-                    embedder_input_ids=ex_with_suffix_tokenized.input_ids,
-                    embedder_attention_mask=ex_with_suffix_tokenized.attention_mask,
+                    # embedder_input_ids=ex_with_suffix_tokenized.input_ids,
+                    # embedder_attention_mask=ex_with_suffix_tokenized.attention_mask,
+                    embedder_input_ids=None,
+                    embedder_attention_mask=None,
                     suffix_ids=suffix_ids,
+                    # suffix_ids=None,
                     decoder_input_ids=decoder_input_ids,
-                    past_key_values=past_key_values,
+                    # past_key_values=past_key_values,
+                    frozen_embeddings=frozen_embeddings,
                     use_cache=True,
                 )
             past_key_values = output.past_key_values
@@ -120,11 +144,9 @@ class InversionFromLogitsTrainer(InversionTrainer):
             # greedy sampling
             decoder_input_ids = torch.cat((decoder_input_ids, next_tokens), dim=1)
 
-            # break early
+            # break early if we got EOS for everything in the batch
             all_eos_seen = (decoder_input_ids == eos_token_id).any(dim=1).all()
             if all_eos_seen:
-                print("breaking at step", step)
-                # import pdb; pdb.set_trace()
                 break
 
         decoder_input_ids = decoder_input_ids.reshape((batch_size, num_suffixes, -1))

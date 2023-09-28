@@ -84,7 +84,7 @@ def stack_pool(
 def load_embedder_and_tokenizer(name: str, torch_dtype: str):
     # TODO make abstract/argparse for it etc.
     model_kwargs = {
-        # "low_cpu_mem_usage": True, # Not compatible with DeepSpeed
+        "low_cpu_mem_usage": True, # Not compatible with DeepSpeed
         "output_hidden_states": False,
     }
 
