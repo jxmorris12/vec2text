@@ -101,12 +101,10 @@ class InversionFromLogitsModel(InversionModel):
             )
 
         if self.config.suffix_conditioning:
-            # below message will go away when we get data with suffixes. it only happens during eval anyway.
             if suffix_ids is None:
                 suffix_ids = torch.tensor(
                     [[0]] * len(embeddings), dtype=torch.long, device=self.device
                 )
-            
             assert len(suffix_ids) == len(embeddings), f"got {len(suffix_ids)} suffixes and {len(embeddings)} embeddings?"
             #
             # Get embeddings for each token in suffix.
@@ -183,7 +181,6 @@ class InversionFromLogitsModel(InversionModel):
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
-        print("1:", labels.shape, labels is None)
         if (suffix_ids is None) and self.config.suffix_conditioning:
             assert labels is not None
             batch_size, seq_length = labels.shape
@@ -205,7 +202,8 @@ class InversionFromLogitsModel(InversionModel):
             if labels is not None:
                 # create suffix based on the labels and selected prefix_length.
                 suffix_ids = labels[:, prefix_length:]
-                suffix_ids = suffix_ids.clamp(min=0)  # replace -100 with 0.
+                suffix_ids = suffix_ids.where(
+                    suffix_ids >= 0, self.encoder_decoder.config.pad_token_id)  # replace -100 with 0.
                 labels = labels.where(
                     torch.arange(seq_length, device=self.device)[None, :]
                     < prefix_length,

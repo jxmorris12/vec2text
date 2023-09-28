@@ -573,6 +573,10 @@ class Experiment(abc.ABC):
 
 class InversionExperiment(Experiment):
     @property
+    def trainer_cls(self):
+        return vec2text.trainers.InversionTrainer
+
+    @property
     def _wandb_project_name(self) -> str:
         return "emb-inv-4"
 
@@ -608,7 +612,7 @@ class InversionExperiment(Experiment):
             del model.embedder
             model.embedder = MockEmbedder(embedder_dim=model.embedder_dim)
 
-        return vec2text.trainers.InversionTrainer(
+        return self.trainer_cls(
             model=model,
             args=self.training_args,
             train_dataset=train_dataset,
@@ -618,6 +622,10 @@ class InversionExperiment(Experiment):
 
 
 class InversionFromLogitsExperiment(InversionExperiment):
+    @property
+    def trainer_cls(self):
+        return vec2text.trainers.InversionFromLogitsTrainer
+
     @property
     def _wandb_project_name(self) -> str:
         return "emb-inv-logits-1"

@@ -233,7 +233,7 @@ class BaseTrainer(transformers.Trainer):
         labels = eval_preds.label_ids
 
         assert len(labels), "got empty labels for eval"
-        assert torch.tensor(preds).shape == torch.tensor(labels).shape
+        assert torch.tensor(preds).shape == torch.tensor(labels).shape, f"preds.shape {preds.shape} / labels.shape {labels.shape}"
 
         # preds have the same shape as the labels.
         labels = labels.reshape(-1)

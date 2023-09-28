@@ -8,13 +8,12 @@ import transformers
 from vec2text.trainers.base import BaseTrainer
 
 
-
 class DecodeInversionTrainer(BaseTrainer):
     """This 'trainer' represents a baseline for logits inversion that decodes from
     the language model, then tries to predict (sequence-to-sequence) what the
     prompt was, given only the decoded output.
     """
-    
+
     language_model: transformers.PreTrainedModel
     inverter: transformers.PreTrainedModel
 
@@ -40,8 +39,8 @@ class DecodeInversionTrainer(BaseTrainer):
 
         lm_outputs = self.lm_tokenizer(
             self.lm_tokenizer.decode_batch(
-                lm_outputs, 
-                clean_up_tokenization_spaces=True, 
+                lm_outputs,
+                clean_up_tokenization_spaces=True,
                 skip_special_tokens=True
             ),
             return_tensors='pt',

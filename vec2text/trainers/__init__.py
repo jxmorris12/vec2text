@@ -7,4 +7,5 @@
 from .corrector import Corrector  # noqa: F401
 from .inversion import InversionTrainer  # noqa: F401
 from .inversion_bow import InversionTrainerBagOfWords  # noqa: F401
+from .inversion_from_logits import InversionFromLogitsTrainer  # noqa: F401
 from .inversion_na import InversionTrainerNonAutoregressive  # noqa: F401
