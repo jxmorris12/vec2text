@@ -1,7 +1,5 @@
-import functools
-from typing import Dict, Iterable, List
+from typing import Dict
 
-import datasets
 import torch
 import transformers
 
@@ -39,19 +37,17 @@ class DecodeInversionTrainer(BaseTrainer):
 
         lm_outputs = self.lm_tokenizer(
             self.lm_tokenizer.decode_batch(
-                lm_outputs,
-                clean_up_tokenization_spaces=True,
-                skip_special_tokens=True
+                lm_outputs, clean_up_tokenization_spaces=True, skip_special_tokens=True
             ),
-            return_tensors='pt',
+            return_tensors="pt",
             max_length=self.max_length,
             truncation=True,
-            padding='max_length',
+            padding="max_length",
         ).to(self.args.device)
 
         return self.inverter.generate(
+            self.gen_kwargs,
             **lm_outputs,
-            self.gen_kwargs
         )
 
     def train(self):

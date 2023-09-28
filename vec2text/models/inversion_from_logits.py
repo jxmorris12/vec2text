@@ -105,7 +105,9 @@ class InversionFromLogitsModel(InversionModel):
                 suffix_ids = torch.tensor(
                     [[0]] * len(embeddings), dtype=torch.long, device=self.device
                 )
-            assert len(suffix_ids) == len(embeddings), f"got {len(suffix_ids)} suffixes and {len(embeddings)} embeddings?"
+            assert len(suffix_ids) == len(
+                embeddings
+            ), f"got {len(suffix_ids)} suffixes and {len(embeddings)} embeddings?"
             #
             # Get embeddings for each token in suffix.
             #
@@ -203,7 +205,8 @@ class InversionFromLogitsModel(InversionModel):
                 # create suffix based on the labels and selected prefix_length.
                 suffix_ids = labels[:, prefix_length:]
                 suffix_ids = suffix_ids.where(
-                    suffix_ids >= 0, self.encoder_decoder.config.pad_token_id)  # replace -100 with 0.
+                    suffix_ids >= 0, self.encoder_decoder.config.pad_token_id
+                )  # replace -100 with 0.
                 labels = labels.where(
                     torch.arange(seq_length, device=self.device)[None, :]
                     < prefix_length,
@@ -211,9 +214,18 @@ class InversionFromLogitsModel(InversionModel):
                 )
                 ignore_token_id = -100
                 eos_token_id = self.tokenizer.eos_token_id
-                first_ignore_token_id = ((labels == ignore_token_id) | (labels == eos_token_id)).long().argmax(dim=1)
-                eos_tokens = torch.ones((batch_size, 1), dtype=torch.long, device=self.device) * eos_token_id
-                labels = labels.scatter(dim=1, index=first_ignore_token_id[:, None], src=eos_tokens)
+                first_ignore_token_id = (
+                    ((labels == ignore_token_id) | (labels == eos_token_id))
+                    .long()
+                    .argmax(dim=1)
+                )
+                eos_tokens = (
+                    torch.ones((batch_size, 1), dtype=torch.long, device=self.device)
+                    * eos_token_id
+                )
+                labels = labels.scatter(
+                    dim=1, index=first_ignore_token_id[:, None], src=eos_tokens
+                )
             else:
                 suffix_ids = None
 
@@ -228,4 +240,5 @@ class InversionFromLogitsModel(InversionModel):
             attention_mask=attention_mask,
             labels=labels,
             decoder_input_ids=decoder_input_ids,
+            **kwargs
         )
