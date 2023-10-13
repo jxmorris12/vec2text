@@ -1,5 +1,7 @@
 # vec2text
 
+<img src="https://github.com/jxmorris12/vec2text-gif/blob/master/vec2text_v3.gif" width="500" />
+
 This library contains code for doing text embedding inversion. We can train various architectures that reconstruct text sequences from embeddings as well as run pre-trained models. This repository contains code for the paper "Text Embeddings Reveal (Almost)
 As Much As Text".
 
@@ -180,4 +182,17 @@ Our models come in one of two forms: a zero-step 'hypothesizer' model that makes
 
 ### Cite our paper
 
-Please cite our paper! We will add a citation once paper is officially online :)
+Please cite our paper!
+
+```
+@misc{morris2023text,
+      title={Text Embeddings Reveal (Almost) As Much As Text}, 
+      author={John X. Morris and Volodymyr Kuleshov and Vitaly Shmatikov and Alexander M. Rush},
+      year={2023},
+      eprint={2310.06816},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
+
+(There will also be an EMNLP citation available soon...)
