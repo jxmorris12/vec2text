@@ -165,11 +165,11 @@ Currently we only support models for inverting OpenAI `text-embedding-ada-002` e
 
 Our models come in one of two forms: a zero-step 'hypothesizer' model that makes a guess for what text is from an embedding and a 'corrector' model that iteratively corrects and re-embeds text to bring it closer to the target embedding. We also support *sequence-level beam search* which makes multiple corrective guesses at each step and takes the one closest to the ground-truth embedding.
 
-### How to upload a pre-trained model to the HuggingFace model hub
+### How to upload a pre-trained model to the Hugging Face model hub
 
 1. Add your model to [`CHECKPOINT_FOLDERS_DICT` in `aliases.py`](https://github.com/jxmorris12/vec2text/blob/master/vec2text/aliases.py#L12). This tells our codebase (i) what the name (alias) of your model is and (ii) the folder where its weights are stored.
 2. Log into the model hub using `huggingface-cli login`
-3. From the project root directory, run `python scripts/upload_model.py <model_alias> <hf_alias>` where `<model_alias>` is the key of the model you added to aliases.py and `<hf_alias>` will be the model's name on HuggingFace
+3. From the project root directory, run `python scripts/upload_model.py <model_alias> <hf_alias>` where `<model_alias>` is the key of the model you added to aliases.py and `<hf_alias>` will be the model's name on Hugging Face
 
 
 ### pre-commit
