@@ -12,7 +12,6 @@ logs/
 notebooks/
 notebooks_logits/
 msmarco_msl128_hypotheses/
-results/
 saves/
 slurm-scripts/
 wandb/
