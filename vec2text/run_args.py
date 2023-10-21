@@ -231,9 +231,13 @@ class TrainingArguments(transformers.TrainingArguments):
     output_dir: str = field(
         default="saves", metadata={"help": "Output directory for training saves"}
     )
-    corrector_model_alias: str = field(
-        default="dpr_nq__msl32_beta",
+    corrector_model_alias: Optional[str] = field(
+        default=None,
         metadata={"help": "Alias of corrector model to train (defined in aliases.py)"},
+    )
+    corrector_model_from_pretrained: Optional[str] = field(
+        default=None,
+        metadata={"help": "Alias of pre-trained corrector model to train (defined in aliases.py)"},
     )
     cheat_on_train_hypotheses: bool = field(
         default=False,

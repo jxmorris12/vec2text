@@ -68,9 +68,9 @@ class DecodeInversionTrainer(BaseTrainer):
         gen_kwargs = self.gen_kwargs
         gen_kwargs["min_new_tokens"] = 1
         gen_kwargs["max_new_tokens"] = self.max_length
-        # import pdb; pdb.set_trace()
         return self.inverter.generate(
             **lm_outputs_for_inverter,
+            min_new_tokens=1,
             max_new_tokens=64,
             generation_kwargs=gen_kwargs
         )

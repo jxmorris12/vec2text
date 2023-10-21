@@ -146,14 +146,14 @@ def args_from_config(args_cls, config):
     return args
 
 
-def load_experiment_and_trainer_from_pretrained(name: str):
+def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 1000):
     model = vec2text.models.InversionFromLogitsModel.from_pretrained(name)
 
     model_args = args_from_config(ModelArguments, model.config)
     data_args = args_from_config(DataArguments, model.config)
     training_args = args_from_config(TrainingArguments, model.config)
 
-    data_args.use_less_data = 1000
+    data_args.use_less_data = use_less_data
     ########################################################################
     from accelerate.state import PartialState
 
@@ -166,10 +166,6 @@ def load_experiment_and_trainer_from_pretrained(name: str):
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
-
-    training_args.per_device_train_batch_size = min(
-        training_args.per_device_train_batch_size, 32
-    )
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()

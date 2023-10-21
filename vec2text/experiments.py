@@ -709,11 +709,19 @@ class CorrectorExperiment(Experiment):
 
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
-        _, inversion_trainer = vec2text.aliases.load_experiment_and_trainer_from_alias(
-            alias=self.training_args.corrector_model_alias,
-            max_seq_length=self.model_args.max_seq_length,
-            use_less_data=self.data_args.use_less_data,
-        )
+
+        if self.training_args.corrector_model_from_pretrained:
+            _, inversion_trainer = vec2text.analyze_utils.load_experiment_and_trainer_from_pretrained(
+                name=self.training_args.corrector_model_from_pretrained,
+                # max_seq_length=self.model_args.max_seq_length,
+                use_less_data=self.data_args.use_less_data,
+            )
+        else:    
+            _, inversion_trainer = vec2text.aliases.load_experiment_and_trainer_from_alias(
+                alias=self.training_args.corrector_model_alias,
+                max_seq_length=self.model_args.max_seq_length,
+                use_less_data=self.data_args.use_less_data,
+            )
         return vec2text.trainers.Corrector(
             model=model,
             inversion_trainer=inversion_trainer,

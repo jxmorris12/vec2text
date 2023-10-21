@@ -1,5 +1,6 @@
 from typing import Dict, Optional
 
+import copy
 import torch
 
 from vec2text.trainers.inversion import InversionTrainer
@@ -64,7 +65,13 @@ class InversionFromLogitsTrainer(InversionTrainer):
             truncation=False,
         ).to(self.args.device)
         
-        prefix_lengths = inputs["attention_mask"].sum(dim=1)
+        prefix_lengths = self.tokenizer(
+              ex, 
+              padding=True, 
+              truncation=False, 
+              return_tensors="pt"
+        ).attention_mask.sum(dim=1)
+        print("prefix_lengths:", prefix_lengths)
 
         # TODO: figure out how to do this with tensors
         suffix_ids = []
@@ -106,7 +113,6 @@ class InversionFromLogitsTrainer(InversionTrainer):
             frozen_embeddings = self.model.call_embedding_model(
                 **ex_with_suffix_tokenized
             )
-        # print(self.embedder_tokenizer.batch_decode(ex_with_suffix_tokenized.input_ids))
 
         eos_token_id = self.model.encoder_decoder.config.eos_token_id
         past_key_values = None
@@ -126,17 +132,44 @@ class InversionFromLogitsTrainer(InversionTrainer):
                 )
             past_key_values = output.past_key_values
 
-            # ensembling
             logits = output.logits[:, -1, :]
-            logits = (
-                logits.reshape((batch_size, num_suffixes, -1))
-                .mean(dim=1)
-                .log_softmax(dim=1)
+            all_next_tokens = logits.argmax(dim=1).reshape((batch_size, num_suffixes))
+
+            main_next_tokens = all_next_tokens[:, 0]
+            other_next_tokens = all_next_tokens[:, 1:]
+
+            all_others_agree = (
+                other_next_tokens[:, :1] == other_next_tokens[:, 1:]
+            ).all(dim=-1)
+
+            disagreement_from_main = (
+                other_next_tokens[:, 0] != main_next_tokens
             )
 
-            # sampling
+            if (all_others_agree & disagreement_from_main).any():
+                import pdb; pdb.set_trace()
+
+            next_tokens = torch.where(
+                all_others_agree,
+                other_next_tokens[:, 0],
+                main_next_tokens
+            )
+            next_tokens = next_tokens[:, None]
+
+            # # ensembling
+            # logits = output.logits[:, -1, :]
+            # logits = (
+            #     logits.reshape((batch_size, num_suffixes, -1))
+            #     .mean(dim=1)
+            #     .log_softmax(dim=1)
+            # )
+
+
+            # next_tokens = (
+            #     logits.argmax(dim=1, keepdim=True)
+            # )
             next_tokens = (
-                logits.argmax(dim=1, keepdim=True)
+                next_tokens
                 .repeat((1, num_suffixes))
                 .reshape((batch_size * num_suffixes, 1))
             )
@@ -161,6 +194,7 @@ class InversionFromLogitsTrainer(InversionTrainer):
             <= eos_start_idx[:, None],
             self.model.encoder_decoder.config.pad_token_id,
         )
+        # import pdb; pdb.set_trace()
         return decoder_input_ids
 
     def generate_and_check_length(
@@ -229,4 +263,5 @@ class InversionFromLogitsTrainer(InversionTrainer):
                     new_distances,
                     closest_generation_distances,
                 )
+        
         return closest_generations

@@ -83,6 +83,7 @@ def stack_pool(
 
 def load_embedder_and_tokenizer(name: str, torch_dtype: str):
     # TODO make abstract/argparse for it etc.
+    # name = "gpt2" #### <--- TEMP. For debugging. Delete!
     model_kwargs = {
         "low_cpu_mem_usage": True, # Not compatible with DeepSpeed
         "output_hidden_states": False,
@@ -162,7 +163,7 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
             name,
             **model_kwargs,
         )
-        model.to_bettertransformer()
+        # model.to_bettertransformer()
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)
         tokenizer.pad_token = tokenizer.eos_token
     elif name.startswith("meta-llama/"):
@@ -178,8 +179,8 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
             token=os.environ.get("LLAMA_TOKEN"),
             torch_dtype=torch_dtype,
         )
-        if torch_dtype is not torch.float32:
-            model.to_bettertransformer()
+        # if torch_dtype is not torch.float32:
+        #     model.to_bettertransformer()
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)
         tokenizer.pad_token = tokenizer.eos_token
     else:

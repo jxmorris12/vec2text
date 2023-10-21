@@ -8,6 +8,12 @@ from vec2text.models.config import InversionConfig
 from vec2text.models.inversion import InversionModel
 
 
+LOGIT_FILTER_VALUE = -1 * 10**7
+
+# TODO: Remove conflicting duplicate features: zero-except-top-k and
+# emb-top-k.
+
+
 def zero_embedding_except_topk(
     embeddings: torch.Tensor, vocab_size: int, k: torch.Tensor, default_val: float
 ) -> torch.Tensor:
@@ -58,6 +64,10 @@ class InversionFromLogitsModel(InversionModel):
         )
         self._zero_except_topk = vars(config).get("embedding_zero_except_topk")
         print("Set zero-except-top-K value =", self._zero_except_topk)
+        self._emb_top_p = None
+        self._emb_top_k = None
+        self._emb_temp = None
+        self._softmax_in_log_space = True
 
     def call_embedding_model(
         self,
@@ -141,7 +151,6 @@ class InversionFromLogitsModel(InversionModel):
             attention_mask = torch.cat(
                 (suffix_attention_mask, logit_attention_mask), dim=1
             )
-            import pdb; pdb.set_trace()
         else:
             embeddings = embeddings.reshape(
                 (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
@@ -164,17 +173,38 @@ class InversionFromLogitsModel(InversionModel):
         outputs: transformers.modeling_outputs.BaseModelOutput,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        try:
-            embeddings = outputs.logits.log_softmax(dim=2)
-        except AttributeError:
-            embeddings = outputs
+        B = len(attention_mask)
+        logits = outputs.logits[torch.arange(B), attention_mask.sum(1) - 1]
+
+        logit_filter_value = logits.min()
+
+        if (self._emb_top_k is not None):
+            topk = logits.topk(k=min(logits.shape[1], self._emb_top_k), dim=1)
+            logits = torch.zeros_like(logits, device=logits.device)
+            logits = logits.scatter_add(1, topk.indices, topk.values)
+            logits = logits.where(logits != 0, logit_filter_value)
+        
+        if (self._emb_top_p is not None):
+            for j in range(len(logits)):
+                sorted_logits, sorted_indices = logits[j].sort(descending=True)
+                cumulative_probs = sorted_logits.softmax(dim=0).cumsum(dim=0)
+                topp_idxs = sorted_indices[cumulative_probs >= self._emb_top_p]
+                logits[j] = logits[j].scatter(dim=0, index=topp_idxs, value=logit_filter_value)
+        
+        if (self._emb_temp is not None):
+            logits /= self._emb_temp
+
+        if self._softmax_in_log_space:
+            embeddings = logits.log_softmax(dim=1)
+        else:
+            embeddings = (logits.log_softmax(dim=1).exp() + 1e-9).log()
         zeros = torch.zeros(
-            (*embeddings.shape[0:2], self.num_zeros_to_add),
+            (B, self.num_zeros_to_add),
             dtype=embeddings.dtype,
             device=embeddings.device,
         )
-        embeddings = torch.cat((embeddings, zeros), dim=2)
-        return embeddings[torch.arange(len(embeddings)), attention_mask.sum(1) - 1]
+        embeddings = torch.cat((embeddings, zeros), dim=1)
+        return embeddings
 
     def forward(
         self,
@@ -203,6 +233,7 @@ class InversionFromLogitsModel(InversionModel):
                         size=(1,),
                         dtype=torch.long,
                     ).item()
+                prefix_length = 1
                 print("prefix_length:", prefix_length)
 
                 if labels is not None:
@@ -235,6 +266,7 @@ class InversionFromLogitsModel(InversionModel):
             else:
                 suffix_ids = None
 
+        # print("suffix_ids:", suffix_ids, "labels:", labels)
         inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,
             embedder_attention_mask=embedder_attention_mask,

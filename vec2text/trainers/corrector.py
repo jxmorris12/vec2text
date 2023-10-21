@@ -208,6 +208,39 @@ class Corrector(BaseTrainer):
             self.tokenizer.decode(ds_inputs["hypothesis_input_ids"][0]),
         )
         return ds_inputs
+    
+    def _preprocess_dataset_single_worker(
+        self, dataset: datasets.Dataset
+    ) -> Tuple[datasets.Dataset, str]:
+        return dataset.map(
+                functools.partial(
+                    self._precompute_hypothesis_and_embedding,
+                    collator=self.data_collator,
+                ),
+                batched=True,
+                batch_size=(self.args.train_batch_size * 2),
+                desc="Precomputing hypotheses for data",
+            )
+        
+    def _preprocess_dataset_multi_worker(
+        self, dataset: datasets.Dataset,
+    ) -> Tuple[datasets.Dataset, str]:
+        rank = torch.distributed.get_rank()
+        torch.distributed.barrier()
+        ds_shard_filepaths = [
+            f"{dataset._fingerprint}_hypotheses_{w}.cache" for w in range(0, torch.cuda.device_count())
+        ]
+        print("worker {rank} saving hypotheses to {ds_shard_filepath}")
+        ds_shard = dataset.shard(
+            num_shards=torch.cuda.device_count(),
+            index=rank,
+            contiguous=True,
+        )
+        ds_shard = self._preprocess_dataset_single_worker(
+            dataset=ds_shard
+        )
+        ds_shard.save_to_disk(ds_shard_filepaths[rank])
+        return datasets.concatenate_datasets([datasets.load_from_disk(p) for p in ds_paths])
 
     def _preprocess_dataset(
         self, dataset: datasets.Dataset
@@ -227,9 +260,11 @@ class Corrector(BaseTrainer):
         )
         model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
         # print("model_dir:", model_dir)
-        model_dir = "/home/jxm3/research/retrieval/inversion/saves/01c63decd9009f5961504b52a96cd324/df9d8d8dfa2ed7ebc7c0aeac61835b82"
+        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/01c63decd9009f5961504b52a96cd324/df9d8d8dfa2ed7ebc7c0aeac61835b82"
         # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
         # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156/"
+        # TODO(Jack): be smarter about this!
+        model_dir = "/home/jxm3/research/retrieval/inversion/vec2text/saves/jxm_t5-base__llama-7b__one-million-paired-instructions"
         assert os.path.exists(model_dir)
         ####
         cache_path = os.path.join(model_dir, f"{dataset._fingerprint}_hypotheses.cache")
@@ -237,18 +272,10 @@ class Corrector(BaseTrainer):
             logging.info("Computing hypotheses to save to path %s", cache_path)
             print(f"Saving hypotheses to path {cache_path}")
 
-            # if torch.cuda.device_count() > 1:
-            #     raise RuntimeError("Hypothesis precomputing not implemented in DDP.")
-
-            dataset = dataset.map(
-                functools.partial(
-                    self._precompute_hypothesis_and_embedding,
-                    collator=self.data_collator,
-                ),
-                batched=True,
-                batch_size=(self.args.train_batch_size * 2),
-                desc="Precomputing hypotheses for data",
-            )
+            if torch.cuda.device_count() > 1:
+                dataset = self._preprocess_dataset_multi_worker(dataset=dataset)
+            else:
+                dataset = self._preprocess_dataset_single_worker(dataset=dataset)
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
@@ -293,9 +320,10 @@ class Corrector(BaseTrainer):
         # os.environ["TOKENIZERS_PARALLELISM"] = "False"
 
         self.model.eval()
+        self.model.to(self.args.device)
+        self.inversion_trainer.model.to(next(self.model.parameters()).device)
         self.precompute_hypotheses()
         self.model.train()
-        self.inversion_trainer.model.to(next(self.model.parameters()).device)
         # self.inversion_trainer.model.cpu()  # Shouldn't need this anymore, hopefully
 
         return super()._inner_training_loop(*args, **kwargs)
@@ -541,7 +569,7 @@ class Corrector(BaseTrainer):
                     scores = distances_per_beam
                 else:
                     scores = gen_text_scores.reshape((batch_size, beam_width))
-                best_idx_in_beam = scores.argmax(1)
+                best_idx_in_beam = scores.argmax(dim=1)
                 # print("best_idx_in_beam:", best_idx_in_beam)
                 # print("avg_distances:", distances_per_beam.mean(1).tolist(), "max_distances:", distances_per_beam.max(1).values.tolist())
                 hypothesis_embedding = hypothesis_embedding.reshape(

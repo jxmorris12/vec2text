@@ -29,7 +29,6 @@ class InversionModel(transformers.PreTrainedModel):
     """A class of model that conditions on embeddings from a pre-trained sentence embedding model
     to decode text autoregressively.
     """
-
     config_class = InversionConfig
     embedder: nn.Module
     embedder_tokenizer: transformers.PreTrainedTokenizer  # embedder's tokenizer

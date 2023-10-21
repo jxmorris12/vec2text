@@ -94,7 +94,7 @@ class BaseTrainer(transformers.Trainer):
         except AttributeError:
             return self.tokenizer.bos_token_id
 
-    def sanity_decode(self, input_string: str = None):
+    def sanity_decode(self, input_string: str = None, max_length: int = None):
         """Encodes and decodes a string as a sanity check."""
         if input_string is None:
             input_string = DEFAULT_INPUT_STRING
@@ -107,7 +107,8 @@ class BaseTrainer(transformers.Trainer):
         inputs = inputs.to(self.args.device)
         gen_kwargs = copy.copy(self.gen_kwargs)
         gen_kwargs["min_length"] = 1
-        gen_kwargs["max_length"] = max(128, inputs["input_ids"].shape[1] + 1)
+        gen_kwargs["max_length"] = max_length or max(128, inputs["input_ids"].shape[1] + 1)
+        print("max_length:", gen_kwargs["max_length"])
         regenerated = self.generate(
             inputs={
                 "embedder_input_ids": inputs["input_ids"],
