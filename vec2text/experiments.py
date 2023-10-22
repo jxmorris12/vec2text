@@ -30,7 +30,7 @@ from vec2text.tokenize_data import (
     tokenize_function,
     tokenize_function_llama_chat,
 )
-from vec2text.utils import MockEmbedder, torch_main_worker_finish_first
+from vec2text.utils import MockEmbedder, dataset_map_multi_worker, torch_main_worker_finish_first
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -47,7 +47,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 logger = logging.getLogger(__name__)
 
 # We maintain our own cache because huggingface datasets caching
-# doesn't work properly.
+# doesn't always work properly.
 DATASET_CACHE_PATH = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
 
 # Noisy compilation from torch.compile
@@ -331,7 +331,6 @@ class Experiment(abc.ABC):
             pad_to_multiple_of=8 if self.training_args.fp16 else None,
         )
 
-    @torch_main_worker_finish_first
     def _load_train_dataset_uncached(
         self,
         model: transformers.PreTrainedModel,
@@ -394,8 +393,9 @@ class Experiment(abc.ABC):
                     d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
                 )
                 print("\tsaving precomputed embeddings to file:", new_fingerprint)
-                new_tokenized_datasets[key] = d.map(
-                    functools.partial(embed_dataset_batch, model),
+                new_tokenized_datasets[key] = dataset_map_multi_worker(
+                    dataset=d,
+                    map_fn=functools.partial(embed_dataset_batch, model),
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
                     new_fingerprint=new_fingerprint,
@@ -456,8 +456,9 @@ class Experiment(abc.ABC):
 
             new_tokenized_datasets = {}
             for key, d in val_datasets_dict.items():
-                new_tokenized_datasets[key] = d.map(
-                    functools.partial(embed_dataset_batch, model),
+                new_tokenized_datasets[key] = dataset_map_multi_worker(
+                    dataset=d,
+                    map_fn=functools.partial(embed_dataset_batch, model),
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
                     new_fingerprint=(
@@ -584,7 +585,6 @@ class InversionExperiment(Experiment):
             config=self.config,
         )
 
-    @torch_main_worker_finish_first
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         train_dataset, eval_dataset = self.load_train_and_val_datasets(

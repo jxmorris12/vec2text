@@ -12,6 +12,7 @@ import transformers
 from vec2text.models import CorrectorEncoderModel
 from vec2text.models.model_utils import freeze_params
 from vec2text.run_args import TrainingArguments
+from vec2text.utils import dataset_map_multi_worker
 
 from .base import BaseTrainer
 from .inversion import InversionTrainer
@@ -208,39 +209,6 @@ class Corrector(BaseTrainer):
             self.tokenizer.decode(ds_inputs["hypothesis_input_ids"][0]),
         )
         return ds_inputs
-    
-    def _preprocess_dataset_single_worker(
-        self, dataset: datasets.Dataset
-    ) -> Tuple[datasets.Dataset, str]:
-        return dataset.map(
-                functools.partial(
-                    self._precompute_hypothesis_and_embedding,
-                    collator=self.data_collator,
-                ),
-                batched=True,
-                batch_size=(self.args.train_batch_size * 2),
-                desc="Precomputing hypotheses for data",
-            )
-        
-    def _preprocess_dataset_multi_worker(
-        self, dataset: datasets.Dataset,
-    ) -> Tuple[datasets.Dataset, str]:
-        rank = torch.distributed.get_rank()
-        torch.distributed.barrier()
-        ds_shard_filepaths = [
-            f"{dataset._fingerprint}_hypotheses_{w}.cache" for w in range(0, torch.cuda.device_count())
-        ]
-        print("worker {rank} saving hypotheses to {ds_shard_filepath}")
-        ds_shard = dataset.shard(
-            num_shards=torch.cuda.device_count(),
-            index=rank,
-            contiguous=True,
-        )
-        ds_shard = self._preprocess_dataset_single_worker(
-            dataset=ds_shard
-        )
-        ds_shard.save_to_disk(ds_shard_filepaths[rank])
-        return datasets.concatenate_datasets([datasets.load_from_disk(p) for p in ds_paths])
 
     def _preprocess_dataset(
         self, dataset: datasets.Dataset
@@ -272,10 +240,16 @@ class Corrector(BaseTrainer):
             logging.info("Computing hypotheses to save to path %s", cache_path)
             print(f"Saving hypotheses to path {cache_path}")
 
-            if torch.cuda.device_count() > 1:
-                dataset = self._preprocess_dataset_multi_worker(dataset=dataset)
-            else:
-                dataset = self._preprocess_dataset_single_worker(dataset=dataset)
+            dataset = dataset_map_multi_worker(
+                dataset=dataset,
+                map_fn=functools.partial(
+                    self._precompute_hypothesis_and_embedding,
+                    collator=self.data_collator,
+                ),
+                batched=True,
+                batch_size=(self.args.train_batch_size * 2),
+                desc="Precomputing hypotheses for data",
+            )
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
