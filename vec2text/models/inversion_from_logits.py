@@ -7,7 +7,6 @@ import transformers
 from vec2text.models.config import InversionConfig
 from vec2text.models.inversion import InversionModel
 
-
 LOGIT_FILTER_VALUE = -1 * 10**7
 
 # TODO: Remove conflicting duplicate features: zero-except-top-k and
@@ -112,10 +111,13 @@ class InversionFromLogitsModel(InversionModel):
 
         if self.config.suffix_conditioning:
             if suffix_ids is None:
-                suffix_ids = torch.ones(
-                    (len(embeddings), 1), dtype=torch.long, device=self.device
-                ) * self.encoder_decoder.config.eos_token_id
-            
+                suffix_ids = (
+                    torch.ones(
+                        (len(embeddings), 1), dtype=torch.long, device=self.device
+                    )
+                    * self.encoder_decoder.config.eos_token_id
+                )
+
             # print("suffix_ids =", suffix_ids)
             assert len(suffix_ids) == len(
                 embeddings
@@ -178,20 +180,22 @@ class InversionFromLogitsModel(InversionModel):
 
         logit_filter_value = logits.min()
 
-        if (self._emb_top_k is not None):
+        if self._emb_top_k is not None:
             topk = logits.topk(k=min(logits.shape[1], self._emb_top_k), dim=1)
             logits = torch.zeros_like(logits, device=logits.device)
             logits = logits.scatter_add(1, topk.indices, topk.values)
             logits = logits.where(logits != 0, logit_filter_value)
-        
-        if (self._emb_top_p is not None):
+
+        if self._emb_top_p is not None:
             for j in range(len(logits)):
                 sorted_logits, sorted_indices = logits[j].sort(descending=True)
                 cumulative_probs = sorted_logits.softmax(dim=0).cumsum(dim=0)
                 topp_idxs = sorted_indices[cumulative_probs >= self._emb_top_p]
-                logits[j] = logits[j].scatter(dim=0, index=topp_idxs, value=logit_filter_value)
-        
-        if (self._emb_temp is not None):
+                logits[j] = logits[j].scatter(
+                    dim=0, index=topp_idxs, value=logit_filter_value
+                )
+
+        if self._emb_temp is not None:
             logits /= self._emb_temp
 
         if self._softmax_in_log_space:
@@ -255,7 +259,9 @@ class InversionFromLogitsModel(InversionModel):
                         .argmax(dim=1)
                     )
                     eos_tokens = (
-                        torch.ones((batch_size, 1), dtype=torch.long, device=self.device)
+                        torch.ones(
+                            (batch_size, 1), dtype=torch.long, device=self.device
+                        )
                         * eos_token_id
                     )
                     labels = labels.scatter(

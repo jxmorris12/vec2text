@@ -186,7 +186,7 @@ Please cite our paper!
 
 ```
 @misc{morris2023text,
-      title={Text Embeddings Reveal (Almost) As Much As Text}, 
+      title={Text Embeddings Reveal (Almost) As Much As Text},
       author={John X. Morris and Volodymyr Kuleshov and Vitaly Shmatikov and Alexander M. Rush},
       year={2023},
       eprint={2310.06816},

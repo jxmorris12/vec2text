@@ -1,11 +1,11 @@
 import math
+import os
+import shutil
 from concurrent.futures import ThreadPoolExecutor
 from typing import Callable
 
 import datasets
-import os
 import numpy as np
-import shutil
 import torch
 import tqdm
 import transformers
@@ -101,7 +101,9 @@ def torch_main_worker_finish_first(func: Callable):
     return wrapper
 
 
-def dataset_map_multi_worker(dataset: datasets.Dataset, map_fn: Callable, *args, **kwargs):
+def dataset_map_multi_worker(
+    dataset: datasets.Dataset, map_fn: Callable, *args, **kwargs
+):
     if torch.cuda.device_count() <= 1:
         return dataset.map(map_fn, *args, **kwargs)
     datasets.disable_caching()
@@ -109,7 +111,8 @@ def dataset_map_multi_worker(dataset: datasets.Dataset, map_fn: Callable, *args,
 
     cache_path = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
     ds_shard_filepaths = [
-        os.path.join(cache_path, f"{dataset._fingerprint}_hypotheses_{w}.cache") for w in range(0, torch.cuda.device_count())
+        os.path.join(cache_path, f"{dataset._fingerprint}_hypotheses_{w}.cache")
+        for w in range(0, torch.cuda.device_count())
     ]
     print(f"\tworker {rank} saving hypotheses to {ds_shard_filepaths[rank]}")
     ds_shard = dataset.shard(
@@ -117,12 +120,12 @@ def dataset_map_multi_worker(dataset: datasets.Dataset, map_fn: Callable, *args,
         index=rank,
         contiguous=True,
     )
-    ds_shard = ds_shard.map(
-        map_fn, *args, **kwargs
-    )
+    ds_shard = ds_shard.map(map_fn, *args, **kwargs)
     ds_shard.save_to_disk(ds_shard_filepaths[rank])
     torch.distributed.barrier()
-    full_dataset = datasets.concatenate_datasets([datasets.load_from_disk(p) for p in ds_shard_filepaths])
+    full_dataset = datasets.concatenate_datasets(
+        [datasets.load_from_disk(p) for p in ds_shard_filepaths]
+    )
     torch.distributed.barrier()
     shutil.rmtree(ds_shard_filepaths[rank])
     return full_dataset

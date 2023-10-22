@@ -41,19 +41,25 @@ class CorrectorEncoderModel(transformers.PreTrainedModel):
         self.encoder_hidden_dim = self.encoder_decoder.config.hidden_size
         self.embedding_transform_1 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.Dropout(self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0),
+            nn.Dropout(
+                self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0
+            ),
             nn.GELU(),
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
         )
         self.embedding_transform_2 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.Dropout(self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0),
+            nn.Dropout(
+                self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0
+            ),
             nn.GELU(),
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
         )
         self.embedding_transform_3 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.Dropout(self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0),
+            nn.Dropout(
+                self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0
+            ),
             nn.GELU(),
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim * num_repeat_tokens),
         )

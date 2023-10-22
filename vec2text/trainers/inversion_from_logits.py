@@ -1,6 +1,5 @@
 from typing import Dict, Optional
 
-import copy
 import torch
 
 from vec2text.trainers.inversion import InversionTrainer
@@ -64,12 +63,9 @@ class InversionFromLogitsTrainer(InversionTrainer):
             padding=True,
             truncation=False,
         ).to(self.args.device)
-        
+
         prefix_lengths = self.tokenizer(
-              ex, 
-              padding=True, 
-              truncation=False, 
-              return_tensors="pt"
+            ex, padding=True, truncation=False, return_tensors="pt"
         ).attention_mask.sum(dim=1)
         print("prefix_lengths:", prefix_lengths)
 
@@ -80,9 +76,13 @@ class InversionFromLogitsTrainer(InversionTrainer):
             for i, p in enumerate(prefix_lengths):
                 suffix_ids_i = ex_with_suffix_tokenized_inverter.input_ids[i + j, p:]
 
-                # fix padding for something I did by accident during training. 
+                # fix padding for something I did by accident during training.
                 # an artifact if you will.
-                suffix_ids_i = [token_id for token_id in suffix_ids_i.tolist() if token_id not in [0, 1, 2]]
+                suffix_ids_i = [
+                    token_id
+                    for token_id in suffix_ids_i.tolist()
+                    if token_id not in [0, 1, 2]
+                ]
 
                 # put BOS token at the end to match training labels.
                 suffix_ids_i.append(1)
@@ -115,7 +115,7 @@ class InversionFromLogitsTrainer(InversionTrainer):
             )
 
         eos_token_id = self.model.encoder_decoder.config.eos_token_id
-        past_key_values = None
+        # past_key_values = None
         for step in range(2, 63):
             with torch.no_grad():
                 output = self.model(
@@ -130,7 +130,7 @@ class InversionFromLogitsTrainer(InversionTrainer):
                     frozen_embeddings=frozen_embeddings,
                     use_cache=True,
                 )
-            past_key_values = output.past_key_values
+            # past_key_values = output.past_key_values
 
             logits = output.logits[:, -1, :]
             all_next_tokens = logits.argmax(dim=1).reshape((batch_size, num_suffixes))
@@ -142,17 +142,15 @@ class InversionFromLogitsTrainer(InversionTrainer):
                 other_next_tokens[:, :1] == other_next_tokens[:, 1:]
             ).all(dim=-1)
 
-            disagreement_from_main = (
-                other_next_tokens[:, 0] != main_next_tokens
-            )
+            disagreement_from_main = other_next_tokens[:, 0] != main_next_tokens
 
             if (all_others_agree & disagreement_from_main).any():
-                import pdb; pdb.set_trace()
+                import pdb
+
+                pdb.set_trace()
 
             next_tokens = torch.where(
-                all_others_agree,
-                other_next_tokens[:, 0],
-                main_next_tokens
+                all_others_agree, other_next_tokens[:, 0], main_next_tokens
             )
             next_tokens = next_tokens[:, None]
 
@@ -164,14 +162,11 @@ class InversionFromLogitsTrainer(InversionTrainer):
             #     .log_softmax(dim=1)
             # )
 
-
             # next_tokens = (
             #     logits.argmax(dim=1, keepdim=True)
             # )
-            next_tokens = (
-                next_tokens
-                .repeat((1, num_suffixes))
-                .reshape((batch_size * num_suffixes, 1))
+            next_tokens = next_tokens.repeat((1, num_suffixes)).reshape(
+                (batch_size * num_suffixes, 1)
             )
 
             # greedy sampling
@@ -263,5 +258,5 @@ class InversionFromLogitsTrainer(InversionTrainer):
                     new_distances,
                     closest_generation_distances,
                 )
-        
+
         return closest_generations

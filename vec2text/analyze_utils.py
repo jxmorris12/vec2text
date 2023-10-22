@@ -275,13 +275,11 @@ def load_jailbreak_baseline_trainer(
     return trainer
 
 
-
-
 def load_seq2seq_baseline_trainer(
-        seq2seq_model_name: str,
-        dataset_name: str = "one_million_instructions",
-        embedder_model_name: str = "meta-llama/Llama-2-7b-hf",
-        max_seq_len: int = 64,
+    seq2seq_model_name: str,
+    dataset_name: str = "one_million_instructions",
+    embedder_model_name: str = "meta-llama/Llama-2-7b-hf",
+    max_seq_len: int = 64,
 ):
     args_str = f"--per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_seq_length {max_seq_len} --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name {dataset_name} --model_name_or_path t5-base --use_wandb=0 --embedder_model_name {embedder_model_name} --experiment inversion_from_logits --bf16=1 --embedder_torch_dtype bfloat16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0 --use_less_data 1000"
     parser = transformers.HfArgumentParser(
@@ -297,13 +295,12 @@ def load_seq2seq_baseline_trainer(
 
     exp = experiments.experiment_from_args(model_args, data_args, training_args)
     prev_trainer = exp.load_trainer()
-    eval_dataset = prev_trainer.eval_dataset
 
     inverter = transformers.AutoModelForSeq2SeqLM.from_pretrained(seq2seq_model_name)
 
     from vec2text.trainers_baseline import DecodeInversionTrainer
 
-    trainer = vec2text.trainers_baseline.DecodeInversionTrainer(
+    trainer = DecodeInversionTrainer(
         args=prev_trainer.args,
         language_model=prev_trainer.model.embedder,
         language_model_tokenizer=prev_trainer.model.embedder_tokenizer,

@@ -1,6 +1,6 @@
 from . import (  # noqa: F401
-    analyze_utils,
     aliases,
+    analyze_utils,
     collator,
     metrics,
     models,

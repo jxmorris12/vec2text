@@ -94,7 +94,7 @@ class BaseTrainer(transformers.Trainer):
         except AttributeError:
             return self.tokenizer.bos_token_id
 
-    def sanity_decode(self, input_string: str = None, max_length: int = None):
+    def sanity_decode(self, input_string: str = None, max_length: int = 128):
         """Encodes and decodes a string as a sanity check."""
         if input_string is None:
             input_string = DEFAULT_INPUT_STRING
@@ -102,12 +102,15 @@ class BaseTrainer(transformers.Trainer):
         print("=" * 16, "Begin trainer sanity check", "=" * 16)
         print("\tInput to encode ->", input_string)
         inputs = self.embedder_tokenizer(
-            input_string, return_tensors="pt", max_length=64, padding="max_length"
+            input_string,
+            return_tensors="pt",
+            max_length=max_length,
+            padding="max_length",
         )
         inputs = inputs.to(self.args.device)
         gen_kwargs = copy.copy(self.gen_kwargs)
         gen_kwargs["min_length"] = 1
-        gen_kwargs["max_length"] = max_length or max(128, inputs["input_ids"].shape[1] + 1)
+        gen_kwargs["max_length"] = max_length
         print("max_length:", gen_kwargs["max_length"])
         regenerated = self.generate(
             inputs={
@@ -442,7 +445,10 @@ class BaseTrainer(transformers.Trainer):
             with torch.no_grad():
                 # self.inversion_trainer.model.noise_level = 0.0
                 preds_sample_retokenized = self.embedder_tokenizer(
-                    decoded_preds, padding=True, truncation=False, return_tensors="pt"
+                    decoded_preds,
+                    padding=True,
+                    truncation=False,
+                    return_tensors="pt",
                 )["input_ids"].to(preds_sample.device)
                 preds_sample_retokenized = preds_sample_retokenized[
                     : self.args.per_device_eval_batch_size, :

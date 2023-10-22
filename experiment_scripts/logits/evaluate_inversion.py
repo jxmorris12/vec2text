@@ -57,7 +57,7 @@ def main(args: argparse.ArgumentParser):
 
     # This code assumes models were trained on 7b param embedders.
     # It also assumes they have the same tokenizer...
-    for embedder_size in ["70b"]: # , "13b", "7b"]:
+    for embedder_size in ["70b"]:  # , "13b", "7b"]:
         #
         trainer.enable_emb_cos_sim_metric()
         trainer.model.use_frozen_embeddings_as_input = False

@@ -32,13 +32,13 @@ class DecodeInversionTrainer(BaseTrainer):
         self.max_length = 64
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
-        self.embedder_tokenizer.padding_side = 'left'
+        self.embedder_tokenizer.padding_side = "left"
         lm_inputs = self.embedder_tokenizer(
             self.embedder_tokenizer.batch_decode(
                 inputs["embedder_input_ids"],
                 skip_special_tokens=True,
             ),
-            return_tensors='pt',
+            return_tensors="pt",
             max_length=self.max_length,
             padding=True,
             truncation=True,
@@ -50,7 +50,7 @@ class DecodeInversionTrainer(BaseTrainer):
             do_sample=False,
             max_new_tokens=self.max_length,
         )
-        lm_outputs = full_lm_outputs[:, lm_inputs.input_ids.shape[1]:]
+        lm_outputs = full_lm_outputs[:, lm_inputs.input_ids.shape[1] :]
         # bos_tokens = torch.ones((lm_outputs.shape[0], 1), dtype=torch.long, device=self.args.device)
         # lm_outputs = torch.cat((bos_tokens, lm_outputs), dim=1)
         lm_outputs_str = self.language_model_tokenizer.batch_decode(
@@ -72,7 +72,7 @@ class DecodeInversionTrainer(BaseTrainer):
             **lm_outputs_for_inverter,
             min_new_tokens=1,
             max_new_tokens=64,
-            generation_kwargs=gen_kwargs
+            generation_kwargs=gen_kwargs,
         )
 
     def train(self):

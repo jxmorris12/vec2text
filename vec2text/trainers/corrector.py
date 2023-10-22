@@ -153,6 +153,8 @@ class Corrector(BaseTrainer):
 
         Override to compute ppl from eval loss.
         """
+        self.inversion_trainer.model.to(self.args.device)
+
         metric_key_prefix = kwargs["metric_key_prefix"]
         output = super().evaluation_loop(dataloader=dataloader, *args, **kwargs)  # type: ignore
         if metric_key_prefix in {"eval_msmarco", "eval_nq"}:
@@ -168,6 +170,7 @@ class Corrector(BaseTrainer):
             output.metrics.update(multiround_generation_metrics)
             self.num_gen_recursive_steps = 1
 
+        self.inversion_trainer.model.cpu()
         return output
 
     def _precompute_hypothesis_and_embedding(
@@ -192,7 +195,7 @@ class Corrector(BaseTrainer):
         ) = self._get_hypothesis_uncached(inputs=inputs)
         ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
         ds_inputs["hypothesis_embedding"] = hypothesis_embedding.cpu()
-        
+
         # cut padding so we can batch by length later
         ds_inputs["hypothesis_input_ids"] = []
         ds_inputs["hypothesis_attention_mask"] = []
@@ -244,7 +247,9 @@ class Corrector(BaseTrainer):
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
-            print(f"\t[{dataset.builder_name}] Loading hypotheses from path {cache_path}")
+            print(
+                f"\t[{dataset.builder_name}] Loading hypotheses from path {cache_path}"
+            )
             dataset = datasets.load_from_disk(cache_path)
         dataset.set_format("pt")
         return dataset, cache_path
@@ -613,27 +618,25 @@ class Corrector(BaseTrainer):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        
+
         return frozen_embeddings.to(self.args.device)
 
     def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:
         """Embeds a generated hypothesis. Has to remove EOS token and add BOS token
         at the beginning.
         """
-        bos_token_id = self.model.encoder_decoder.config.decoder_start_token_id
-        eos_token_id = self.model.encoder_decoder.config.eos_token_id
-        assert (input_ids[:, 0] == bos_token_id).all()
-        batch_size = len(input_ids)
-        eos_tokens = (
-            torch.ones((batch_size, 1), dtype=torch.long, device=self.args.device)
-            * eos_token_id
-        )
+        inputs_str = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+        emb_input_ids = self.embedder_tokenizer(
+            inputs_str,
+            max_length=input_ids.shape[1],
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        ).to(input_ids.device)
 
-        input_ids = torch.cat((input_ids[:, 1:], eos_tokens), dim=1)
-        attention_mask = input_ids != self.model.encoder_decoder.config.pad_token_id
         return self.get_frozen_embeddings(
-            embedder_input_ids=input_ids,
-            embedder_attention_mask=attention_mask,
+            embedder_input_ids=emb_input_ids.input_ids,
+            embedder_attention_mask=emb_input_ids.attention_mask,
         )
 
     def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:

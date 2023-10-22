@@ -16,8 +16,8 @@ import vec2text
 from vec2text.collator import DataCollatorForCorrection
 from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
 from vec2text.models import (
-    CorrectorEncoderModel,
     CorrectorEncoderFromLogitsModel,
+    CorrectorEncoderModel,
     InversionFromLogitsModel,
     InversionModel,
     InversionModelBagOfWords,
@@ -31,7 +31,7 @@ from vec2text.tokenize_data import (
     tokenize_function,
     tokenize_function_llama_chat,
 )
-from vec2text.utils import MockEmbedder, dataset_map_multi_worker, torch_main_worker_finish_first
+from vec2text.utils import MockEmbedder, dataset_map_multi_worker
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -356,7 +356,9 @@ class Experiment(abc.ABC):
             for key in raw_datasets:
                 new_length = min(len(raw_datasets[key]), data_args.use_less_data)
                 raw_datasets[key] = raw_datasets[key].select(range(new_length))
-        print(">> using fast tokenizers:", tokenizer.is_fast, embedder_tokenizer.is_fast)
+        print(
+            ">> using fast tokenizers:", tokenizer.is_fast, embedder_tokenizer.is_fast
+        )
 
         tokenize_fn = (
             tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
@@ -710,20 +712,24 @@ class CorrectorExperiment(Experiment):
 
     def load_trainer(self) -> transformers.Trainer:
         if self.training_args.corrector_model_from_pretrained:
-            _, inversion_trainer = vec2text.analyze_utils.load_experiment_and_trainer_from_pretrained(
+            (
+                _,
+                inversion_trainer,
+            ) = vec2text.analyze_utils.load_experiment_and_trainer_from_pretrained(
                 name=self.training_args.corrector_model_from_pretrained,
                 # max_seq_length=self.model_args.max_seq_length,
                 use_less_data=self.data_args.use_less_data,
             )
-        else:    
-            _, inversion_trainer = vec2text.aliases.load_experiment_and_trainer_from_alias(
+        else:
+            (
+                _,
+                inversion_trainer,
+            ) = vec2text.aliases.load_experiment_and_trainer_from_alias(
                 alias=self.training_args.corrector_model_alias,
                 max_seq_length=self.model_args.max_seq_length,
                 use_less_data=self.data_args.use_less_data,
             )
-        model = self.load_model(
-            inversion_trainer=inversion_trainer
-        )
+        model = self.load_model(inversion_trainer=inversion_trainer)
         return vec2text.trainers.Corrector(
             model=model,
             inversion_trainer=inversion_trainer,

@@ -1,12 +1,12 @@
-import copy
-from typing import Dict, Optional, Tuple
+from typing import Tuple
 
 import torch
 import torch.nn as nn
 import transformers
 
-from .corrector_encoder import CorrectorEncoderModel
 from vec2text.models.config import InversionConfig
+
+from .corrector_encoder import CorrectorEncoderModel
 
 
 class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
@@ -20,12 +20,12 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         num_repeat_tokens: int,
     ):
         super().__init__(config=config)
-        
+
         self.embedder_dim = embedder_dim
         self.num_repeat_tokens = num_repeat_tokens
 
         bottleneck_dim = embedder_dim
-        
+
         self.sequence_weights_1 = nn.Parameter(
             torch.randn(
                 (self.num_repeat_tokens, self.embedder_dim, self.embedder_dim),
@@ -50,19 +50,25 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
 
         self.embedding_transform_1 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.Dropout(self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0),
+            nn.Dropout(
+                self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0
+            ),
             nn.GELU(),
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim),
         )
         self.embedding_transform_2 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.Dropout(self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0),
+            nn.Dropout(
+                self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0
+            ),
             nn.GELU(),
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim),
         )
         self.embedding_transform_3 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
-            nn.Dropout(self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0),
+            nn.Dropout(
+                self.encoder_decoder.config.dropout_rate if self.use_ff_dropout else 0.0
+            ),
             nn.GELU(),
             nn.Linear(bottleneck_dim, self.encoder_hidden_dim),
         )
@@ -100,14 +106,18 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         diff_embedding = diff_embedding.reshape(
             (diff_embedding.shape[0], self.num_repeat_tokens, self.embedder_dim)
         )
-        diff_embedding = torch.einsum("bsd,sdw->bsw", diff_embedding, self.sequence_weights_2)
+        diff_embedding = torch.einsum(
+            "bsd,sdw->bsw", diff_embedding, self.sequence_weights_2
+        )
         diff_embedding = self.embedding_transform_2(diff_embedding)
         #
         hypothesis_embedding = hypothesis_embedding.to(self.sequence_weights_3.dtype)
         hypothesis_embedding = hypothesis_embedding.reshape(
             (hypothesis_embedding.shape[0], self.num_repeat_tokens, self.embedder_dim)
         )
-        hypothesis_embedding = torch.einsum("bsd,sdw->bsw", hypothesis_embedding, self.sequence_weights_3)
+        hypothesis_embedding = torch.einsum(
+            "bsd,sdw->bsw", hypothesis_embedding, self.sequence_weights_3
+        )
         hypothesis_embedding = self.embedding_transform_3(hypothesis_embedding)
         inputs_embeds = self.encoder_decoder.encoder.embed_tokens(hypothesis_input_ids)
         #
