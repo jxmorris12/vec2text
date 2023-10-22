@@ -1,4 +1,5 @@
 from . import (  # noqa: F401
+    analyze_utils,
     aliases,
     collator,
     metrics,

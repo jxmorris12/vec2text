@@ -17,6 +17,7 @@ from vec2text.collator import DataCollatorForCorrection
 from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
 from vec2text.models import (
     CorrectorEncoderModel,
+    CorrectorEncoderFromLogitsModel,
     InversionFromLogitsModel,
     InversionModel,
     InversionModelBagOfWords,
@@ -49,6 +50,7 @@ logger = logging.getLogger(__name__)
 # We maintain our own cache because huggingface datasets caching
 # doesn't always work properly.
 DATASET_CACHE_PATH = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
+
 
 # Noisy compilation from torch.compile
 try:
@@ -354,8 +356,7 @@ class Experiment(abc.ABC):
             for key in raw_datasets:
                 new_length = min(len(raw_datasets[key]), data_args.use_less_data)
                 raw_datasets[key] = raw_datasets[key].select(range(new_length))
-
-        print("using fast tokenizers:", tokenizer.is_fast, embedder_tokenizer.is_fast)
+        print(">> using fast tokenizers:", tokenizer.is_fast, embedder_tokenizer.is_fast)
 
         tokenize_fn = (
             tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
@@ -708,8 +709,6 @@ class CorrectorExperiment(Experiment):
         return "emb-correct-1"
 
     def load_trainer(self) -> transformers.Trainer:
-        model = self.load_model()
-
         if self.training_args.corrector_model_from_pretrained:
             _, inversion_trainer = vec2text.analyze_utils.load_experiment_and_trainer_from_pretrained(
                 name=self.training_args.corrector_model_from_pretrained,
@@ -722,6 +721,9 @@ class CorrectorExperiment(Experiment):
                 max_seq_length=self.model_args.max_seq_length,
                 use_less_data=self.data_args.use_less_data,
             )
+        model = self.load_model(
+            inversion_trainer=inversion_trainer
+        )
         return vec2text.trainers.Corrector(
             model=model,
             inversion_trainer=inversion_trainer,
@@ -731,10 +733,18 @@ class CorrectorExperiment(Experiment):
             ),
         )
 
-    def load_model(self) -> transformers.PreTrainedModel:
-        return CorrectorEncoderModel(
-            config=self.config,
-        )
+    def load_model(self, inversion_trainer) -> transformers.PreTrainedModel:
+        exp = inversion_trainer.args.experiment
+        if exp == "inversion_from_logits":
+            return CorrectorEncoderFromLogitsModel(
+                config=self.config,
+                embedder_dim=inversion_trainer.model.embedder_dim,
+                num_repeat_tokens=inversion_trainer.model.num_repeat_tokens,
+            )
+        else:
+            return CorrectorEncoderModel(
+                config=self.config,
+            )
 
 
 EXPERIMENT_CLS_MAP = {

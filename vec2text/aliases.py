@@ -1,4 +1,4 @@
-from vec2text import analyze_utils
+import vec2text
 
 # TODO always load args from disk, delete this dict.
 ARGS_DICT = {
@@ -58,7 +58,7 @@ def load_experiment_and_trainer_from_alias(
     args_str = ARGS_DICT.get(alias)
     checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
     print(f"loading alias {alias} from {checkpoint_folder}...")
-    experiment, trainer = analyze_utils.load_experiment_and_trainer(
+    experiment, trainer = vec2text.analyze_utils.load_experiment_and_trainer(
         checkpoint_folder,
         args_str,
         do_eval=False,

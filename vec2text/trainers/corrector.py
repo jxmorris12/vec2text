@@ -192,6 +192,7 @@ class Corrector(BaseTrainer):
         ) = self._get_hypothesis_uncached(inputs=inputs)
         ds_inputs["frozen_embeddings"] = frozen_embeddings.cpu()
         ds_inputs["hypothesis_embedding"] = hypothesis_embedding.cpu()
+        
         # cut padding so we can batch by length later
         ds_inputs["hypothesis_input_ids"] = []
         ds_inputs["hypothesis_attention_mask"] = []
@@ -210,7 +211,7 @@ class Corrector(BaseTrainer):
         )
         return ds_inputs
 
-    def _preprocess_dataset(
+    def _preprocess_dataset_hypotheses(
         self, dataset: datasets.Dataset
     ) -> Tuple[datasets.Dataset, str]:
         #
@@ -223,22 +224,12 @@ class Corrector(BaseTrainer):
         # Note that the dataset fingerprint changes with calls to select()
         # so we won't overwrite the big dataset files when we use tiny subsets
         # during testing.
-        root_dir = os.path.normpath(
-            os.path.join(os.path.dirname(os.path.realpath(__file__)), os.pardir)
-        )
-        model_dir = os.path.join(root_dir, self.inversion_trainer.args.output_dir)
-        # print("model_dir:", model_dir)
-        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/01c63decd9009f5961504b52a96cd324/df9d8d8dfa2ed7ebc7c0aeac61835b82"
-        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/9d4a4d4b36da188a6e9dcb9736262823"
-        # model_dir = "/home/jxm3/research/retrieval/inversion/saves/f9abd65db4c4823264b133816d08612f/8d34a936d8e5905fe900d96ed65ec156/"
-        # TODO(Jack): be smarter about this!
-        model_dir = "/home/jxm3/research/retrieval/inversion/vec2text/saves/jxm_t5-base__llama-7b__one-million-paired-instructions"
-        assert os.path.exists(model_dir)
+        cache_dir = os.environ["VEC2TEXT_CACHE"]
+        assert os.path.exists(cache_dir)
         ####
-        cache_path = os.path.join(model_dir, f"{dataset._fingerprint}_hypotheses.cache")
+        cache_path = os.path.join(cache_dir, f"{dataset._fingerprint}_hypotheses.cache")
         if not os.path.exists(cache_path):
-            logging.info("Computing hypotheses to save to path %s", cache_path)
-            print(f"Saving hypotheses to path {cache_path}")
+            print(f"\t[{dataset.builder_name}] Saving hypotheses to path {cache_path}")
 
             dataset = dataset_map_multi_worker(
                 dataset=dataset,
@@ -253,41 +244,24 @@ class Corrector(BaseTrainer):
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
-            print(f"Loading hypotheses from path {cache_path}")
+            print(f"\t[{dataset.builder_name}] Loading hypotheses from path {cache_path}")
             dataset = datasets.load_from_disk(cache_path)
         dataset.set_format("pt")
         return dataset, cache_path
 
-    def precompute_hypotheses(self) -> str:
+    def precompute_hypotheses(self) -> None:
         """Generates and embeds hypotheses using `self.inversion_trainer`.
 
         Returns path to precomputed-and-saved train dataset, which is sometimes
         useful for outside processes.
         """
-        # TODO: Compare doing this with and without training mode enabled.
         logger.info("Precomputing frozen embedding & hypotheses before training")
-        # self.train_dataset = self._preprocess_dataset(
-        #     dataset=self.train_dataset
-        # )
-        # for k, v in self.eval_dataset.items():
-        #     self.eval_dataset[k] = self._preprocess_dataset(dataset=v)
-        # print("done precomputing")
-        self.train_dataset, train_cache_path = self._preprocess_dataset(
+
+        self.train_dataset, train_cache_path = self._preprocess_dataset_hypotheses(
             dataset=self.train_dataset
         )
-        # ###########################################################################
-        # # Temporary hack: load explicit dataset explicitly from disk
-        # # This is MSMARCO, sequence length 128, precomputed with OpenAI embeddings
-        # # + hypotheses
-        # print("Loading full train dataset [MSMARCO // 128 // OpenAI]...")
-        # train_cache_path = "/home/jxm3/research/retrieval/inversion/msmarco_msl128_hypotheses/msmarco_full.cache"
-        # self.train_dataset = datasets.Dataset.load_from_disk(train_cache_path)
-        # print("Loaded!")
-        # ###########################################################################
-
         for k, v in self.eval_dataset.items():
-            self.eval_dataset[k], _ = self._preprocess_dataset(dataset=v)
-        return train_cache_path
+            self.eval_dataset[k], _ = self._preprocess_dataset_hypotheses(dataset=v)
 
     def _inner_training_loop(self, *args, **kwargs):
         # Don't let tokenizers run in parallel mode.
@@ -298,8 +272,7 @@ class Corrector(BaseTrainer):
         self.inversion_trainer.model.to(next(self.model.parameters()).device)
         self.precompute_hypotheses()
         self.model.train()
-        # self.inversion_trainer.model.cpu()  # Shouldn't need this anymore, hopefully
-
+        self.inversion_trainer.model.cpu()
         return super()._inner_training_loop(*args, **kwargs)
 
     def generate(
@@ -331,16 +304,6 @@ class Corrector(BaseTrainer):
                 hypothesis_attention_mask,
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
-
-        # #####################################################
-        # (
-        #     frozen_embeddings1,
-        #     hypothesis_input_ids1,
-        #     hypothesis_attention_mask2,
-        #     hypothesis_embedding1,
-        # ) = self._get_hypothesis_uncached(inputs=inputs)
-        # import pdb; pdb.set_trace()
-        # #####################################################
 
         # Add beam dimension:
         #       (batch, ...) -> (batch, beam, ...)
@@ -650,7 +613,7 @@ class Corrector(BaseTrainer):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-        # print("frozen_embeddings =>", self.args.device)
+        
         return frozen_embeddings.to(self.args.device)
 
     def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:
@@ -690,11 +653,9 @@ class Corrector(BaseTrainer):
             "num_beams": 1,
             "do_sample": False,
             "no_repeat_ngram_size": 0,
-            "max_length": 128,
+            "max_length": self.model.config.max_seq_length,
         }
 
-        # TODO: support generated outputs of varying length.
-        # TODO consider other (multiple?) hypothesis generation conditions.
         hypothesis_input_ids = self.inversion_trainer.model.generate(
             inputs={
                 "frozen_embeddings": frozen_embeddings,
@@ -720,8 +681,6 @@ class Corrector(BaseTrainer):
         inputs: Dict[str, torch.Tensor],
         return_outputs: bool = False,
     ) -> Union[Tuple[torch.Tensor, Dict[str, torch.Tensor]], torch.Tensor]:
-        """Computes contrastive loss using model generations and real text."""
-        # self.args.eval_steps = 4000
         batch_size, seq_length = inputs["input_ids"].shape
 
         try:

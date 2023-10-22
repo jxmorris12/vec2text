@@ -103,7 +103,7 @@ def torch_main_worker_finish_first(func: Callable):
 
 def dataset_map_multi_worker(dataset: datasets.Dataset, map_fn: Callable, *args, **kwargs):
     if torch.cuda.device_count() <= 1:
-        return dataset.map(*args, **kwargs)
+        return dataset.map(map_fn, *args, **kwargs)
     datasets.disable_caching()
     rank = torch.distributed.get_rank()
 
