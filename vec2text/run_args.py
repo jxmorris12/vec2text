@@ -228,8 +228,8 @@ class DataArguments:
 @dataclass
 class TrainingArguments(transformers.TrainingArguments):
     # https://github.com/huggingface/transformers/blob/e82c1cb78e178519060b9391214727be75a218ca/src/transformers/training_args.py#L121
-    output_dir: str = field(
-        default="saves", metadata={"help": "Output directory for training saves"}
+    output_dir: Optional[str] = field(
+        default=None, metadata={"help": "Output directory for training saves. If not set, will output to saves/<random hash>."}
     )
     corrector_model_alias: Optional[str] = field(
         default=None,
@@ -315,7 +315,7 @@ class TrainingArguments(transformers.TrainingArguments):
     logging_strategy: str = "steps"
     save_strategy: str = "steps"
 
-    save_total_limit: int = 1  # Maximum number of checkpoints to save.
+    save_total_limit: int = 2  # Maximum number of checkpoints to save.
 
     warmup_steps: int = field(
         default=4000, metadata={"help": "Number of steps of warmup"}
@@ -323,7 +323,12 @@ class TrainingArguments(transformers.TrainingArguments):
     logging_steps: int = field(
         default=400, metadata={"help": "Number of steps between logging metrics"}
     )
-    save_steps: int = 8000
+    save_steps: int = field(
+        default=4000,
+        metadata={
+            "help": "Number of steps per save"
+        },
+    )
     eval_steps: int = field(
         default=40000,
         metadata={

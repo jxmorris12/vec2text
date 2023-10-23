@@ -88,9 +88,12 @@ class Experiment(abc.ABC):
         self.training_args = training_args
         # Set random seed, add hash to output path.
         transformers.set_seed(training_args.seed)
-        training_args.output_dir = os.path.join(
-            training_args.output_dir, self.kwargs_hash
-        )
+
+        if training_args.output_dir is None:
+            training_args.output_dir = os.path.join(
+                "saves", self.kwargs_hash
+            )
+        print(f"Experiment output_dir = {training_args.output_dir}")
         # Set up output_dir and wandb.
         self._setup_logging()
         self._consider_init_wandb()
@@ -166,6 +169,7 @@ class Experiment(abc.ABC):
             )
 
         # train.   :)
+        print(f"train() called – resume-from_checkpoint = {checkpoint}")
         train_result = trainer.train(resume_from_checkpoint=checkpoint)
         trainer.save_model()  # Saves the tokenizer too for easy upload
 

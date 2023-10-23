@@ -122,11 +122,13 @@ def dataset_map_multi_worker(
     )
     ds_shard = ds_shard.map(map_fn, *args, **kwargs)
     ds_shard.save_to_disk(ds_shard_filepaths[rank])
+    print("rank", rank, "saving:", ds_shard_filepaths[rank])
     torch.distributed.barrier()
     full_dataset = datasets.concatenate_datasets(
         [datasets.load_from_disk(p) for p in ds_shard_filepaths]
     )
     torch.distributed.barrier()
+    print("rank", rank, "deleting:", ds_shard_filepaths[rank])
     shutil.rmtree(ds_shard_filepaths[rank])
     return full_dataset
 

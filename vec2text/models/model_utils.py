@@ -18,6 +18,7 @@ EMBEDDER_MODEL_NAMES = [
     "dpr_st",
     "gtr_base_st",
     "paraphrase-distilroberta",
+    "sentence-transformers/all-MiniLM-L6-v2",
     "meta-llama/Llama-2-7b-hf",
     "meta-llama/Llama-2-13b-hf",
     "meta-llama/Llama-2-7b-chat-hf",
@@ -170,11 +171,6 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
             "medicalai/ClinicalBERT", **model_kwargs
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
-    elif name == "medicalai/ClinicalBERT":
-        model = transformers.AutoModel.from_pretrained(
-            "medicalai/ClinicalBERT", **model_kwargs
-        )
-        tokenizer = transformers.AutoTokenizer.from_pretrained("medicalai/ClinicalBERT")
     elif name.startswith("gpt2"):
         model = transformers.AutoModelForCausalLM.from_pretrained(
             name,
@@ -200,8 +196,13 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
         #     model.to_bettertransformer()
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)
         tokenizer.pad_token = tokenizer.eos_token
+    elif name.startswith("sentence-transformers/"):
+        model = SentenceTransformer(name)
+        tokenizer = model.tokenizer
     else:
-        raise ValueError(f"unknown embedder {name}")
+        print(f"WARNING: Trying to initialize from unknown embedder {name}")
+        model = transformers.AutoModel.from_pretrained(name, **model_kwargs)
+        tokenizer = transformers.AutoTokenizer.from_pretrained(name)
 
     # model = torch.compile(model)
     return model, tokenizer
