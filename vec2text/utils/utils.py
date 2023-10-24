@@ -111,10 +111,10 @@ def dataset_map_multi_worker(
 
     cache_path = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
     ds_shard_filepaths = [
-        os.path.join(cache_path, f"{dataset._fingerprint}_hypotheses_{w}.cache")
+        os.path.join(cache_path, f"{dataset._fingerprint}_subshard_{w}.cache")
         for w in range(0, torch.cuda.device_count())
     ]
-    print(f"\tworker {rank} saving hypotheses to {ds_shard_filepaths[rank]}")
+    print(f"\tworker {rank} saving sub-shard to {ds_shard_filepaths[rank]}")
     ds_shard = dataset.shard(
         num_shards=torch.cuda.device_count(),
         index=rank,
