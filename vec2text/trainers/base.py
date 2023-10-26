@@ -170,7 +170,7 @@ class BaseTrainer(transformers.Trainer):
         ):
             # https://huggingface.co/docs/transformers/v4.26.1/en/main_classes/text_generation#transformers.GenerationMixin.generate
             inputs_cuda = {k: v.to(self.args.device) for k, v in inputs.items()}
-            max_length = inputs["embedder_input_ids"].shape[1]
+            max_length = self.model.config.max_seq_length
             gen_kwargs["max_length"] = max_length
             with torch.no_grad():
                 generated_text = self.generate(
