@@ -229,7 +229,10 @@ class DataArguments:
 class TrainingArguments(transformers.TrainingArguments):
     # https://github.com/huggingface/transformers/blob/e82c1cb78e178519060b9391214727be75a218ca/src/transformers/training_args.py#L121
     output_dir: Optional[str] = field(
-        default=None, metadata={"help": "Output directory for training saves. If not set, will output to saves/<random hash>."}
+        default=None,
+        metadata={
+            "help": "Output directory for training saves. If not set, will output to saves/<random hash>."
+        },
     )
     corrector_model_alias: Optional[str] = field(
         default=None,
@@ -325,9 +328,7 @@ class TrainingArguments(transformers.TrainingArguments):
     )
     save_steps: int = field(
         default=4000,
-        metadata={
-            "help": "Number of steps per save"
-        },
+        metadata={"help": "Number of steps per save"},
     )
     eval_steps: int = field(
         default=40000,

@@ -90,9 +90,7 @@ class Experiment(abc.ABC):
         transformers.set_seed(training_args.seed)
 
         if training_args.output_dir is None:
-            training_args.output_dir = os.path.join(
-                "saves", self.kwargs_hash
-            )
+            training_args.output_dir = os.path.join("saves", self.kwargs_hash)
         print(f"Experiment output_dir = {training_args.output_dir}")
         # Set up output_dir and wandb.
         self._setup_logging()
