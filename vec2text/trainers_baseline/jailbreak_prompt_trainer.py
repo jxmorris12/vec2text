@@ -26,7 +26,6 @@ class JailbreakPromptTrainer(BaseTrainer):
     #         return s
 
     def _take_first_line(self, s: str) -> str:
-        # import pdb; pdb.set_trace()
         s = s.strip()
         try:
             nli = s.index("\n")

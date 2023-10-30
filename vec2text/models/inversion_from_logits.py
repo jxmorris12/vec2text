@@ -211,10 +211,7 @@ class InversionFromLogitsModel(InversionModel):
             dtype=embeddings.dtype,
             device=embeddings.device,
         )
-        embeddings = torch.cat((embeddings, zeros), dim=1)
-
-        # import pdb; pdb.set_trace()
-        return embeddings
+        return torch.cat((embeddings, zeros), dim=1)
 
     def forward(
         self,

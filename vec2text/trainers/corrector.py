@@ -144,7 +144,7 @@ class Corrector(BaseTrainer):
         return ds_inputs
 
     def _preprocess_dataset_hypotheses(
-        self, dataset: datasets.Dataset
+        self, dataset: datasets.Dataset, filter_correct_examples: bool = False
     ) -> Tuple[datasets.Dataset, str]:
         #
         # In each model directory, we store a copy of the dataset with hypotheses
@@ -173,6 +173,21 @@ class Corrector(BaseTrainer):
                 batch_size=(self.args.train_batch_size * 2),
                 desc="Precomputing hypotheses for data",
             )
+
+            if filter_correct_examples:
+                old_length = len(dataset)
+                def embedding_is_not_correct(ex):
+                    return (
+                        ~torch.isclose(
+                            ex["frozen_embeddings"].to(self.args.device), 
+                            ex["hypothesis_embedding"].to(self.args.device)
+                    ).all(dim=1)
+                    ).tolist()
+            
+                dataset = dataset.filter(
+                    embedding_is_not_correct, batched=True, batch_size=1024,
+                )
+                print(f"filtered {old_length} datapoints to {len(dataset)}")
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
@@ -192,10 +207,12 @@ class Corrector(BaseTrainer):
         logger.info("Precomputing frozen embedding & hypotheses before training")
 
         self.train_dataset, train_cache_path = self._preprocess_dataset_hypotheses(
-            dataset=self.train_dataset
+            dataset=self.train_dataset, filter_correct_examples=True
         )
         for k, v in self.eval_dataset.items():
-            self.eval_dataset[k], _ = self._preprocess_dataset_hypotheses(dataset=v)
+            self.eval_dataset[k], _ = self._preprocess_dataset_hypotheses(
+            dataset=v, filter_correct_examples=False
+        )
 
     def _inner_training_loop(self, *args, **kwargs):
         # Don't let tokenizers run in parallel mode.
@@ -575,9 +592,8 @@ class Corrector(BaseTrainer):
             assert (
                 "embedder_input_ids" in inputs
             ), f"cannot generate hypothesis with input keys: {inputs.keys()}"
-            frozen_embeddings = self.get_frozen_embeddings(
-                embedder_input_ids=inputs["embedder_input_ids"],
-                embedder_attention_mask=inputs["embedder_attention_mask"],
+            frozen_embeddings = self.embed_generated_hypothesis(
+                input_ids=inputs["input_ids"]
             )
 
         generation_kwargs = {

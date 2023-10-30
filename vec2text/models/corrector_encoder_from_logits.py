@@ -18,17 +18,12 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         config: InversionConfig,
     ):
         super().__init__(config=config)
-
-        try:
-            config.embedder_dim
-            config.num_repeat_tokens
-        except AttributeError:
-            # backwards compatibility
-            config.embedder_dim = 4096
-            config.num_repeat_tokens = 8
+        
+        config.embedder_dim = 768 # TODO: Pipe this in.
+        config.num_zeros_to_add = self.num_zeros_to_add = 512 # TODO: Compute this.
+        config.num_repeat_tokens = self.num_repeat_tokens = 42 # TODO: Compute this properly.
 
         self.embedder_dim = config.embedder_dim
-        self.num_repeat_tokens = config.num_repeat_tokens
         bottleneck_dim = config.embedder_dim
 
         self.sequence_weights_1 = nn.Parameter(
@@ -101,6 +96,8 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             hypothesis_embedding += self.training_embedding_noise_level * torch.randn(
                 hypothesis_embedding.shape, device=hypothesis_embedding.device
             )
+        embedding = embedding[:, :32256]
+        hypothesis_embedding = hypothesis_embedding[:, :32256]
         diff_embedding = embedding - hypothesis_embedding
 
         embedding = embedding.to(self.sequence_weights_1.dtype)
@@ -167,12 +164,15 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
 
         if self.training:
             import wandb
-
-            wandb.log(
-                {
-                    "emb_norm/emb": embedding.abs().mean(),
-                    "emb_norm/hypothesis": hypothesis_embedding.abs().mean(),
-                    "emb_norm/diff": diff_embedding.abs().mean(),
-                }
-            )
+            try:
+                wandb.log(
+                    {
+                        "emb_norm/emb": embedding.abs().mean(),
+                        "emb_norm/hypothesis": hypothesis_embedding.abs().mean(),
+                        "emb_norm/diff": diff_embedding.abs().mean(),
+                        "emb_norm/input_length": attention_mask.shape[1],
+                    }
+                )
+            except:
+                pass
         return (inputs_embeds, attention_mask)

@@ -30,7 +30,8 @@ CHECKPOINT_FOLDERS_DICT = {
     ####################################################################
     # gtr hypothesis model (60 epochs trained) [loss 2.04, bleu ~12.7]:
     #   https://wandb.ai/jack-morris/emb-inv-3/runs/d8319570c0314d95b2a9746f849e6218/overview?workspace=user-jxmorris12
-    "gtr_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/d6312870a6f49dee914198d048ee88f4",
+    # "gtr_msmarco__msl128__100epoch": "/home/jxm3/research/retrieval/inversion/saves/d6312870a6f49dee914198d048ee88f4",
+    "gtr_msmarco__msl128__100epoch": "/home/wentingz/research/vec2text/vec2text/saves/gtr-1",
     # openai hypothesis model [sl32] [still training, loss 1.233, bleu 29...] https://wandb.ai/jack-morris/emb-inv-3/runs/9b5d4aac9b16dad6d4a8c65cbc1a8859?workspace=user-jxmorris12
     "openai_msmarco__msl32__100epoch": "/home/jxm3/research/retrieval/inversion/saves/61becf9bb1d627272cd1923ac4871e73",
     # openai corrector model [sl32] [loss 0.77, bleu 45]
@@ -49,6 +50,9 @@ CHECKPOINT_FOLDERS_DICT = {
     "t5-base___llama-7b___one-million-paired-instructions": "/home/wentingz/research/vec2text/saves/cd8e3e3dec1a79babb508c3edd7fe5d3",
     "t5-base__llama-7b__one-million-paired-instructions": "/home/ubuntu/vec2text/saves/dda9034471bab47f202eb37f5200a272",
     "t5_base__llama-7b__one-million-instructions__suffix__50epoch": "/home/ubuntu/vec2text/saves/d3b76718804c0daa84fa08babebc2f8e",
+
+
+    "t5_base__llama-7b__one-million-instructions__correct__70epoch": "/home/wentingz/research/vec2text/vec2text/saves/logits-corrector-2",
 }
 
 
