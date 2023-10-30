@@ -76,6 +76,7 @@ def load_experiment_and_trainer(
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
+    training_args.no_cuda = not torch.cuda.is_available()
 
     if max_seq_length is not None:
         print(
