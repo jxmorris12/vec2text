@@ -101,15 +101,6 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             hypothesis_embedding += self.training_embedding_noise_level * torch.randn(
                 hypothesis_embedding.shape, device=hypothesis_embedding.device
             )
-
-        # if self.ignore_hypothesis_embedding:
-        #     # For "No Feedback" ablation
-        #     hypothesis_embedding = embedding
-
-        import pdb
-
-        pdb.set_trace()
-
         diff_embedding = embedding - hypothesis_embedding
 
         embedding = embedding.to(self.sequence_weights_1.dtype)
@@ -184,5 +175,4 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
                     "emb_norm/diff": diff_embedding.abs().mean(),
                 }
             )
-        # import pdb; pdb.set_trace()
         return (inputs_embeds, attention_mask)
