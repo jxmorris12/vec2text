@@ -34,7 +34,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 def load_model_and_tokenizers(
     model_name: str, max_seq_length: int
-) -> Tuple[InversionModel, transformers.AutoTokenizer]:
+) -> Tuple[InversionModel, transformers.AutoTokenizer, transformers.AutoTokenizer]:
     embedder, embedder_tokenizer = load_embedder_and_tokenizer(model_name)
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         "t5-small",

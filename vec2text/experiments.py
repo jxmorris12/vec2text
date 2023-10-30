@@ -744,10 +744,10 @@ class CorrectorExperiment(Experiment):
     def load_model(self, inversion_trainer) -> transformers.PreTrainedModel:
         exp = inversion_trainer.args.experiment
         if exp == "inversion_from_logits":
+            self.config.embedder_dim = inversion_trainer.model.embedder_dim
+            self.config.num_repeat_tokens = inversion_trainer.model.num_repeat_tokens
             return CorrectorEncoderFromLogitsModel(
                 config=self.config,
-                embedder_dim=inversion_trainer.model.embedder_dim,
-                num_repeat_tokens=inversion_trainer.model.num_repeat_tokens,
             )
         else:
             return CorrectorEncoderModel(
