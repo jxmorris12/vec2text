@@ -156,7 +156,31 @@ alpha=0.8	 It was the best of times, it was the worst of times, it was the epoch
 alpha=0.9	 It was the best of times, it was the worst of times, it was the age of wisdom, it was the age of incredulity, it was the age of belief, it was the epoch of foolishness
   ```
 
+## Training a model
 
+Most of the code in this repository facilitates training inversion models, which happens in essentially three steps:
+
+1. Training a 'zero-step' model to generate text from embeddings
+2. Using the zero-step model to generate 'hypotheses', the training data for the correction model
+3. Training a correction model conditioned on (true embedding, hypothesis, hypothesis embedding) tuples to generate corrected text
+
+Steps 2 and 3 happen together by simply executing the training script. Our code also supports precomputing hypotheses using DDP, which is useful because hypothesis generation on the full MSMARCO can take quite some time (even a few days) on a single GPU. Also note that you'll need a good amount of disk space; for example, storing full-precision ada-2 embeddings for all 8.8m documents from MSMARCO [takes 54 GB of disk space](https://www.wolframalpha.com/input?i=%288.8+million%29+*+%281536%29+*+%2832+bits%290).
+
+
+### Example: training a GTR corrector
+
+Here's how you might train the zero-step model for GTR:
+```bash
+python run.py --per_device_train_batch_size 128 --per_device_eval_batch_size 128 --max_seq_length 128 --model_name_or_path t5-base --dataset_name msmarco --embedder_model_name gtr_base --num_repeat_tokens 16 --embedder_no_grad True --num_train_epochs 100 --max_eval_samples 500 --eval_steps 20000 --warmup_steps 10000 --bf16=1 --use_wandb=1 --use_frozen_embeddings_as_input True --experiment inversion --lr_scheduler_type constant_with_warmup --exp_group_name oct-gtr --learning_rate 0.001 --output_dir ./saves/gtr-1 --save_steps 2000
+```
+
+Note that there are a lot of options to change things about the data and model architecture. If you want to train the small GTR inverter from the paper, this command will work, but you'll have to reduce the maximum sequence length to 32. Once this model trains, add its path to the file `aliases.py` along with the key `gtr_msmarco__msl128__100epoch` and then run the following command to train the corrector:
+
+```bash
+python run.py --per_device_train_batch_size 32 --per_device_eval_batch_size 32 --max_seq_length 128 --model_name_or_path t5-base --dataset_name msmarco --embedder_model_name gtr_base --num_repeat_tokens 16 --embedder_no_grad True --num_train_epochs 100 --max_eval_samples 500 --eval_steps 20000 --warmup_steps 10000 --bf16=1 --use_wandb=1 --use_frozen_embeddings_as_input True --experiment corrector --lr_scheduler_type constant_with_warmup --exp_group_name oct-gtr --learning_rate 0.001 --output_dir ./saves/gtr-corrector-1 --save_steps 2000 --corrector_model_alias gtr_msmarco__msl128__100epoch
+```
+
+If using DDP, run the same command using `torchrun run.py` instead of `python run.py`. You can upload these models to the HuggingFace using our script by running `python scripts/upload_model.py <model_alias> <model_hub_name>`.
 
 
 ## Pre-trained models
@@ -182,7 +206,7 @@ Our models come in one of two forms: a zero-step 'hypothesizer' model that makes
 
 ### Cite our paper
 
-Please cite our paper!
+please cite our paper!
 
 ```
 @misc{morris2023text,
@@ -195,4 +219,3 @@ Please cite our paper!
 }
 ```
 
-(There will also be an EMNLP citation available soon...)

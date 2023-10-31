@@ -12,6 +12,9 @@ import transformers
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 
+datasets.disable_caching()
+
+
 def emb(
     model: torch.nn.Module, input_ids: torch.Tensor, attention_mask: torch.Tensor
 ) -> torch.Tensor:

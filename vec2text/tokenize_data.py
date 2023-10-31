@@ -113,32 +113,22 @@ def tokenize_function_llama_chat(
 
 
 def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
-    assert "embedder_input_ids" in batch.keys(), f"invalid keys {batch.keys()}"
-    assert "embedder_attention_mask" in batch.keys(), f"invalid keys {batch.keys()}"
+    assert "input_ids" in batch.keys(), f"invalid keys {batch.keys()}"
     assert hasattr(model, "call_embedding_model")
+
+    input_ids = batch["input_ids"]
+    inputs_str = model.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+    emb_input_ids = model.embedder_tokenizer(
+        inputs_str,
+        max_length=model.config.max_seq_length,
+        truncation=True,
+        padding="max_length",
+        return_tensors="pt",
+    ).to(next(model.parameters()).device)
 
     model_device = next(model.parameters()).device
     with torch.no_grad():
         batch["frozen_embeddings"] = model.call_embedding_model(
-            input_ids=torch.tensor(batch["embedder_input_ids"], device=model_device),
-            attention_mask=torch.tensor(
-                batch["embedder_attention_mask"], device=model_device
-            ),
+            **emb_input_ids
         )
     return batch
-
-
-def randomly_truncate_inputs(
-    inputs: Dict[str, torch.Tensor]
-) -> Dict[str, torch.Tensor]:
-    # randomly truncates inputs. assumes last input is a pad token.
-    seq_length = inputs["input_ids"].shape[1]
-    new_length = random.randint(1, seq_length - 1)
-    pos = random.randint(0, seq_length - new_length)
-    truncated_inputs = {k: v[:, pos : pos + new_length] for k, v in inputs.items()}
-    truncated_inputs_with_pad = {
-        k: torch.cat((truncated_inputs[k], inputs[k][:, -1, None]), dim=1)
-        for k, v in inputs.items()
-    }
-    # TODO fix eos and bos?
-    return truncated_inputs_with_pad

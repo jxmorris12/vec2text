@@ -154,10 +154,14 @@ class InversionFromLogitsModel(InversionModel):
                 (suffix_attention_mask, logit_attention_mask), dim=1
             )
         else:
+            embeddings = embeddings.to(self.sequence_weights.dtype)
             embeddings = embeddings.reshape(
                 (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
             )
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
+            embeddings = embeddings.to(
+                next(self.embedding_transform.parameters()).dtype
+            )
             embeddings = self.embedding_transform(embeddings)
             attention_mask = torch.ones(
                 (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
@@ -207,8 +211,7 @@ class InversionFromLogitsModel(InversionModel):
             dtype=embeddings.dtype,
             device=embeddings.device,
         )
-        embeddings = torch.cat((embeddings, zeros), dim=1)
-        return embeddings
+        return torch.cat((embeddings, zeros), dim=1)
 
     def forward(
         self,

@@ -16,15 +16,15 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
     def __init__(
         self,
         config: InversionConfig,
-        embedder_dim: int,
-        num_repeat_tokens: int,
     ):
         super().__init__(config=config)
+        
+        config.embedder_dim = 768 # TODO: Pipe this in.
+        config.num_zeros_to_add = self.num_zeros_to_add = 512 # TODO: Compute this.
+        config.num_repeat_tokens = self.num_repeat_tokens = 42 # TODO: Compute this properly.
 
-        self.embedder_dim = embedder_dim
-        self.num_repeat_tokens = num_repeat_tokens
-
-        bottleneck_dim = embedder_dim
+        self.embedder_dim = config.embedder_dim
+        bottleneck_dim = config.embedder_dim
 
         self.sequence_weights_1 = nn.Parameter(
             torch.randn(
@@ -33,6 +33,9 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             ),
             requires_grad=True,
         )
+        nn.init.xavier_uniform_(self.sequence_weights_1)
+        self.sequence_layernorm_1 = nn.LayerNorm(self.embedder_dim)
+
         self.sequence_weights_2 = nn.Parameter(
             torch.randn(
                 (self.num_repeat_tokens, self.embedder_dim, self.embedder_dim),
@@ -40,6 +43,9 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             ),
             requires_grad=True,
         )
+        self.sequence_layernorm_2 = nn.LayerNorm(self.embedder_dim)
+        nn.init.xavier_uniform_(self.sequence_weights_2)
+
         self.sequence_weights_3 = nn.Parameter(
             torch.randn(
                 (self.num_repeat_tokens, self.embedder_dim, self.embedder_dim),
@@ -47,6 +53,8 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             ),
             requires_grad=True,
         )
+        self.sequence_layernorm_3 = nn.LayerNorm(self.embedder_dim)
+        nn.init.xavier_uniform_(self.sequence_weights_3)
 
         self.embedding_transform_1 = nn.Sequential(
             nn.Linear(self.embedder_dim, bottleneck_dim),
@@ -88,11 +96,8 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             hypothesis_embedding += self.training_embedding_noise_level * torch.randn(
                 hypothesis_embedding.shape, device=hypothesis_embedding.device
             )
-
-        if self.ignore_hypothesis_embedding:
-            # For "No Feedback" ablation
-            hypothesis_embedding = embedding
-
+        embedding = embedding[:, :32256]
+        hypothesis_embedding = hypothesis_embedding[:, :32256]
         diff_embedding = embedding - hypothesis_embedding
 
         embedding = embedding.to(self.sequence_weights_1.dtype)
@@ -100,6 +105,8 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             (embedding.shape[0], self.num_repeat_tokens, self.embedder_dim)
         )
         embedding = torch.einsum("bsd,sdw->bsw", embedding, self.sequence_weights_1)
+        embedding = embedding.to(next(self.sequence_layernorm_1.parameters()).dtype)
+        embedding = self.sequence_layernorm_1(embedding)
         embedding = self.embedding_transform_1(embedding)
         #
         diff_embedding = diff_embedding.to(self.sequence_weights_2.dtype)
@@ -109,6 +116,10 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         diff_embedding = torch.einsum(
             "bsd,sdw->bsw", diff_embedding, self.sequence_weights_2
         )
+        diff_embedding = diff_embedding.to(
+            next(self.sequence_layernorm_2.parameters()).dtype
+        )
+        diff_embedding = self.sequence_layernorm_2(diff_embedding)
         diff_embedding = self.embedding_transform_2(diff_embedding)
         #
         hypothesis_embedding = hypothesis_embedding.to(self.sequence_weights_3.dtype)
@@ -118,6 +129,10 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         hypothesis_embedding = torch.einsum(
             "bsd,sdw->bsw", hypothesis_embedding, self.sequence_weights_3
         )
+        hypothesis_embedding = hypothesis_embedding.to(
+            next(self.sequence_layernorm_3.parameters()).dtype
+        )
+        hypothesis_embedding = self.sequence_layernorm_3(hypothesis_embedding)
         hypothesis_embedding = self.embedding_transform_3(hypothesis_embedding)
         inputs_embeds = self.encoder_decoder.encoder.embed_tokens(hypothesis_input_ids)
         #
@@ -146,4 +161,18 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
             (ones.repeat(1, 4 + 3 * self.num_repeat_tokens), hypothesis_attention_mask),
             dim=1,
         )
+
+        if self.training:
+            import wandb
+            try:
+                wandb.log(
+                    {
+                        "emb_norm/emb": embedding.abs().mean(),
+                        "emb_norm/hypothesis": hypothesis_embedding.abs().mean(),
+                        "emb_norm/diff": diff_embedding.abs().mean(),
+                        "emb_norm/input_length": attention_mask.shape[1],
+                    }
+                )
+            except:
+                pass
         return (inputs_embeds, attention_mask)

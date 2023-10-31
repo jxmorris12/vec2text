@@ -1,7 +1,6 @@
 import functools
 import logging
 import os
-import random
 from typing import Any, Dict, List, Optional, Tuple, Union
 
 import datasets
@@ -18,62 +17,6 @@ from .base import BaseTrainer
 from .inversion import InversionTrainer
 
 logger = logging.getLogger(__name__)
-
-
-def choose_random_tokens(
-    tokens: torch.Tensor, max_len: int, pad_token_id: int
-) -> torch.Tensor:
-    bos_token_id = pad_token_id  # true for t5
-    total_n_tokens = (tokens != pad_token_id).int().sum() - 1
-    tokens, eos_token = tokens[:total_n_tokens], tokens[total_n_tokens].item()
-    assert eos_token == 1  # correct format for t5
-    min_n_tokens = 5
-    if total_n_tokens < min_n_tokens:
-        n_chosen_tokens = total_n_tokens
-        start_idx = 0
-    else:
-        n_chosen_tokens = random.randint(min_n_tokens, total_n_tokens)
-        start_idx = random.randint(0, total_n_tokens - n_chosen_tokens)
-
-    new_tokens = (
-        [bos_token_id]
-        + tokens[start_idx : start_idx + n_chosen_tokens].tolist()
-        + [eos_token]
-    )
-    new_tokens += [pad_token_id] * (max_len - n_chosen_tokens - 1)
-
-    new_tokens = new_tokens[:max_len]
-    assert len(new_tokens) == max_len
-    return torch.tensor(new_tokens, device=tokens.device, dtype=tokens.dtype)
-
-
-def random_mixup(
-    tokens1: torch.Tensor, tokens2: torch.Tensor, max_len: int, pad_token_id: int
-) -> torch.Tensor:
-    tokens1 = choose_random_tokens(tokens1, max_len, pad_token_id)
-    tokens2 = choose_random_tokens(tokens2, max_len, pad_token_id)
-
-    total_n_tokens_1 = (tokens1 != pad_token_id).int().sum() - 1
-    total_n_tokens_2 = (tokens2 != pad_token_id).int().sum() - 1
-
-    split_idx = random.randint(1, total_n_tokens_1)
-    eos_token = torch.tensor([1], dtype=tokens1.dtype, device=tokens1.device)
-    new_tokens = torch.cat(
-        (
-            tokens1[:split_idx],
-            tokens2[1 : total_n_tokens_2 + 1],
-            tokens1[split_idx:],
-            eos_token,
-        )
-    )
-
-    # pad and truncate once more
-    if len(new_tokens) > max_len:
-        new_tokens = new_tokens[:max_len]
-    elif len(new_tokens) < max_len:
-        new_tokens += [pad_token_id] * len(new_tokens)
-
-    return new_tokens
 
 
 class Corrector(BaseTrainer):
@@ -126,20 +69,6 @@ class Corrector(BaseTrainer):
 
         # If set, return closest (in embedding space) hypothesis we see during generation
         self.return_best_hypothesis = False
-
-        # Initialize our model with pre-trained model params
-        # missing_keys, unexpected_keys = self.model.load_state_dict(
-        #     self.inversion_trainer.model.state_dict(), strict=False
-        # )
-        # self.model.embedding_transform_1.load_state_dict(
-        #     self.inversion_trainer.model.embedding_transform.state_dict(),
-        # )
-        # self.model.embedding_transform_2.load_state_dict(
-        #     self.inversion_trainer.model.embedding_transform.state_dict(),
-        # )
-        # self.model.embedding_transform_3.load_state_dict(
-        #     self.inversion_trainer.model.embedding_transform.state_dict(),
-        # )
 
         # Need to train with same device as the inversion model to avoid weird errors.
         assert self.args.fp16 == self.inversion_trainer.args.fp16
@@ -215,7 +144,7 @@ class Corrector(BaseTrainer):
         return ds_inputs
 
     def _preprocess_dataset_hypotheses(
-        self, dataset: datasets.Dataset
+        self, dataset: datasets.Dataset, filter_correct_examples: bool = False
     ) -> Tuple[datasets.Dataset, str]:
         #
         # In each model directory, we store a copy of the dataset with hypotheses
@@ -244,6 +173,21 @@ class Corrector(BaseTrainer):
                 batch_size=(self.args.train_batch_size * 2),
                 desc="Precomputing hypotheses for data",
             )
+
+            if filter_correct_examples:
+                old_length = len(dataset)
+                def embedding_is_not_correct(ex):
+                    return (
+                        ~torch.isclose(
+                            ex["frozen_embeddings"].to(self.args.device), 
+                            ex["hypothesis_embedding"].to(self.args.device)
+                    ).all(dim=1)
+                    ).tolist()
+            
+                dataset = dataset.filter(
+                    embedding_is_not_correct, batched=True, batch_size=1024,
+                )
+                print(f"filtered {old_length} datapoints to {len(dataset)}")
             dataset.save_to_disk(cache_path)
         else:
             logging.info("Loading hypotheses from path %s", cache_path)
@@ -263,10 +207,12 @@ class Corrector(BaseTrainer):
         logger.info("Precomputing frozen embedding & hypotheses before training")
 
         self.train_dataset, train_cache_path = self._preprocess_dataset_hypotheses(
-            dataset=self.train_dataset
+            dataset=self.train_dataset, filter_correct_examples=True
         )
         for k, v in self.eval_dataset.items():
-            self.eval_dataset[k], _ = self._preprocess_dataset_hypotheses(dataset=v)
+            self.eval_dataset[k], _ = self._preprocess_dataset_hypotheses(
+            dataset=v, filter_correct_examples=False
+        )
 
     def _inner_training_loop(self, *args, **kwargs):
         # Don't let tokenizers run in parallel mode.
@@ -429,9 +375,9 @@ class Corrector(BaseTrainer):
                 return_dict_in_generate=True,
             )
             gen_text_ids = outputs.sequences
-            # get scores for sequences
-            # https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075
 
+            # get scores for sequences to compute sequence-level likelihood.
+            # https://discuss.huggingface.co/t/announcement-generation-get-probabilities-for-generated-output/30075
             if "beam_indices" in outputs:
                 with torch.no_grad():
                     transition_scores = (
@@ -646,9 +592,8 @@ class Corrector(BaseTrainer):
             assert (
                 "embedder_input_ids" in inputs
             ), f"cannot generate hypothesis with input keys: {inputs.keys()}"
-            frozen_embeddings = self.get_frozen_embeddings(
-                embedder_input_ids=inputs["embedder_input_ids"],
-                embedder_attention_mask=inputs["embedder_attention_mask"],
+            frozen_embeddings = self.embed_generated_hypothesis(
+                input_ids=inputs["input_ids"]
             )
 
         generation_kwargs = {

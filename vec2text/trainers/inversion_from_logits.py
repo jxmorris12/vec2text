@@ -189,7 +189,6 @@ class InversionFromLogitsTrainer(InversionTrainer):
             <= eos_start_idx[:, None],
             self.model.encoder_decoder.config.pad_token_id,
         )
-        # import pdb; pdb.set_trace()
         return decoder_input_ids
 
     def generate_and_check_length(

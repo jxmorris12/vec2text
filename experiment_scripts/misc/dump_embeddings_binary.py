@@ -44,7 +44,7 @@ def emb_to_binary(emb: np.ndarray) -> np.ndarray:
     return out_arr
 
 
-def parse_args() -> argparse.ArgumentParser:
+def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Get embeddings from a pre-trained model"
     )
