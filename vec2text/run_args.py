@@ -365,7 +365,7 @@ class TrainingArguments(transformers.TrainingArguments):
         os.environ["RAYON_RS_NUM_CPUS"] = str(
             num_workers
         )  # Sets threads for hf tokenizers
-        self.dataloader_num_workers = num_workers
+        self.dataloader_num_workers = 0  # num_workers
         print(f"Set num workers to {num_workers}")
 
         self.dataloader_drop_last = False

@@ -24,7 +24,7 @@ def main():
     args = parser.parse_args()
 
     model = load_model_from_alias(args.alias)
-    model.push_to_hub(args.new_alias, max_shard_size='200MB')
+    model.push_to_hub(args.new_alias, max_shard_size="200MB")
 
 
 if __name__ == "__main__":

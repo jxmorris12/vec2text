@@ -11,7 +11,6 @@ import tqdm
 import transformers
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-
 datasets.disable_caching()
 
 
@@ -106,20 +105,22 @@ def torch_main_worker_finish_first(func: Callable):
 
 def dataset_map_multi_worker(
     dataset: datasets.Dataset, map_fn: Callable, *args, **kwargs
-):
-    if torch.cuda.device_count() <= 1:
+) -> datasets.Dataset:
+    try:
+        rank = torch.distributed.get_rank()
+        world_size = torch.distributed.get_world_size()
+    except (RuntimeError, ValueError):
         return dataset.map(map_fn, *args, **kwargs)
     datasets.disable_caching()
-    rank = torch.distributed.get_rank()
 
     cache_path = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
     ds_shard_filepaths = [
         os.path.join(cache_path, f"{dataset._fingerprint}_subshard_{w}.cache")
-        for w in range(0, torch.cuda.device_count())
+        for w in range(0, world_size)
     ]
     print(f"\tworker {rank} saving sub-shard to {ds_shard_filepaths[rank]}")
     ds_shard = dataset.shard(
-        num_shards=torch.cuda.device_count(),
+        num_shards=world_size,
         index=rank,
         contiguous=True,
     )

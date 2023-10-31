@@ -2,15 +2,16 @@ import random
 from typing import Callable, Dict
 
 import torch
+import transformers
 
 from vec2text.models import InversionModel
 
 
 def tokenize_function(
-    tokenizer,
-    embedder_tokenizer,
-    text_column_name,
-    max_seq_length,
+    tokenizer: transformers.PreTrainedTokenizer,
+    embedder_tokenizer: transformers.PreTrainedTokenizer,
+    text_column_name: str,
+    max_seq_length: int,
     padding: bool = False,
 ) -> Callable[[Dict], Dict]:
     def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
@@ -33,7 +34,7 @@ def tokenize_function(
         ]
         embedder_output = embedder_tokenizer(
             examples[text_column_name],
-            padding=True,
+            padding="max_length",
             truncation=True,
             max_length=max_seq_length,
             return_tensors="pt",
@@ -128,7 +129,5 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
 
     model_device = next(model.parameters()).device
     with torch.no_grad():
-        batch["frozen_embeddings"] = model.call_embedding_model(
-            **emb_input_ids
-        )
+        batch["frozen_embeddings"] = model.call_embedding_model(**emb_input_ids)
     return batch

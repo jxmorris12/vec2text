@@ -176,16 +176,19 @@ class Corrector(BaseTrainer):
 
             if filter_correct_examples:
                 old_length = len(dataset)
+
                 def embedding_is_not_correct(ex):
                     return (
                         ~torch.isclose(
-                            ex["frozen_embeddings"].to(self.args.device), 
-                            ex["hypothesis_embedding"].to(self.args.device)
-                    ).all(dim=1)
+                            ex["frozen_embeddings"].to(self.args.device),
+                            ex["hypothesis_embedding"].to(self.args.device),
+                        ).all(dim=1)
                     ).tolist()
-            
+
                 dataset = dataset.filter(
-                    embedding_is_not_correct, batched=True, batch_size=1024,
+                    embedding_is_not_correct,
+                    batched=True,
+                    batch_size=1024,
                 )
                 print(f"filtered {old_length} datapoints to {len(dataset)}")
             dataset.save_to_disk(cache_path)
@@ -211,8 +214,8 @@ class Corrector(BaseTrainer):
         )
         for k, v in self.eval_dataset.items():
             self.eval_dataset[k], _ = self._preprocess_dataset_hypotheses(
-            dataset=v, filter_correct_examples=False
-        )
+                dataset=v, filter_correct_examples=False
+            )
 
     def _inner_training_loop(self, *args, **kwargs):
         # Don't let tokenizers run in parallel mode.

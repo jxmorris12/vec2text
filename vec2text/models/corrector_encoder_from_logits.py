@@ -18,10 +18,12 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         config: InversionConfig,
     ):
         super().__init__(config=config)
-        
-        config.embedder_dim = 768 # TODO: Pipe this in.
-        config.num_zeros_to_add = self.num_zeros_to_add = 512 # TODO: Compute this.
-        config.num_repeat_tokens = self.num_repeat_tokens = 42 # TODO: Compute this properly.
+
+        config.embedder_dim = 768  # TODO: Pipe this in.
+        config.num_zeros_to_add = self.num_zeros_to_add = 512  # TODO: Compute this.
+        config.num_repeat_tokens = (
+            self.num_repeat_tokens
+        ) = 42  # TODO: Compute this properly.
 
         self.embedder_dim = config.embedder_dim
         bottleneck_dim = config.embedder_dim
@@ -164,6 +166,7 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
 
         if self.training:
             import wandb
+
             try:
                 wandb.log(
                     {

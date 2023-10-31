@@ -200,7 +200,7 @@ class Experiment(abc.ABC):
         last_checkpoint = None
         if (
             os.path.isdir(training_args.output_dir)
-            # and not training_args.overwrite_output_dir
+            and not training_args.overwrite_output_dir
         ):
             last_checkpoint = transformers.trainer_utils.get_last_checkpoint(
                 training_args.output_dir
@@ -244,6 +244,13 @@ class Experiment(abc.ABC):
         all_args.pop("local_rank")
         # print("all_args:", all_args)
         return md5_hash_kwargs(**all_args)
+
+    @property
+    def _world_size(self) -> int:
+        try:
+            return torch.distributed.get_world_size()
+        except (RuntimeError, ValueError):
+            return 1
 
     @property
     def _is_main_worker(self) -> bool:
@@ -332,6 +339,8 @@ class Experiment(abc.ABC):
             tokenizer,
             model=None,
             label_pad_token_id=-100,
+            padding=True,
+            max_length=self.model_args.max_seq_length,
             pad_to_multiple_of=8 if self.training_args.fp16 else None,
         )
 
@@ -365,20 +374,22 @@ class Experiment(abc.ABC):
         tokenize_fn = (
             tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
         )
-        tokenized_datasets = raw_datasets.map(
-            tokenize_fn(
-                tokenizer,
-                embedder_tokenizer,
-                "text",
-                self.model_args.max_seq_length,
-                padding=False,
-            ),
-            batched=True,
-            # num_proc=training_args.dataloader_num_workers,
-            remove_columns=column_names,
-            desc="Running tokenizer on dataset",
-        )
-
+        for key in raw_datasets:
+            raw_datasets[key] = dataset_map_multi_worker(
+                dataset=raw_datasets[key],
+                map_fn=tokenize_fn(
+                    tokenizer,
+                    embedder_tokenizer,
+                    "text",
+                    self.model_args.max_seq_length,
+                    padding=False,
+                ),
+                batched=True,
+                num_proc=(len(os.sched_getaffinity(0)) // self._world_size),
+                remove_columns=column_names,
+                desc="Running tokenizer on dataset",
+            )
+        tokenized_datasets = raw_datasets
         ###########################################################################
         tokenized_datasets["train"].set_format("pt")
         tokenized_datasets["train"] = tokenized_datasets["train"].add_column(
@@ -440,17 +451,22 @@ class Experiment(abc.ABC):
         tokenize_fn = (
             tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
         )
-        val_datasets_dict = val_datasets_dict.map(
-            tokenize_fn(
-                tokenizer,
-                embedder_tokenizer,
-                "text",
-                self.model_args.max_seq_length,
-            ),
-            remove_columns=["text"],
-            batched=True,
-            desc="Running tokenizer on dataset",
-        )
+        for key in val_datasets_dict:
+            val_datasets_dict[key] = dataset_map_multi_worker(
+                dataset=val_datasets_dict[key],
+                map_fn=tokenize_fn(
+                    tokenizer=tokenizer,
+                    embedder_tokenizer=embedder_tokenizer,
+                    text_column_name="text",
+                    max_seq_length=self.model_args.max_seq_length,
+                    padding=False,
+                ),
+                remove_columns=["text"],
+                batched=True,
+                batch_size=1024,
+                num_proc=(len(os.sched_getaffinity(0)) // self._world_size),
+                desc="Running tokenizer on dataset",
+            )
 
         # filter out empty examples (these exist for xsum documents).
         val_datasets_dict = val_datasets_dict.filter(lambda ex: ex["length"] > 1)
