@@ -195,6 +195,14 @@ Our models come in one of two forms: a zero-step 'hypothesizer' model that makes
 2. Log into the model hub using `huggingface-cli login`
 3. From the project root directory, run `python scripts/upload_model.py <model_alias> <hf_alias>` where `<model_alias>` is the key of the model you added to aliases.py and `<hf_alias>` will be the model's name on HuggingFace
 
+### Getting the Natural Questions data
+
+We use the NQ data that was also used to train DPR. You can download it through wget:
+```bash
+wget https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-train.json.gz
+wget https://dl.fbaipublicfiles.com/dpr/data/retriever/biencoder-nq-dev.json.gz
+```
+
 
 ### pre-commit
 
