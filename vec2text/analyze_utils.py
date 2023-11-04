@@ -12,6 +12,7 @@ from transformers.trainer_utils import get_last_checkpoint
 
 import vec2text
 from vec2text import experiments
+from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -148,11 +149,11 @@ def args_from_config(args_cls, config):
 
 
 def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 1000):
-    model = vec2text.models.InversionFromLogitsModel.from_pretrained(name)
+    config = InversionConfig.from_pretrained(name)
 
-    model_args = args_from_config(ModelArguments, model.config)
-    data_args = args_from_config(DataArguments, model.config)
-    training_args = args_from_config(TrainingArguments, model.config)
+    model_args = args_from_config(ModelArguments, config)
+    data_args = args_from_config(DataArguments, config)
+    training_args = args_from_config(TrainingArguments, config)
 
     data_args.use_less_data = use_less_data
     ########################################################################
@@ -162,15 +163,15 @@ def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 
     training_args.local_rank = -1  # Don't load in DDP
     training_args.distributed_state = PartialState()
     training_args.deepspeed_plugin = None  # For backwards compatibility
-    ########################################################################
-    training_args.dataloader_num_workers = 0  # no multiprocessing :)
+    # training_args.dataloader_num_workers = 0  # no multiprocessing :)
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
+    ########################################################################
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
-    trainer.model = model
+    trainer.model = trainer.model.__class__.from_pretrained(name)
     return experiment, trainer
 
 
