@@ -10,7 +10,6 @@ import transformers
 from transformers import HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 
-import vec2text
 from vec2text import experiments
 from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
@@ -167,6 +166,7 @@ def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
+    training_args.output_dir = "saves/" + name.replace("/", "__")
     ########################################################################
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)

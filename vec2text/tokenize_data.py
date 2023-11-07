@@ -1,4 +1,3 @@
-import random
 from typing import Callable, Dict
 
 import torch
@@ -127,7 +126,6 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
         return_tensors="pt",
     ).to(next(model.parameters()).device)
 
-    model_device = next(model.parameters()).device
     with torch.no_grad():
         batch["frozen_embeddings"] = model.call_embedding_model(**emb_input_ids)
     return batch
