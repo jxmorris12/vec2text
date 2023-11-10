@@ -10,8 +10,7 @@ vec2text.egg-info/
 
 embeddings/
 logs/
-notebooks/
-notebooks_logits/
+notebook*/
 msmarco_msl128_hypotheses/
 saves/
 slurm-scripts/

@@ -51,14 +51,21 @@ CHECKPOINT_FOLDERS_DICT = {
     "t5-base__llama-7b__one-million-paired-instructions": "/home/ubuntu/vec2text/saves/dda9034471bab47f202eb37f5200a272",
     "t5_base__llama-7b__one-million-instructions__suffix__50epoch": "/home/ubuntu/vec2text/saves/d3b76718804c0daa84fa08babebc2f8e",
     "t5_base__llama-7b__one-million-instructions__correct__70epoch": "/home/wentingz/research/vec2text/vec2text/saves/logits-corrector-2",
+
+    "t5-base___llama-7b___one-million-instructions__correct": "/home/wentingz/research/vec2text/vec2text/saves/logits-corrector-4",
 }
 
 
 def load_experiment_and_trainer_from_alias(
     alias: str, max_seq_length: int = None, use_less_data: int = None
 ):  # -> trainers.InversionTrainer:
-    args_str = ARGS_DICT.get(alias)
-    checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
+    try:
+        args_str = ARGS_DICT.get(alias)
+        checkpoint_folder = CHECKPOINT_FOLDERS_DICT[alias]
+    except KeyError:
+        print(f"{alias} not found in aliases.py, using as checkpoint folder")
+        args_str = None
+        checkpoint_folder = alias
     print(f"loading alias {alias} from {checkpoint_folder}...")
     experiment, trainer = vec2text.analyze_utils.load_experiment_and_trainer(
         checkpoint_folder,

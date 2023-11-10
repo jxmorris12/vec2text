@@ -5,9 +5,11 @@ import random
 from typing import Dict, List, Set
 
 import datasets
+import torch
 import tqdm
 
 from vec2text.run_args import DataArguments
+from vec2text.utils import dataset_map_multi_worker
 
 DPR_PATH = os.environ.get(
     "VEC2TEXT_DPR_PATH",
@@ -105,11 +107,21 @@ def create_ompi_ex(ex: Dict[str, str]) -> Dict[str, str]:
     return ex
 
 
+def get_world_size() -> int:
+    try:
+        return torch.distributed.get_world_size()
+    except (RuntimeError, ValueError):
+        return 1
+
+
 def load_one_million_paired_instructions() -> datasets.Dataset:
     # has only "train" split, and "system" (system prompt)
     # and "user" (user input) columns
     dataset_dict = datasets.load_dataset("wentingzhao/one-million-paired-instructions")
-    dataset_dict = dataset_dict.map(create_ompi_ex)
+    dataset_dict = dataset_map_multi_worker(
+        dataset_dict, map_fn=create_ompi_ex,
+        num_proc=(len(os.sched_getaffinity(0)) // get_world_size())
+    )
 
     return dataset_dict["train"]
 

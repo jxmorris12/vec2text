@@ -160,9 +160,9 @@ class Corrector(BaseTrainer):
         assert os.path.exists(cache_dir)
         ####
         cache_path = os.path.join(cache_dir, f"{dataset._fingerprint}_hypotheses.cache")
+        print(f"(checking cache_path = {cache_path})")
         if not os.path.exists(cache_path):
             print(f"\t[{dataset.builder_name}] Saving hypotheses to path {cache_path}")
-
             dataset = dataset_map_multi_worker(
                 dataset=dataset,
                 map_fn=functools.partial(
@@ -170,7 +170,7 @@ class Corrector(BaseTrainer):
                     collator=self.data_collator,
                 ),
                 batched=True,
-                batch_size=(self.args.train_batch_size * 2),
+                batch_size=(self.args.train_batch_size * 8),
                 desc="Precomputing hypotheses for data",
             )
 

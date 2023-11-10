@@ -762,6 +762,9 @@ class CorrectorExperiment(Experiment):
         if exp == "inversion_from_logits":
             self.config.embedder_dim = inversion_trainer.model.embedder_dim
             self.config.num_repeat_tokens = inversion_trainer.model.num_repeat_tokens
+            # return CorrectorEncoderFromLogitsModel.from_pretrained(
+            #     "/home/wentingz/research/vec2text/vec2text/saves/corrector-llama-norm100-1/checkpoint-240000"
+            # )
             return CorrectorEncoderFromLogitsModel(
                 config=self.config,
             )
