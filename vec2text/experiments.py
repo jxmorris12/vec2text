@@ -319,7 +319,7 @@ class Experiment(abc.ABC):
     def load_tokenizer(self) -> transformers.PreTrainedTokenizer:
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             self.model_args.model_name_or_path,
-            padding=True,
+            padding="max_length",
             truncation="max_length",
             max_length=self.model_args.max_seq_length,
         )
@@ -339,7 +339,7 @@ class Experiment(abc.ABC):
             tokenizer,
             model=None,
             label_pad_token_id=-100,
-            padding=True,
+            padding="max_length",
             max_length=self.model_args.max_seq_length,
             pad_to_multiple_of=8 if self.training_args.fp16 else None,
         )

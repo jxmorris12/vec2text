@@ -102,7 +102,7 @@ def invert_strings(
         return_tensors="pt",
         max_length=128,
         truncation=True,
-        padding=True,
+        padding="max_length",
     )
     inputs = inputs.to(device)
     with torch.no_grad():

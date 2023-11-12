@@ -229,7 +229,7 @@ def load_encoder_decoder(
 def load_tokenizer(name: str, max_length: int) -> transformers.PreTrainedTokenizer:
     tokenizer = transformers.AutoTokenizer.from_pretrained(
         name,
-        padding=True,
+        padding="max_length",
         truncation="max_length",
         max_length=max_length,
     )

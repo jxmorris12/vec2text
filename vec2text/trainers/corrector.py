@@ -160,9 +160,9 @@ class Corrector(BaseTrainer):
         assert os.path.exists(cache_dir)
         ####
         cache_path = os.path.join(cache_dir, f"{dataset._fingerprint}_hypotheses.cache")
-        print(f"(checking cache_path = {cache_path})")
         if not os.path.exists(cache_path):
             print(f"\t[{dataset.builder_name}] Saving hypotheses to path {cache_path}")
+
             dataset = dataset_map_multi_worker(
                 dataset=dataset,
                 map_fn=functools.partial(
@@ -170,7 +170,7 @@ class Corrector(BaseTrainer):
                     collator=self.data_collator,
                 ),
                 batched=True,
-                batch_size=(self.args.train_batch_size * 8),
+                batch_size=(self.args.train_batch_size * 2),
                 desc="Precomputing hypotheses for data",
             )
 
@@ -577,12 +577,11 @@ class Corrector(BaseTrainer):
         inputs_str = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
         emb_input_ids = self.embedder_tokenizer(
             inputs_str,
-            max_length=input_ids.shape[1],
+            max_length=self.model.config.max_seq_length,
             truncation=True,
             padding="max_length",
             return_tensors="pt",
         ).to(input_ids.device)
-
         return self.get_frozen_embeddings(
             embedder_input_ids=emb_input_ids.input_ids,
             embedder_attention_mask=emb_input_ids.attention_mask,

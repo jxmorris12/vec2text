@@ -96,7 +96,7 @@ def tokenize_function_llama_chat(
                     examples["prefix"], examples["suffix"]
                 )
             ],
-            padding=True,
+            padding="max_length",
             truncation=True,
             max_length=max_seq_length,
             return_tensors="pt",

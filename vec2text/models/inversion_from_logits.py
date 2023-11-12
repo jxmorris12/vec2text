@@ -34,16 +34,15 @@ class InversionFromLogitsModel(InversionModel):
         self.embedder_is_decoder = True
         bottleneck_dim = self.bottleneck_dim
 
-        # TODO: Make prettier & remove hardcoded values
         embedder_dim = self.embedder_dim
-        self.num_zeros_to_add = embedder_dim - (
-            (self.embedder.config.vocab_size + embedder_dim) % embedder_dim
+        self.num_zeros_to_add = encoder_hidden_dim - (
+            (self.embedder.config.vocab_size + encoder_hidden_dim) % encoder_hidden_dim
         )
         self.num_repeat_tokens = round(
-            (self.embedder.config.vocab_size + self.num_zeros_to_add) / embedder_dim
+            (self.embedder.config.vocab_size + self.num_zeros_to_add) / encoder_hidden_dim
         )
         self.embedding_transform = nn.Sequential(
-            nn.Linear(self.embedder_dim, bottleneck_dim),
+            nn.Linear(encoder_hidden_dim, bottleneck_dim),
             nn.Dropout(self.encoder_decoder.config.dropout_rate),
             nn.GELU(),
             nn.Linear(bottleneck_dim, encoder_hidden_dim),
@@ -56,10 +55,19 @@ class InversionFromLogitsModel(InversionModel):
             )
         self.sequence_weights = nn.Parameter(
             torch.randn(
-                (self.num_repeat_tokens, self.embedder_dim, self.embedder_dim),
+                (self.num_repeat_tokens, encoder_hidden_dim, encoder_hidden_dim),
                 dtype=torch.float32,
             ),
             requires_grad=True,
+        )
+
+        self.unigram_beta = 0.01 # How much to update unigram with each batch
+        self.unigram = nn.Parameter(
+            torch.zeros(
+                (1, self.embedder.config.vocab_size + self.num_zeros_to_add),
+                dtype=torch.float32,
+            ),
+            requires_grad=False,
         )
         self._zero_except_topk = vars(config).get("embedding_zero_except_topk")
         print("Set zero-except-top-K value =", self._zero_except_topk)
@@ -100,6 +108,15 @@ class InversionFromLogitsModel(InversionModel):
             )
 
         embeddings = embeddings.to(self.sequence_weights.dtype)
+
+        if self.training:
+            # Update unigram.
+            unigram_batch = embeddings.mean(dim=0, keepdim=True)
+            self.unigram.data = (
+                self.unigram.data * (1 - self.unigram_beta) +
+                unigram_batch * (self.unigram_beta)
+            )
+        embeddings -= self.unigram
 
         if self._zero_except_topk is not None:
             embeddings = zero_embedding_except_topk(
@@ -156,7 +173,7 @@ class InversionFromLogitsModel(InversionModel):
         else:
             embeddings = embeddings.to(self.sequence_weights.dtype)
             embeddings = embeddings.reshape(
-                (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
+                (embeddings.shape[0], self.num_repeat_tokens, self.encoder_hidden_dim)
             )
             embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
             embeddings = embeddings.to(
@@ -180,7 +197,11 @@ class InversionFromLogitsModel(InversionModel):
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
         B = len(attention_mask)
-        logits = outputs.logits[torch.arange(B), attention_mask.sum(1) - 1]
+
+        if isinstance(outputs, torch.Tensor):
+            return outputs # preprocessed outputs from MockEmbedder
+        else:
+            logits = outputs.logits[torch.arange(B), attention_mask.sum(1) - 1]
 
         logit_filter_value = logits.min()
 

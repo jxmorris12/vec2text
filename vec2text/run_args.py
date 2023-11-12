@@ -348,6 +348,15 @@ class TrainingArguments(transformers.TrainingArguments):
             )
         },
     )
+    ddp_find_unused_parameters: Optional[bool] = field(
+        default=False,
+        metadata={
+            "help": (
+                "When using distributed training, the value of the flag `find_unused_parameters` passed to "
+                "`DistributedDataParallel`."
+            )
+        },
+    )
 
     include_inputs_for_metrics: bool = True
 
