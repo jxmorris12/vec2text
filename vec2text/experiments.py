@@ -49,7 +49,9 @@ logger = logging.getLogger(__name__)
 
 # We maintain our own cache because huggingface datasets caching
 # doesn't always work properly.
-DATASET_CACHE_PATH = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
+DATASET_CACHE_PATH = os.environ.get(
+    "VEC2TEXT_CACHE", os.path.expanduser("~/.cache/inversion")
+)
 
 
 # Noisy compilation from torch.compile
