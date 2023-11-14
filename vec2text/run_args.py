@@ -285,6 +285,7 @@ class TrainingArguments(transformers.TrainingArguments):
             "choices": [
                 "inversion",  # our model: projects and feeds to encoder-decoder
                 "inversion_from_logits",
+                "inversion_from_logits_emb",
                 "inversion_decoder_only",  # baseline: use single embedding as input to a decoder
                 "inversion_bow",
                 "inversion_na",

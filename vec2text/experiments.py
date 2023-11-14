@@ -19,6 +19,7 @@ from vec2text.models import (
     CorrectorEncoderFromLogitsModel,
     CorrectorEncoderModel,
     InversionFromLogitsModel,
+    InversionFromLogitsEmbModel,
     InversionModel,
     InversionModelBagOfWords,
     InversionModelDecoderOnly,
@@ -651,9 +652,14 @@ class InversionFromLogitsExperiment(InversionExperiment):
         return "emb-inv-logits-1"
 
     def load_model(self) -> transformers.PreTrainedModel:
-        return InversionFromLogitsModel(
-            config=self.config,
-        )
+        if self.training_args.experiment == "inversion_from_logits_emb":
+            return InversionFromLogitsEmbModel(
+                config=self.config
+            )
+        else:
+            return InversionFromLogitsModel(
+                config=self.config,
+            )
 
 
 class InversionExperimentDecoderOnly(InversionExperiment):
@@ -778,6 +784,7 @@ EXPERIMENT_CLS_MAP = {
     "inversion": InversionExperiment,
     "inversion_decoder_only": InversionExperimentDecoderOnly,
     "inversion_from_logits": InversionFromLogitsExperiment,
+    "inversion_from_logits_emb": InversionFromLogitsExperiment,
     "corrector": CorrectorExperiment,
     "corrector_encoder": CorrectorExperiment,  # backwards-compatible; does same thing as just 'corrector'
     #

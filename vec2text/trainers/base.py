@@ -32,7 +32,10 @@ def preprocess_logits_for_metrics(logits, labels):
 
 
 def sem(L: List[float]) -> float:
-    return scipy.stats.sem(np.array(L))
+    result = scipy.stats.sem(np.array(L))
+    if isinstance(result, np.ndarray):
+        return result.mean().item()
+    return result
 
 
 def mean(L: Union[List[int], List[float]]) -> float:
