@@ -6,31 +6,32 @@ import transformers
 
 from vec2text.models.config import InversionConfig
 from vec2text.models.inversion_from_logits import InversionFromLogitsModel
+from vec2text.tokenize_data import get_tokenizer_mapping
 
 
 class InversionFromLogitsEmbModel(InversionFromLogitsModel):
     def __init__(self, config: InversionConfig):
         super().__init__(config=config)
         self.embedding_proj = nn.Sequential(
-            nn.Linear(self.embedder_dim, self.encoder_hidden_dim),
+            nn.Linear(self.encoder_hidden_dim, self.embedder_dim),
             nn.GELU(),
-            nn.Linear(self.encoder_hidden_dim, self.encoder_hidden_dim),
+            nn.Linear(self.embedder_dim, self.encoder_hidden_dim),
         )
-        self.num_tokens = num_tokens = 32
+        word_embeddings = self.encoder_decoder.encoder.embed_tokens.weight.detach().clone()
+        self.num_tokens = num_tokens = 64
         self.num_zeros_to_add = num_zeros_to_add = (
-            (num_tokens - (self.embedder_dim % num_tokens)) % num_tokens
+            (num_tokens - (word_embeddings.shape[0] % num_tokens)) % num_tokens
         )
-        word_embeddings = self.embedder.model.embed_tokens.weight.detach().clone()
         word_embedding_zeros = torch.zeros(
-            (num_zeros_to_add, self.embedder_dim),
+            (num_zeros_to_add, word_embeddings.shape[1]),
             dtype=torch.float32, device=word_embeddings.device)
         padded_word_embeddings = torch.cat((
             word_embeddings, word_embedding_zeros
         ), dim=0)
         word_embeddings = padded_word_embeddings.reshape(
-            (num_tokens, -1, self.embedder_dim)
+            (num_tokens, -1, word_embeddings.shape[1])
         )
-        self.word_embeddings =  nn.Parameter(
+        self.word_embeddings = nn.Parameter(
             word_embeddings, requires_grad=False,
         )
 
@@ -39,11 +40,16 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         self.unigram_beta = 0.01 # How much to update unigram with each batch
         self.unigram = nn.Parameter(
             torch.zeros(
-                (1, self.embedder.config.vocab_size + self.num_zeros_to_add),
+                (1, word_embeddings.shape[1]),
                 dtype=torch.float32,
             ),
             requires_grad=False,
         )   
+        self.tokenizer_mapping, self.tokenizer_mapping_weight = get_tokenizer_mapping(
+            config.embedder_model_name, 
+            config.model_name_or_path, 
+            self.encoder_decoder.config.vocab_size,
+        )
 
     def embed_and_project(
         self,
@@ -70,17 +76,38 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         num_tokens = self.num_tokens
         # Remove any extraneous zeros
         embeddings = embeddings[:, :self.embedder_vocab_size] # (B, V)
+        
+        # Map embeddings to our space.
+        old_embeddings = embeddings.clone() # TMP
+        batch_size = embeddings.shape[0]
+        new_embeddings = torch.zeros(
+            (batch_size, self.encoder_decoder.config.vocab_size), 
+            device=embeddings.device, 
+            dtype=torch.double,
+        )
+        mapping = self.tokenizer_mapping[None].repeat((batch_size, 1)).to(new_embeddings.device)
+        embeddings = new_embeddings.scatter_add(
+            dim=1, index=mapping, src=embeddings.exp().to(torch.double)
+        ).log()
+        embeddings = embeddings.nan_to_num() # replace empty values from -inf to tiny neg number
 
         if self.training:
-            # Update unigram.
             unigram_batch = embeddings.mean(dim=0, keepdim=True)
-            self.unigram.data = (
-                self.unigram.data * (1 - self.unigram_beta) +
-                unigram_batch * (self.unigram_beta)
-            )
-        embeddings -= self.unigram
+            # Update unigram.
+            if self.unigram.sum() == 0:
+                print("INFO: resetting unigram.")
+                self.unigram.data = unigram_batch
+            else:
+                self.unigram.data = (
+                    self.unigram.data * (1 - self.unigram_beta) +
+                    unigram_batch * (self.unigram_beta)
+                )
+        old_embeddings2 = embeddings.clone() # TMP
+        embeddings = (embeddings - self.unigram)
+        embeddings = embeddings.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
 
-        batch_size = embeddings.shape[0]
+        breakpoint()
+
         logits_zeros = torch.zeros(
             (batch_size, self.num_zeros_to_add), 
             dtype=embeddings.dtype, 
@@ -90,9 +117,7 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
             (embeddings, logits_zeros), dim=1
         ).to(self.sequence_weights.dtype)
         logits = logits.reshape((batch_size, num_tokens, -1))
-        # logits = logits.softmax(dim=-1) # softmax for weighted sum
 
-        # TODO compute cross-vocab alignment, etc.
         with torch.no_grad():
             # Minibatch 
             embeddings_list = []

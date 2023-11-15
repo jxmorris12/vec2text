@@ -1,5 +1,7 @@
+from typing import Callable, Dict, Tuple
+
+import collections
 import random
-from typing import Callable, Dict
 
 import torch
 import transformers
@@ -131,3 +133,38 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
     with torch.no_grad():
         batch["frozen_embeddings"] = model.call_embedding_model(**emb_input_ids)
     return batch
+
+
+def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
+    """Computes the mapping from token outputs in `lm`'s vocabulary to those in `inverter's
+    vocabulary. Makes some assumptions about spacing.
+    """
+    lm_tokenizer = transformers.AutoTokenizer.from_pretrained(lm)
+    inverter_tokenizer = transformers.AutoTokenizer.from_pretrained(inverter)
+
+    lm_vocab = lm_tokenizer.vocab
+    inverter_vocab = inverter_tokenizer.vocab
+
+    mapping = torch.zeros(len(lm_vocab), dtype=torch.long)
+    for k, idx in lm_tokenizer.vocab.items():
+        # We replace space tokens with nothing and allow the call to
+        # inverter_tokenizer.decode to determine this. We also
+        # filter out 2 and 3 as first tokens which are extremely common
+        # when the T5 tokenizer processes unicode. (These are hacks
+        # specific to the LLAMA-T5 lm-inverter pairing, and it would
+        # be better to find an automated wa to do this later.)
+        mapping[idx] = inverter_tokenizer.encode(k.replace("▁", " "))[0]
+        if mapping[idx] in [2, 3]:
+            mapping[idx] = inverter_tokenizer.encode(k.replace("▁", " "))[1]
+    
+    preservation = len(set(mapping.tolist())) / len(lm_vocab)
+    weight = torch.zeros(inverter_vocab_size, dtype=torch.long)
+    for k,v in collections.Counter(mapping.tolist()).items():
+        weight[k] += v
+
+    weight = (1.0 / weight.to(torch.double)).to(torch.float32)
+    weight = weight.nan_to_num(
+        nan=1.0, posinf=1.0, neginf=1.0
+    )
+    print(f"Mapped tokenizer {lm} to {inverter}. Preserved {preservation*100:.1f}% of unique tokens.")
+    return mapping, weight
