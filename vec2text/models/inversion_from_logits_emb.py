@@ -45,7 +45,7 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
             ),
             requires_grad=False,
         )   
-        self.tokenizer_mapping, self.tokenizer_mapping_weight = get_tokenizer_mapping(
+        self.tokenizer_mapping = get_tokenizer_mapping(
             config.embedder_model_name, 
             config.model_name_or_path, 
             self.encoder_decoder.config.vocab_size,
@@ -78,7 +78,6 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         embeddings = embeddings[:, :self.embedder_vocab_size] # (B, V)
         
         # Map embeddings to our space.
-        old_embeddings = embeddings.clone() # TMP
         batch_size = embeddings.shape[0]
         new_embeddings = torch.zeros(
             (batch_size, self.encoder_decoder.config.vocab_size), 
@@ -87,7 +86,7 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         )
         mapping = self.tokenizer_mapping[None].repeat((batch_size, 1)).to(new_embeddings.device)
         embeddings = new_embeddings.scatter_add(
-            dim=1, index=mapping, src=embeddings.exp().to(torch.double)
+            dim=1, index=mapping, src=embeddings.to(torch.double).exp()
         ).log()
         embeddings = embeddings.nan_to_num() # replace empty values from -inf to tiny neg number
 
@@ -102,11 +101,8 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
                     self.unigram.data * (1 - self.unigram_beta) +
                     unigram_batch * (self.unigram_beta)
                 )
-        old_embeddings2 = embeddings.clone() # TMP
         embeddings = (embeddings - self.unigram)
         embeddings = embeddings.nan_to_num(nan=0.0, posinf=0.0, neginf=0.0)
-
-        breakpoint()
 
         logits_zeros = torch.zeros(
             (batch_size, self.num_zeros_to_add), 

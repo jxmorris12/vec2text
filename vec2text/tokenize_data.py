@@ -135,7 +135,7 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
     return batch
 
 
-def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> Tuple[torch.Tensor, torch.Tensor]:
+def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> torch.Tensor:
     """Computes the mapping from token outputs in `lm`'s vocabulary to those in `inverter's
     vocabulary. Makes some assumptions about spacing.
     """
@@ -158,13 +158,5 @@ def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> T
             mapping[idx] = inverter_tokenizer.encode(k.replace("▁", " "))[1]
     
     preservation = len(set(mapping.tolist())) / len(lm_vocab)
-    weight = torch.zeros(inverter_vocab_size, dtype=torch.long)
-    for k,v in collections.Counter(mapping.tolist()).items():
-        weight[k] += v
-
-    weight = (1.0 / weight.to(torch.double)).to(torch.float32)
-    weight = weight.nan_to_num(
-        nan=1.0, posinf=1.0, neginf=1.0
-    )
     print(f"Mapped tokenizer {lm} to {inverter}. Preserved {preservation*100:.1f}% of unique tokens.")
-    return mapping, weight
+    return mapping
