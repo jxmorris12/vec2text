@@ -18,6 +18,7 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
             nn.Linear(self.embedder_dim, self.encoder_hidden_dim),
         )
         word_embeddings = self.encoder_decoder.encoder.embed_tokens.weight.detach().clone()
+        inverter_vocab_size = word_embeddings.shape[0]
         self.num_tokens = num_tokens = 64
         self.num_zeros_to_add = num_zeros_to_add = (
             (num_tokens - (word_embeddings.shape[0] % num_tokens)) % num_tokens
@@ -40,7 +41,7 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         self.unigram_beta = 0.01 # How much to update unigram with each batch
         self.unigram = nn.Parameter(
             torch.zeros(
-                (1, word_embeddings.shape[1]),
+                (1, inverter_vocab_size),
                 dtype=torch.float32,
             ),
             requires_grad=False,
