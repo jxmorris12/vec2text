@@ -26,6 +26,7 @@ class InversionFromLogitsTrainer(InversionTrainer):
     ]  # from chatGPT
 
     def generate(self, inputs: Dict, generation_kwargs: Dict) -> torch.Tensor:
+        print("generate with method:", self.generation_method)
         if self.generation_method == "suffix_ensemble":
             return self.generate_suffix_ensemble(
                 inputs=inputs,

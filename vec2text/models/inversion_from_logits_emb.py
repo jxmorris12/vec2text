@@ -76,7 +76,7 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         
         num_tokens = self.num_tokens
         # Remove any extraneous zeros
-        embeddings = embeddings[:, :self.embedder_vocab_size] # (B, V)
+        embeddings = embeddings[:, :self.tokenizer_mapping.numel()] # (B, V)
         
         # Map embeddings to our space.
         batch_size = embeddings.shape[0]
