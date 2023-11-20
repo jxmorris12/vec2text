@@ -258,8 +258,6 @@ class InversionModel(transformers.PreTrainedModel):
             frozen_embeddings=inputs.get("frozen_embeddings"),
         )
 
-        print("InversionModel generate:", generation_kwargs)
-
         if "decoder_input_ids" in inputs:
             return self.encoder_decoder.generate(
                 # required: input embeddings

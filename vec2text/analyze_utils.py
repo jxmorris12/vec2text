@@ -167,10 +167,15 @@ def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
+    ########################################################################
+    if not torch.cuda.is_available():
+        training_args.device = 'cpu'
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
-    return experiment, experiment.load_trainer()
-
+    trainer = experiment.load_trainer()
+    trainer.model = trainer.model.__class__.from_pretrained(name)
+    trainer.model.to(training_args.device)
+    return experiment, trainer
 
 def load_gpt_fewshot_baseline_trainer(
     dataset_name: str = "one_million_instructions",
