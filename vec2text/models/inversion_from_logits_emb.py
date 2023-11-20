@@ -54,10 +54,9 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
 
     def embed_and_project(
         self,
-        embedder_input_ids: Optional[torch.Tensor],
-        embedder_attention_mask: Optional[torch.Tensor],
+        input_ids: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         frozen_embeddings: Optional[torch.Tensor] = None,
-        suffix_ids: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if frozen_embeddings is not None:
             embeddings = frozen_embeddings
@@ -65,13 +64,13 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
         elif self.embedder_no_grad:
             with torch.no_grad():
                 embeddings = self.call_embedding_model(
-                    input_ids=embedder_input_ids,
-                    attention_mask=embedder_attention_mask,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
                 )
         else:
             embeddings = self.call_embedding_model(
-                input_ids=embedder_input_ids,
-                attention_mask=embedder_attention_mask,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
             )
         
         num_tokens = self.num_tokens
@@ -85,7 +84,8 @@ class InversionFromLogitsEmbModel(InversionFromLogitsModel):
             device=embeddings.device, 
             dtype=torch.double,
         )
-        mapping = self.tokenizer_mapping[None].repeat((batch_size, 1)).to(new_embeddings.device)
+        mapping = self.tokenizer_mapping[None].repeat(
+            (batch_size, 1)).to(new_embeddings.device)
         embeddings = new_embeddings.scatter_add(
             dim=1, index=mapping, src=embeddings.to(torch.double).exp()
         ).log()

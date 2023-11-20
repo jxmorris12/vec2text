@@ -1,5 +1,7 @@
 from typing import Dict, Optional, Tuple
 
+import copy
+
 import torch
 import torch.nn as nn
 import transformers
@@ -47,12 +49,6 @@ class InversionFromLogitsModel(InversionModel):
             nn.GELU(),
             nn.Linear(bottleneck_dim, encoder_hidden_dim),
         )
-        if self.config.suffix_conditioning:
-            self.suffix_transform = nn.Sequential(
-                nn.Linear(encoder_hidden_dim, bottleneck_dim),
-                nn.GELU(),
-                nn.Linear(bottleneck_dim, encoder_hidden_dim),
-            )
         self.sequence_weights = nn.Parameter(
             torch.randn(
                 (self.num_repeat_tokens, encoder_hidden_dim, encoder_hidden_dim),
@@ -82,15 +78,24 @@ class InversionFromLogitsModel(InversionModel):
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
         embedder = self.embedder
-        model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
-        return self._process_embedder_output(model_output, attention_mask)
+
+        inputs_str = self.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
+        emb_input_ids = self.embedder_tokenizer(
+            inputs_str,
+            max_length=self.config.max_seq_length,
+            truncation=True,
+            padding="max_length",
+            return_tensors="pt",
+        ).to(next(self.parameters()).device)
+
+        model_output = embedder(**emb_input_ids)
+        return self._process_embedder_output(model_output, emb_input_ids.attention_mask)
 
     def embed_and_project(
         self,
-        embedder_input_ids: Optional[torch.Tensor],
-        embedder_attention_mask: Optional[torch.Tensor],
+        input_ids: Optional[torch.Tensor],
+        attention_mask: Optional[torch.Tensor],
         frozen_embeddings: Optional[torch.Tensor] = None,
-        suffix_ids: Optional[torch.Tensor] = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         if frozen_embeddings is not None:
             embeddings = frozen_embeddings
@@ -98,13 +103,13 @@ class InversionFromLogitsModel(InversionModel):
         elif self.embedder_no_grad:
             with torch.no_grad():
                 embeddings = self.call_embedding_model(
-                    input_ids=embedder_input_ids,
-                    attention_mask=embedder_attention_mask,
+                    input_ids=input_ids,
+                    attention_mask=attention_mask,
                 )
         else:
             embeddings = self.call_embedding_model(
-                input_ids=embedder_input_ids,
-                attention_mask=embedder_attention_mask,
+                input_ids=input_ids,
+                attention_mask=attention_mask,
             )
 
         embeddings = embeddings.to(self.sequence_weights.dtype)
@@ -126,63 +131,18 @@ class InversionFromLogitsModel(InversionModel):
                 default_val=-30.0,
             )
 
-        if self.config.suffix_conditioning:
-            if suffix_ids is None:
-                suffix_ids = (
-                    torch.ones(
-                        (len(embeddings), 1), dtype=torch.long, device=self.device
-                    )
-                    * self.encoder_decoder.config.eos_token_id
-                )
-
-            # print("suffix_ids =", suffix_ids)
-            assert len(suffix_ids) == len(
-                embeddings
-            ), f"got {len(suffix_ids)} suffixes and {len(embeddings)} embeddings?"
-            #
-            # Get embeddings for each token in suffix.
-            #
-            suffix_attention_mask = (
-                suffix_ids != self.encoder_decoder.config.pad_token_id
-            ).int()
-            # add pad token so we can shift.
-            # print("suffix_ids:", suffix_ids)
-            suffix_embeddings = self.encoder_decoder.encoder.embed_tokens(suffix_ids)
-            suffix_embeddings = self.suffix_transform(suffix_embeddings)
-            #
-            # Get embeddings for each next-token logit from suffix.
-            #
-            embeddings = embeddings.reshape(
-                (embeddings.shape[0], self.num_repeat_tokens, self.embedder_dim)
-            )
-            embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
-            embeddings = self.embedding_transform(embeddings)
-            logit_attention_mask = torch.ones(
-                (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
-            )
-            #
-            # TODO add positional embeddings :-)
-            #
-            embeddings = torch.cat(
-                (suffix_embeddings, embeddings),
-                dim=1,
-            )
-            attention_mask = torch.cat(
-                (suffix_attention_mask, logit_attention_mask), dim=1
-            )
-        else:
-            embeddings = embeddings.to(self.sequence_weights.dtype)
-            embeddings = embeddings.reshape(
-                (embeddings.shape[0], self.num_repeat_tokens, self.encoder_hidden_dim)
-            )
-            embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
-            embeddings = embeddings.to(
-                next(self.embedding_transform.parameters()).dtype
-            )
-            embeddings = self.embedding_transform(embeddings)
-            attention_mask = torch.ones(
-                (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
-            )
+        embeddings = embeddings.to(self.sequence_weights.dtype)
+        embeddings = embeddings.reshape(
+            (embeddings.shape[0], self.num_repeat_tokens, self.encoder_hidden_dim)
+        )
+        embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
+        embeddings = embeddings.to(
+            next(self.embedding_transform.parameters()).dtype
+        )
+        embeddings = self.embedding_transform(embeddings)
+        attention_mask = torch.ones(
+            (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device
+        )
 
         assert embeddings.shape == (
             attention_mask.shape[0],
@@ -197,11 +157,7 @@ class InversionFromLogitsModel(InversionModel):
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
         B = len(attention_mask)
-
-        if isinstance(outputs, torch.Tensor):
-            return outputs # preprocessed outputs from MockEmbedder
-        else:
-            logits = outputs.logits[torch.arange(B), attention_mask.sum(1) - 1]
+        logits = outputs.logits[torch.arange(B), attention_mask.sum(1) - 1]
 
         logit_filter_value = logits.min()
 
@@ -234,73 +190,57 @@ class InversionFromLogitsModel(InversionModel):
         )
         return torch.cat((embeddings, zeros), dim=1)
 
+    def generate(
+        self,
+        inputs: Dict[str, torch.Tensor],
+        generation_kwargs: Dict[str, torch.Tensor],
+    ) -> torch.Tensor:
+        generation_kwargs = copy.copy(generation_kwargs)  # make a copy so we can edit
+        inputs_embeds, attention_mask = self.embed_and_project(
+            input_ids=inputs.get("input_ids"),
+            attention_mask=inputs.get("attention_mask"),
+            frozen_embeddings=inputs.get("frozen_embeddings"),
+        )
+
+        if "decoder_input_ids" in inputs:
+            return self.encoder_decoder.generate(
+                # required: input embeddings
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                # optional: input IDs (for starting generation).
+                # typically not set unless generating prefixes for
+                # reranking.
+                decoder_input_ids=inputs["decoder_input_ids"],
+                # decoder_attention_mask=inputs["decoder_attention_mask"],
+                **generation_kwargs,
+            )
+        else:
+            return self.encoder_decoder.generate(
+                # required: input embeddings
+                inputs_embeds=inputs_embeds,
+                attention_mask=attention_mask,
+                # optional: input IDs (for starting generation).
+                # typically not set unless generating prefixes for
+                # reranking.
+                **generation_kwargs,
+            )
+
     def forward(
         self,
-        embedder_input_ids: torch.Tensor,
-        embedder_attention_mask: torch.Tensor,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
         labels: Optional[torch.Tensor] = None,
         frozen_embeddings: Optional[torch.Tensor] = None,
         decoder_input_ids: Optional[torch.Tensor] = None,
-        suffix_ids: Optional[torch.Tensor] = None,
         past_key_values: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
         # Unused: input_ids, attention_mask
-        if (suffix_ids is None) and self.config.suffix_conditioning:
-            assert labels is not None
-            batch_size, seq_length = labels.shape
-            true_seq_length = (labels >= 0).sum(1).min()
-            if self.training:
-                # Randomly create a suffix from the input.
-                if true_seq_length == 1:
-                    prefix_length = 1
-                else:
-                    prefix_length = torch.randint(
-                        low=1,  # inclusive
-                        high=true_seq_length,  # exclusive
-                        size=(1,),
-                        dtype=torch.long,
-                    ).item()
-                prefix_length = 1
-                print("prefix_length:", prefix_length)
-
-                if labels is not None:
-                    # create suffix based on the labels and selected prefix_length.
-                    suffix_ids = labels[:, prefix_length:]
-                    suffix_ids = suffix_ids.where(
-                        suffix_ids >= 0, self.encoder_decoder.config.pad_token_id
-                    )  # replace -100 with 0.
-                    labels = labels.where(
-                        torch.arange(seq_length, device=self.device)[None, :]
-                        < prefix_length,
-                        -100,
-                    )
-                    ignore_token_id = -100
-                    eos_token_id = self.tokenizer.eos_token_id
-                    first_ignore_token_id = (
-                        ((labels == ignore_token_id) | (labels == eos_token_id))
-                        .long()
-                        .argmax(dim=1)
-                    )
-                    eos_tokens = (
-                        torch.ones(
-                            (batch_size, 1), dtype=torch.long, device=self.device
-                        )
-                        * eos_token_id
-                    )
-                    labels = labels.scatter(
-                        dim=1, index=first_ignore_token_id[:, None], src=eos_tokens
-                    )
-                else:
-                    suffix_ids = None
-            else:
-                suffix_ids = None
 
         inputs_embeds, attention_mask = self.embed_and_project(
-            embedder_input_ids=embedder_input_ids,
-            embedder_attention_mask=embedder_attention_mask,
+            input_ids=input_ids,
+            attention_mask=attention_mask,
             frozen_embeddings=frozen_embeddings,
-            suffix_ids=suffix_ids,
         )
         return self.encoder_decoder(
             inputs_embeds=inputs_embeds,

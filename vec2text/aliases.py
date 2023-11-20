@@ -49,7 +49,6 @@ CHECKPOINT_FOLDERS_DICT = {
     # "TEST_MODEL": "/home/jxm3/research/retrieval/inversion/vec2text/saves/c52ed653690fee956069a64f69a0ce05",
     "t5-base___llama-7b___one-million-paired-instructions": "/home/wentingz/research/vec2text/saves/cd8e3e3dec1a79babb508c3edd7fe5d3",
     "t5-base__llama-7b__one-million-paired-instructions": "/home/ubuntu/vec2text/saves/dda9034471bab47f202eb37f5200a272",
-    "t5_base__llama-7b__one-million-instructions__suffix__50epoch": "/home/ubuntu/vec2text/saves/d3b76718804c0daa84fa08babebc2f8e",
     "t5_base__llama-7b__one-million-instructions__correct__70epoch": "/home/wentingz/research/vec2text/vec2text/saves/logits-corrector-2",
 
     "t5-base___llama-7b___one-million-instructions__correct": "/home/wentingz/research/vec2text/vec2text/saves/logits-corrector-4",

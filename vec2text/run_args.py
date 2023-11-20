@@ -177,10 +177,6 @@ class ModelArguments:
             "choices": FREEZE_STRATEGIES,
         },
     )
-    suffix_conditioning: bool = field(
-        default=False,
-        metadata={"help": "for logits inversion, whether to condition on the suffix"},
-    )
 
     def __post_init__(self):
         if self.config_overrides is not None and (
