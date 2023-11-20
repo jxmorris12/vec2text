@@ -106,10 +106,14 @@ def torch_main_worker_finish_first(func: Callable):
 def dataset_map_multi_worker(
     dataset: datasets.Dataset, map_fn: Callable, *args, **kwargs
 ) -> datasets.Dataset:
+    
     try:
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
+        # If not specified, use all of the CPUs we have available.
+        kwargs["num_proc"] = kwargs.get("num_proc", len(os.sched_getaffinity(0)) // world_size)
     except (RuntimeError, ValueError):
+        kwargs["num_proc"] = kwargs.get("num_proc", len(os.sched_getaffinity(0)))
         return dataset.map(map_fn, *args, **kwargs)
     datasets.disable_caching()
 

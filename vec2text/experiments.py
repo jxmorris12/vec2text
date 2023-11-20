@@ -416,6 +416,7 @@ class Experiment(abc.ABC):
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
                     new_fingerprint=new_fingerprint,
+                    num_proc=1,
                 )
             tokenized_datasets = datasets.DatasetDict(new_tokenized_datasets)
         ###########################################################################
@@ -486,6 +487,7 @@ class Experiment(abc.ABC):
                     new_fingerprint=(
                         d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
                     ),
+                    num_proc=1,
                 )
             val_datasets_dict = datasets.DatasetDict(new_tokenized_datasets)
         return val_datasets_dict

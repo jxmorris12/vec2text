@@ -296,7 +296,6 @@ class InversionFromLogitsModel(InversionModel):
             else:
                 suffix_ids = None
 
-        # print("suffix_ids:", suffix_ids, "labels:", labels)
         inputs_embeds, attention_mask = self.embed_and_project(
             embedder_input_ids=embedder_input_ids,
             embedder_attention_mask=embedder_attention_mask,
