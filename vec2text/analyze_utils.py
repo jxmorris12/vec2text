@@ -150,6 +150,8 @@ def args_from_config(args_cls, config):
 def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 1000):
     config = vec2text.models.config.InversionConfig.from_pretrained(name)
 
+    if not torch.cuda.is_available(): config.no_cuda = True
+
     model_args = args_from_config(ModelArguments, config)
     data_args = args_from_config(DataArguments, config)
     training_args = args_from_config(TrainingArguments, config)
@@ -168,8 +170,6 @@ def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 
     training_args.report_to = []
     training_args.mock_embedder = False
     ########################################################################
-    if not torch.cuda.is_available():
-        training_args.device = 'cpu'
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
     trainer = experiment.load_trainer()
