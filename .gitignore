@@ -1,6 +1,7 @@
 __pycache__/
 
 slurm-*.out
+*cache/
 *.p
 .ipynb_checkpoints/
 
