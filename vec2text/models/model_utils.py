@@ -99,7 +99,7 @@ def stack_pool(
     return pooled_outputs
 
 
-def load_embedder_and_tokenizer(name: str, torch_dtype: str):
+def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
     # TODO make abstract/argparse for it etc.
     # name = "gpt2" #### <--- TEMP. For debugging. Delete!
     model_kwargs = {
@@ -179,6 +179,25 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
         # model.to_bettertransformer()
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)
         tokenizer.pad_token = tokenizer.eos_token
+    elif name.startswith("meta-llama/Llama-2-70b"):
+        bnb_config = transformers.BitsAndBytesConfig(
+            load_in_4bit=True,
+            bnb_4bit_quant_type='nf4',
+            bnb_4bit_use_double_quant=True,
+            bnb_4bit_compute_dtype=torch.bfloat16
+        )
+        model_config = transformers.AutoConfig.from_pretrained(
+            name,
+        )
+        model = transformers.AutoModelForCausalLM.from_pretrained(
+            name,
+            trust_remote_code=True,
+            config=model_config,
+            quantization_config=bnb_config,
+            device_map='auto',
+        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(name)
+        model.eval()
     elif name.startswith("meta-llama/"):
         if torch_dtype == "float32":
             torch_dtype = torch.float32
@@ -191,6 +210,7 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str):
             **model_kwargs,
             token=os.environ.get("LLAMA_TOKEN"),
             torch_dtype=torch_dtype,
+            **kwargs,
         )
         # if torch_dtype is not torch.float32:
         #     model.to_bettertransformer()
