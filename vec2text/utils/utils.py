@@ -177,7 +177,9 @@ def get_embeddings_openai_manifest(
 def get_embeddings_openai_vanilla_multithread(
     text_list, model="text-embedding-ada-002"
 ) -> list:
-    import openai
+    from openai import OpenAI
+    
+    client = OpenAI()
 
     # print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
 
@@ -191,11 +193,9 @@ def get_embeddings_openai_vanilla_multithread(
 
     def process_batch(batch):
         text_list_batch = text_list[batch * 128 : (batch + 1) * 128]
-        response = openai.Embedding.create(
-            input=text_list_batch,
-            model=model,
-            encoding_format="float",
-        )
+        response = client.embeddings.create(input=text_list_batch,
+        model=model,
+        encoding_format="float")
         return [e["embedding"] for e in response["data"]]
 
     with ThreadPoolExecutor() as executor:
@@ -213,18 +213,18 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
     # embeddings model: https://platform.openai.com/docs/guides/embeddings/use-cases
     #    api ref: https://platform.openai.com/docs/api-reference/embeddings/create
     # TODO: set up a caching system somehow.
-    import openai
+    from openai import OpenAI
+    
+    client = OpenAI()
 
     # print(f"running openai on text_list of length {len(text_list)}, first element '{text_list[0]}'")
     batches = math.ceil(len(text_list) / 128)
     outputs = []
     for batch in range(batches):
         text_list_batch = text_list[batch * 128 : (batch + 1) * 128]
-        response = openai.Embedding.create(
-            input=text_list_batch,
-            model=model,
-            encoding_format="float",  # override default base64 encoding...
-        )
+        response = client.embeddings.create(input=text_list_batch,
+        model=model,
+        encoding_format="float")
         outputs.extend([e["embedding"] for e in response["data"]])
     return outputs
 
