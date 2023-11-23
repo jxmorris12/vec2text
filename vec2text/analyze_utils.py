@@ -155,10 +155,11 @@ def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 
     training_args = args_from_config(TrainingArguments, config)
 
     data_args.use_less_data = use_less_data
-    ########################################################################
+    #######################################################################
     from accelerate.state import PartialState
 
-    training_args._n_gpu = 1  # Don't load in DDP
+    training_args._n_gpu = 1  if torch.cuda.is_available() else 0 # Don't load in DDP
+    training_args.bf16 = 0 # no bf16 in case no support from GPU
     training_args.local_rank = -1  # Don't load in DDP
     training_args.distributed_state = PartialState()
     training_args.deepspeed_plugin = None  # For backwards compatibility

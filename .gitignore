@@ -3,6 +3,7 @@ __pycache__/
 slurm-*.out
 *.p
 .ipynb_checkpoints/
+*cache/
 
 build/
 dist/

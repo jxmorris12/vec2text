@@ -196,7 +196,7 @@ def get_embeddings_openai_vanilla_multithread(
         response = client.embeddings.create(
             input=text_list_batch, model=model, encoding_format="float"
         )
-        return [e["embedding"] for e in response["data"]]
+        return [e.embedding for e in response.data]
 
     with ThreadPoolExecutor() as executor:
         batch_indices = range(batches)
@@ -225,7 +225,7 @@ def get_embeddings_openai_vanilla(text_list, model="text-embedding-ada-002") -> 
         response = client.embeddings.create(
             input=text_list_batch, model=model, encoding_format="float"
         )
-        outputs.extend([e["embedding"] for e in response["data"]])
+        outputs.extend([e.embedding for e in response.data])
     return outputs
 
 
@@ -248,10 +248,6 @@ def embed_api(
     else:
         raise ValueError(f"unsupported api name {api_name}")
 
-    # print("GETTING EMBEDDINGS:")
-    # print(text_list)
-    # print(torch.tensor(embeddings).abs().sum(dim=-1).tolist())
-    # print()
     return torch.tensor(embeddings, device=input_ids.device, dtype=torch.float32)
 
 
