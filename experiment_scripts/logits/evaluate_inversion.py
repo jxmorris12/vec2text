@@ -57,7 +57,12 @@ def main(args: argparse.ArgumentParser):
             trainer,
         ) = vec2text.analyze_utils.load_experiment_and_trainer(args.alias)
     else:
-        (experiment, trainer) = vec2text.analyze_utils.load_experiment_and_trainer_from_pretrained(args.alias)
+        (
+            experiment,
+            trainer,
+        ) = vec2text.analyze_utils.load_experiment_and_trainer_from_pretrained(
+            args.alias
+        )
     embedder_name = experiment.model_args.embedder_model_name
     assert "7b" in embedder_name
 
@@ -77,9 +82,11 @@ def main(args: argparse.ArgumentParser):
         cwd = os.path.dirname(os.path.abspath(__file__))
         out_file = os.path.normpath(
             os.path.join(
-                cwd, os.pardir, os.pardir,
+                cwd,
+                os.pardir,
+                os.pardir,
                 "results",
-                "results_evaluation", 
+                "results_evaluation",
                 "logits",
                 md5_hash_kwargs(**vars(args)) + ".json",
             )
@@ -90,7 +97,10 @@ def main(args: argparse.ArgumentParser):
 
         trainer.model.cpu()
         trainer.args.bf16_full_eval = True
-        print("\tloading embedder for eval:", this_embedder_name,)
+        print(
+            "\tloading embedder for eval:",
+            this_embedder_name,
+        )
         trainer.model.embedder = vec2text.models.load_embedder_and_tokenizer(
             this_embedder_name, torch_dtype=trainer.model.config.embedder_torch_dtype
         )[0]

@@ -341,7 +341,9 @@ class BaseTrainer(transformers.Trainer):
         rouge_result = self.metric_rouge.compute(
             predictions=predictions_str, references=references_str
         )
-        self.bleu_results = bleu_results.tolist()  # store bleu results in case we want to use them later for t-tests
+        self.bleu_results = (
+            bleu_results.tolist()
+        )  # store bleu results in case we want to use them later for t-tests
         # bertscore_result = self.metric_bertscore.compute(
         #     predictions=predictions_str, references=references_str, lang="en"
         # )

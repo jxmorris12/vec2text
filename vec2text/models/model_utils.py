@@ -182,9 +182,9 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
     elif name.startswith("meta-llama/Llama-2-70b"):
         bnb_config = transformers.BitsAndBytesConfig(
             load_in_4bit=True,
-            bnb_4bit_quant_type='nf4',
+            bnb_4bit_quant_type="nf4",
             bnb_4bit_use_double_quant=True,
-            bnb_4bit_compute_dtype=torch.bfloat16
+            bnb_4bit_compute_dtype=torch.bfloat16,
         )
         model_config = transformers.AutoConfig.from_pretrained(
             name,
@@ -194,7 +194,7 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
             trust_remote_code=True,
             config=model_config,
             quantization_config=bnb_config,
-            device_map='auto',
+            device_map="auto",
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained(name)
         model.eval()

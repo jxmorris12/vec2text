@@ -18,8 +18,8 @@ from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
 from vec2text.models import (
     CorrectorEncoderFromLogitsModel,
     CorrectorEncoderModel,
-    InversionFromLogitsModel,
     InversionFromLogitsEmbModel,
+    InversionFromLogitsModel,
     InversionModel,
     InversionModelBagOfWords,
     InversionModelDecoderOnly,
@@ -50,7 +50,9 @@ logger = logging.getLogger(__name__)
 
 # We maintain our own cache because huggingface datasets caching
 # doesn't always work properly.
-DATASET_CACHE_PATH = os.environ.get("VEC2TEXT_CACHE", "/home/wentingz/.cache/inversion")
+DATASET_CACHE_PATH = os.environ.get(
+    "VEC2TEXT_CACHE", os.path.expanduser("~/.cache/inversion")
+)
 
 
 # Noisy compilation from torch.compile
@@ -655,9 +657,7 @@ class InversionFromLogitsExperiment(InversionExperiment):
 
     def load_model(self) -> transformers.PreTrainedModel:
         if self.training_args.experiment == "inversion_from_logits_emb":
-            return InversionFromLogitsEmbModel(
-                config=self.config
-            )
+            return InversionFromLogitsEmbModel(config=self.config)
         else:
             return InversionFromLogitsModel(
                 config=self.config,

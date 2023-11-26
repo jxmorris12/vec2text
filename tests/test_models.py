@@ -6,11 +6,17 @@ import transformers
 
 from vec2text.models import (
     FREEZE_STRATEGIES,
-    MODEL_NAMES,
     InversionModel,
     load_embedder_and_tokenizer,
     load_encoder_decoder,
 )
+
+MODEL_NAMES = [
+    "bert",
+    "contriever",
+    "dpr",
+    "gtr_base",
+]
 
 
 @pytest.fixture

@@ -195,7 +195,6 @@ Our models come in one of two forms: a zero-step 'hypothesizer' model that makes
 2. Log into the model hub using `huggingface-cli login`
 3. From the project root directory, run `python scripts/upload_model.py <model_alias> <hf_alias>` where `<model_alias>` is the key of the model you added to aliases.py and `<hf_alias>` will be the model's name on HuggingFace
 
-
 ### pre-commit
 
 ```pip install isort black flake8 mypy --upgrade```
@@ -219,3 +218,31 @@ please cite our paper!
 }
 ```
 
+#### Evaluate the model from the paper
+
+Here's how to load and evaluate the sequence-length 32 GTR inversion model in the paper:
+
+```python
+from vec2text import analyze_utils
+
+experiment, trainer = analyze_utils.load_experiment_and_trainer_from_pretrained(
+     "jxm/gtr__nq__32__correct"
+)
+train_datasets = experiment._load_train_dataset_uncached(
+    model=trainer.model,
+    tokenizer=trainer.tokenizer,
+    embedder_tokenizer=trainer.embedder_tokenizer
+)
+
+val_datasets = experiment._load_val_datasets_uncached(
+    model=trainer.model,
+    tokenizer=trainer.tokenizer,
+    embedder_tokenizer=trainer.embedder_tokenizer
+)
+trainer.args.per_device_eval_batch_size = 16
+trainer.sequence_beam_width = 1
+trainer.num_gen_recursive_steps = 20
+trainer.evaluate(
+    eval_dataset=train_datasets["validation"]
+)
+```

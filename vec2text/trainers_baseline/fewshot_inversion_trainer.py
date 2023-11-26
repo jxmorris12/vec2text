@@ -2,12 +2,14 @@ import functools
 from typing import Dict, Iterable, List
 
 import datasets
-import openai
 import torch
 import transformers
+from openai import OpenAI
 from tenacity import retry, stop_after_attempt, wait_fixed
 
 from vec2text.trainers.base import BaseTrainer
+
+client = OpenAI()
 
 
 @retry(wait=wait_fixed(5), stop=stop_after_attempt(10))
@@ -19,7 +21,7 @@ def call_openai_llm(
         {"role": "system", "content": "You are a helpful assistant."},
         {"role": "user", "content": prompt},
     ]
-    return openai.ChatCompletion.create(
+    return client.chat.completions.create(
         model=gpt_version,
         messages=full_prompts,
         max_tokens=64,

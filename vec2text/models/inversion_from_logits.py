@@ -1,6 +1,5 @@
-from typing import Dict, Optional, Tuple
-
 import copy
+from typing import Dict, Optional, Tuple
 
 import torch
 import torch.nn as nn
@@ -36,12 +35,12 @@ class InversionFromLogitsModel(InversionModel):
         self.embedder_is_decoder = True
         bottleneck_dim = self.bottleneck_dim
 
-        embedder_dim = self.embedder_dim
         self.num_zeros_to_add = encoder_hidden_dim - (
             (self.embedder.config.vocab_size + encoder_hidden_dim) % encoder_hidden_dim
         )
         self.num_repeat_tokens = round(
-            (self.embedder.config.vocab_size + self.num_zeros_to_add) / encoder_hidden_dim
+            (self.embedder.config.vocab_size + self.num_zeros_to_add)
+            / encoder_hidden_dim
         )
         self.embedding_transform = nn.Sequential(
             nn.Linear(encoder_hidden_dim, bottleneck_dim),
@@ -57,7 +56,7 @@ class InversionFromLogitsModel(InversionModel):
             requires_grad=True,
         )
 
-        self.unigram_beta = 0.01 # How much to update unigram with each batch
+        self.unigram_beta = 0.01  # How much to update unigram with each batch
         self.unigram = nn.Parameter(
             torch.zeros(
                 (1, self.embedder.config.vocab_size + self.num_zeros_to_add),
@@ -117,10 +116,9 @@ class InversionFromLogitsModel(InversionModel):
         if self.training:
             # Update unigram.
             unigram_batch = embeddings.mean(dim=0, keepdim=True)
-            self.unigram.data = (
-                self.unigram.data * (1 - self.unigram_beta) +
-                unigram_batch * (self.unigram_beta)
-            )
+            self.unigram.data = self.unigram.data * (
+                1 - self.unigram_beta
+            ) + unigram_batch * (self.unigram_beta)
         embeddings -= self.unigram
 
         if self._zero_except_topk is not None:
@@ -136,9 +134,7 @@ class InversionFromLogitsModel(InversionModel):
             (embeddings.shape[0], self.num_repeat_tokens, self.encoder_hidden_dim)
         )
         embeddings = torch.einsum("bsd,sdw->bsw", embeddings, self.sequence_weights)
-        embeddings = embeddings.to(
-            next(self.embedding_transform.parameters()).dtype
-        )
+        embeddings = embeddings.to(next(self.embedding_transform.parameters()).dtype)
         embeddings = self.embedding_transform(embeddings)
         attention_mask = torch.ones(
             (embeddings.shape[0], embeddings.shape[1]), device=embeddings.device

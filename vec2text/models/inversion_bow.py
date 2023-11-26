@@ -76,11 +76,7 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
     ) -> torch.Tensor:
         outputs = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
         hidden_state = outputs.last_hidden_state
-        embeddings = mean_pool(hidden_state, attention_mask)
-        import pdb
-
-        pdb.set_trace()
-        return embeddings
+        return mean_pool(hidden_state, attention_mask)
 
     def bow_logits(
         self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor

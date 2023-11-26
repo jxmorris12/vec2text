@@ -10,8 +10,8 @@ import transformers
 from transformers import HfArgumentParser
 from transformers.trainer_utils import get_last_checkpoint
 
-import vec2text
 from vec2text import experiments
+from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -148,27 +148,25 @@ def args_from_config(args_cls, config):
 
 
 def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 1000):
-    config = vec2text.models.config.InversionConfig.from_pretrained(name)
-
-    if not torch.cuda.is_available(): config.no_cuda = True
-
+    config = InversionConfig.from_pretrained(name)
     model_args = args_from_config(ModelArguments, config)
     data_args = args_from_config(DataArguments, config)
     training_args = args_from_config(TrainingArguments, config)
 
     data_args.use_less_data = use_less_data
-    ########################################################################
+    #######################################################################
     from accelerate.state import PartialState
 
-    training_args._n_gpu = 1  # Don't load in DDP
+    training_args._n_gpu = 1 if torch.cuda.is_available() else 0  # Don't load in DDP
+    training_args.bf16 = 0  # no bf16 in case no support from GPU
     training_args.local_rank = -1  # Don't load in DDP
     training_args.distributed_state = PartialState()
     training_args.deepspeed_plugin = None  # For backwards compatibility
-    ########################################################################
-    training_args.dataloader_num_workers = 0  # no multiprocessing :)
+    # training_args.dataloader_num_workers = 0  # no multiprocessing :)
     training_args.use_wandb = False
     training_args.report_to = []
     training_args.mock_embedder = False
+    training_args.output_dir = "saves/" + name.replace("/", "__")
     ########################################################################
 
     experiment = experiments.experiment_from_args(model_args, data_args, training_args)
@@ -176,6 +174,7 @@ def load_experiment_and_trainer_from_pretrained(name: str, use_less_data: int = 
     trainer.model = trainer.model.__class__.from_pretrained(name)
     trainer.model.to(training_args.device)
     return experiment, trainer
+
 
 def load_gpt_fewshot_baseline_trainer(
     dataset_name: str = "one_million_instructions",

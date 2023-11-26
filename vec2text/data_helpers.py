@@ -1,12 +1,10 @@
-import json
 import logging
 import os
 import random
-from typing import Dict, List, Set
+from typing import Dict, List
 
 import datasets
 import torch
-import tqdm
 
 from vec2text.run_args import DataArguments
 from vec2text.utils import dataset_map_multi_worker
@@ -18,8 +16,10 @@ def retain_dataset_columns(
     column_names_to_remove = [c for c in d.features if c not in allowed_columns]
     return d.remove_columns(column_names_to_remove)
 
+
 def load_nq_dpr_corpus() -> datasets.Dataset:
     return datasets.load_dataset("jxm/nq_corpus_dpr")
+
 
 def load_msmarco_corpus() -> datasets.Dataset:
     # has columns ["title", "text"]. only one split ("train")
@@ -53,8 +53,9 @@ def load_one_million_paired_instructions() -> datasets.Dataset:
     # and "user" (user input) columns
     dataset_dict = datasets.load_dataset("wentingzhao/one-million-paired-instructions")
     dataset_dict = dataset_map_multi_worker(
-        dataset_dict, map_fn=create_ompi_ex,
-        num_proc=(len(os.sched_getaffinity(0)) // get_world_size())
+        dataset_dict,
+        map_fn=create_ompi_ex,
+        num_proc=(len(os.sched_getaffinity(0)) // get_world_size()),
     )
 
     return dataset_dict["train"]

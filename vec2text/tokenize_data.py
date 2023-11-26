@@ -1,7 +1,4 @@
-from typing import Callable, Dict, Tuple
-
-import collections
-import random
+from typing import Callable, Dict
 
 import torch
 import transformers
@@ -129,13 +126,14 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
         return_tensors="pt",
     ).to(next(model.parameters()).device)
 
-    model_device = next(model.parameters()).device
     with torch.no_grad():
         batch["frozen_embeddings"] = model.call_embedding_model(**emb_input_ids)
     return batch
 
 
-def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> torch.Tensor:
+def get_tokenizer_mapping(
+    lm: str, inverter: str, inverter_vocab_size: int
+) -> torch.Tensor:
     """Computes the mapping from token outputs in `lm`'s vocabulary to those in `inverter's
     vocabulary. Makes some assumptions about spacing.
     """
@@ -143,8 +141,6 @@ def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> t
     inverter_tokenizer = transformers.AutoTokenizer.from_pretrained(inverter)
 
     lm_vocab = lm_tokenizer.vocab
-    inverter_vocab = inverter_tokenizer.vocab
-
     mapping = torch.zeros(len(lm_vocab), dtype=torch.long)
     for k, idx in lm_tokenizer.vocab.items():
         # We replace space tokens with nothing and allow the call to
@@ -156,7 +152,9 @@ def get_tokenizer_mapping(lm: str, inverter: str, inverter_vocab_size: int) -> t
         mapping[idx] = inverter_tokenizer.encode(k.replace("▁", " "))[0]
         if mapping[idx] in [2, 3]:
             mapping[idx] = inverter_tokenizer.encode(k.replace("▁", " "))[1]
-    
+
     preservation = len(set(mapping.tolist())) / len(lm_vocab)
-    print(f"Mapped tokenizer {lm} to {inverter}. Preserved {preservation*100:.1f}% of unique tokens.")
+    print(
+        f"Mapped tokenizer {lm} to {inverter}. Preserved {preservation*100:.1f}% of unique tokens."
+    )
     return mapping

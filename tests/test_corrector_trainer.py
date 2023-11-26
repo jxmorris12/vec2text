@@ -10,7 +10,7 @@ DEFAULT_ARGS_STR = "--per_device_train_batch_size 16 --per_device_eval_batch_siz
 DEFAULT_ARGS = shlex.split(DEFAULT_ARGS_STR)
 
 DEFAULT_ARGS += ["--use_wandb", "0"]
-DEFAULT_ARGS += ["--bf16", "1"]
+DEFAULT_ARGS += ["--bf16", "0"]
 
 
 def load_trainer(model_args, data_args, training_args) -> Corrector:
@@ -19,7 +19,6 @@ def load_trainer(model_args, data_args, training_args) -> Corrector:
     training_args.eval_steps = 6400000  # 64
     training_args.use_less_data = 1000
     data_args.max_eval_samples = 64
-    training_args.cheat_on_train_hypotheses = True
     trainer = experiments.experiment_from_args(
         model_args=model_args, data_args=data_args, training_args=training_args
     ).load_trainer()
@@ -40,6 +39,7 @@ def test_trainer():
     # TODO parameterize tests with experiment var
     # training_args.experiment = "corrector"
     training_args.experiment = "corrector_encoder"
+    training_args.corrector_model_from_pretrained = "jxm/gtr__nq__32"
     model_args.max_seq_length = 32
     data_args.dataset_name = dataset_name
     trainer = load_trainer(

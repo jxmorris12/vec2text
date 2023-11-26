@@ -20,7 +20,7 @@ class EmbeddingCosineSimilarity:
                 "ada_emb_cos_sim_mean": sims.mean().item(),
                 "ada_emb_cos_sim_sem": scipy.stats.sem(sims.numpy()),
             }
-        except:
+        except Exception:
             print(f"Error getting {len(s1)} embeddings from OpenAI. Returning zeros.")
             return {
                 "ada_emb_cos_sim_mean": 0.0,
