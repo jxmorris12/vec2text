@@ -7,6 +7,7 @@ import os
 import resource
 import sys
 from typing import Dict, Optional
+import multiprocessing
 
 import datasets
 import torch
@@ -45,7 +46,7 @@ os.environ["_WANDB_STARTUP_DEBUG"] = "true"
 os.environ["TOKENIZERS_PARALLELISM"] = "False"
 # os.environ["TOKENIZERS_PARALLELISM"] = "True"
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device("cuda" if torch.cuda.is_available() else "mps" if torch.backends.mps.is_available() else "cpu")
 logger = logging.getLogger(__name__)
 
 # We maintain our own cache because huggingface datasets caching
@@ -53,7 +54,6 @@ logger = logging.getLogger(__name__)
 DATASET_CACHE_PATH = os.environ.get(
     "VEC2TEXT_CACHE", os.path.expanduser("~/.cache/inversion")
 )
-
 
 # Noisy compilation from torch.compile
 try:
@@ -70,12 +70,20 @@ def md5_hash_kwargs(**kwargs) -> str:
     return hashlib.md5(s.encode()).hexdigest()
 
 
+def _get_num_proc(world_size) -> int:
+    try:
+        # NOTE: only available on some Unix platforms
+        return (len(os.sched_getaffinity(0)) // world_size)  # type: ignore[attr-defined]
+    except AttributeError:
+        return (multiprocessing.cpu_count() // world_size)
+
+
 class Experiment(abc.ABC):
     def __init__(
-        self,
-        model_args: ModelArguments,
-        data_args: DataArguments,
-        training_args: TrainingArguments,
+            self,
+            model_args: ModelArguments,
+            data_args: DataArguments,
+            training_args: TrainingArguments,
     ):
         # Interactions between args handled here:
         training_args.metric_for_best_model = f"{data_args.dataset_name}_loss"
@@ -202,23 +210,23 @@ class Experiment(abc.ABC):
         training_args = self.training_args
         last_checkpoint = None
         if (
-            os.path.isdir(training_args.output_dir)
-            and not training_args.overwrite_output_dir
+                os.path.isdir(training_args.output_dir)
+                and not training_args.overwrite_output_dir
         ):
             last_checkpoint = transformers.trainer_utils.get_last_checkpoint(
                 training_args.output_dir
             )
             if (
-                last_checkpoint is None
-                and len(os.listdir(training_args.output_dir)) > 0
+                    last_checkpoint is None
+                    and len(os.listdir(training_args.output_dir)) > 0
             ):
                 raise ValueError(
                     f"Output directory ({training_args.output_dir}) already exists and is not empty. "
                     "Use --overwrite_output_dir to overcome."
                 )
             elif (
-                last_checkpoint is not None
-                and training_args.resume_from_checkpoint is None
+                    last_checkpoint is not None
+                    and training_args.resume_from_checkpoint is None
             ):
                 logger.info(
                     f"Checkpoint detected, resuming training at {last_checkpoint}. To avoid this behavior, change "
@@ -258,7 +266,7 @@ class Experiment(abc.ABC):
     @property
     def _is_main_worker(self) -> bool:
         return (self.training_args.local_rank <= 0) and (
-            int(os.environ.get("LOCAL_RANK", 0)) <= 0
+                int(os.environ.get("LOCAL_RANK", 0)) <= 0
         )
 
     @property
@@ -336,7 +344,7 @@ class Experiment(abc.ABC):
         return tokenizer
 
     def get_collator(
-        self, tokenizer: transformers.PreTrainedTokenizer
+            self, tokenizer: transformers.PreTrainedTokenizer
     ) -> transformers.DataCollatorForSeq2Seq:
         return transformers.DataCollatorForSeq2Seq(
             tokenizer,
@@ -348,10 +356,10 @@ class Experiment(abc.ABC):
         )
 
     def _load_train_dataset_uncached(
-        self,
-        model: transformers.PreTrainedModel,
-        tokenizer: transformers.AutoTokenizer,
-        embedder_tokenizer: transformers.AutoTokenizer,
+            self,
+            model: transformers.PreTrainedModel,
+            tokenizer: transformers.AutoTokenizer,
+            embedder_tokenizer: transformers.AutoTokenizer,
     ) -> datasets.DatasetDict:
         data_args = self.data_args
         ###########################################################################
@@ -388,7 +396,7 @@ class Experiment(abc.ABC):
                     padding=False,
                 ),
                 batched=True,
-                num_proc=(len(os.sched_getaffinity(0)) // self._world_size),
+                num_proc=_get_num_proc(self._world_size),
                 remove_columns=column_names,
                 desc="Running tokenizer on dataset",
             )
@@ -409,7 +417,7 @@ class Experiment(abc.ABC):
             new_tokenized_datasets = {}
             for key, d in tokenized_datasets.items():
                 new_fingerprint = (
-                    d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
+                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
                 )
                 print("\tsaving precomputed embeddings to file:", new_fingerprint)
                 new_tokenized_datasets[key] = dataset_map_multi_worker(
@@ -436,11 +444,11 @@ class Experiment(abc.ABC):
         return tokenized_datasets
 
     def _prepare_val_datasets_dict(
-        self,
-        model: transformers.PreTrainedModel,
-        tokenizer: transformers.AutoTokenizer,
-        embedder_tokenizer: transformers.AutoTokenizer,
-        val_datasets_dict: datasets.DatasetDict,
+            self,
+            model: transformers.PreTrainedModel,
+            tokenizer: transformers.AutoTokenizer,
+            embedder_tokenizer: transformers.AutoTokenizer,
+            val_datasets_dict: datasets.DatasetDict,
     ) -> datasets.DatasetDict:
         for name, dataset in val_datasets_dict.items():
             max_eval_samples = min(len(dataset), self.data_args.max_eval_samples)
@@ -468,7 +476,7 @@ class Experiment(abc.ABC):
                 remove_columns=["text"],
                 batched=True,
                 batch_size=1024,
-                num_proc=(len(os.sched_getaffinity(0)) // self._world_size),
+                num_proc=_get_num_proc(self._world_size),
                 desc="Running tokenizer on dataset",
             )
 
@@ -487,7 +495,7 @@ class Experiment(abc.ABC):
                     batched=True,
                     batch_size=self.training_args.per_device_train_batch_size,
                     new_fingerprint=(
-                        d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
+                            d._fingerprint + md5_hash_kwargs(**self.dataset_kwargs) + ""
                     ),
                     num_proc=1,
                 )
@@ -495,10 +503,10 @@ class Experiment(abc.ABC):
         return val_datasets_dict
 
     def _load_val_datasets_uncached(
-        self,
-        model: transformers.PreTrainedModel,
-        tokenizer: transformers.AutoTokenizer,
-        embedder_tokenizer: transformers.AutoTokenizer,
+            self,
+            model: transformers.PreTrainedModel,
+            tokenizer: transformers.AutoTokenizer,
+            embedder_tokenizer: transformers.AutoTokenizer,
     ) -> datasets.DatasetDict:
         val_datasets_dict = load_standard_val_datasets()
         logger.info(
@@ -514,10 +522,10 @@ class Experiment(abc.ABC):
         )
 
     def load_train_and_val_datasets(
-        self,
-        model: transformers.PreTrainedModel,
-        tokenizer: transformers.AutoTokenizer,
-        embedder_tokenizer: transformers.AutoTokenizer,
+            self,
+            model: transformers.PreTrainedModel,
+            tokenizer: transformers.AutoTokenizer,
+            embedder_tokenizer: transformers.AutoTokenizer,
     ):
         dataset_kwargs: Dict[str, str] = self.dataset_kwargs
 
@@ -620,7 +628,7 @@ class InversionExperiment(Experiment):
         )
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
         logger.info(
-            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
+            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params / 2 ** 20:.2f}M params"
         )
 
         if self.training_args.mock_embedder:
@@ -690,7 +698,7 @@ class InversionExperimentNonAutoregressive(Experiment):
         )
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
         logger.info(
-            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
+            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params / 2 ** 20:.2f}M params"
         )
         return vec2text.trainers.InversionTrainerNonAutoregressive(
             model=model,
@@ -720,7 +728,7 @@ class InversionExperimentBagOfWords(Experiment):
         )
         n_params = sum({p.data_ptr(): p.numel() for p in model.parameters()}.values())
         logger.info(
-            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params/2**20:.2f}M params"
+            f"Training model with name `{self.model_args.model_name_or_path}` - Total size={n_params / 2 ** 20:.2f}M params"
         )
         return vec2text.trainers.InversionTrainerBagOfWords(
             model=model,

@@ -2,7 +2,7 @@ accelerate
 bert_score
 datasets
 evaluate
-openai
+openai==0.28
 optimum
 pre-commit
 pylcs
