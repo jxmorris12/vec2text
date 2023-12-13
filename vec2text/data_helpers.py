@@ -196,7 +196,7 @@ def load_beir_dataset(name: str) -> datasets.Dataset:
         datasets.config.HF_DATASETS_CACHE
     )  # something like /home/jxm3/.cache/huggingface/datasets
     dataset_path = os.path.join(cache_path, "emb_inv_beir", name)
-    print(f"loading BEIR dataset: {name}")
+    # print(f"loading BEIR dataset: {name}")
     if os.path.exists(dataset_path):
         logging.info("Loading BEIR dataset %s path %s", dataset_path)
         dataset = datasets.load_from_disk(dataset_path)
