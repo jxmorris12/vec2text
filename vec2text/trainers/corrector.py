@@ -59,6 +59,7 @@ class Corrector(BaseTrainer):
         )
         self.tokenizer = self.inversion_trainer.model.tokenizer
         self.embedder_tokenizer = self.inversion_trainer.model.embedder_tokenizer
+        self.embedder = self.inversion_trainer.embedder
         self.call_embedding_model = self.inversion_trainer.model.call_embedding_model
 
         self.initial_hypothesis_str = None
@@ -590,9 +591,14 @@ class Corrector(BaseTrainer):
     def _get_hypothesis_uncached(self, inputs: Dict[str, torch.Tensor]) -> torch.Tensor:
         if "frozen_embeddings" in inputs:
             frozen_embeddings = inputs["frozen_embeddings"]
+        elif "embedder_input_ids" in inputs:
+            frozen_embeddings = self.get_frozen_embeddings(
+                embedder_input_ids=inputs["embedder_input_ids"],
+                embedder_attention_mask=inputs["embedder_attention_mask"],
+            )
         else:
             assert (
-                "embedder_input_ids" in inputs
+                "input_ids" in inputs
             ), f"cannot generate hypothesis with input keys: {inputs.keys()}"
             frozen_embeddings = self.embed_generated_hypothesis(
                 input_ids=inputs["input_ids"]
