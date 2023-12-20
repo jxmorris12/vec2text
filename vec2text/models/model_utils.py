@@ -8,6 +8,7 @@ from sentence_transformers import SentenceTransformer
 
 EMBEDDER_MODEL_NAMES = [
     "bert",
+    "bert__random_init",
     "contriever",
     "dpr",
     "gtr_base",
@@ -131,12 +132,25 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
             "bert-base-uncased", **model_kwargs
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
+    elif name == "bert__random_init":
+        config = transformers.AutoConfig.from_pretrained(
+            "bert-base-uncased"
+        )
+        model = transformers.AutoModel.from_config(config)
+        tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
     elif name == "gtr_base":
         model = transformers.AutoModel.from_pretrained(
             "sentence-transformers/gtr-t5-base", **model_kwargs
         ).encoder
         tokenizer = transformers.AutoTokenizer.from_pretrained(
             "sentence-transformers/gtr-t5-base"
+        )
+    elif name == "gtr_large":
+        model = transformers.AutoModel.from_pretrained(
+            "sentence-transformers/gtr-t5-large", **model_kwargs
+        ).encoder
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            "sentence-transformers/gtr-t5-large"
         )
     elif name == "gtr_base__random_init":
         config = transformers.AutoConfig.from_pretrained(
