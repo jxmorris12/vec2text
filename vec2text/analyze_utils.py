@@ -31,14 +31,7 @@ def load_experiment_and_trainer(
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     # import previous aliases so that .bin that were saved prior to the
     # existence of the vec2text module will still work.
-    import sys
-
-    import vec2text.run_args as run_args
-
-    sys.modules["run_args"] = run_args
-
-    print("run_args:", run_args)
-
+    
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
     if checkpoint is None:
