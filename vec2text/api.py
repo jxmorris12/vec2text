@@ -7,26 +7,40 @@ import transformers
 import vec2text
 from vec2text.models.model_utils import device
 
-SUPPORTED_MODELS = ["text-embedding-ada-002"]
+SUPPORTED_MODELS = [
+    "text-embedding-ada-002",
+    "gtr-base"
+]
 
 
 def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
     """Gets the Corrector object for the given embedder.
 
-    For now, we just support inverting OpenAI Ada 002 embeddings; we plan to
+    For now, we just support inverting OpenAI Ada 002 and gtr-base embeddings; we plan to
     expand this support over time.
     """
     assert (
         embedder in SUPPORTED_MODELS
     ), f"embedder to invert `{embedder} not in list of supported models: {SUPPORTED_MODELS}`"
 
-    inversion_model = vec2text.models.InversionModel.from_pretrained(
-        "jxm/vec2text__openai_ada002__msmarco__msl128__hypothesizer"
-    )
-    model = vec2text.models.CorrectorEncoderModel.from_pretrained(
-        "jxm/vec2text__openai_ada002__msmarco__msl128__corrector"
-    )
+    if embedder == "text-embedding-ada-002":
+        inversion_model = vec2text.models.InversionModel.from_pretrained(
+            "jxm/vec2text__openai_ada002__msmarco__msl128__hypothesizer"
+        )
+        model = vec2text.models.CorrectorEncoderModel.from_pretrained(
+            "jxm/vec2text__openai_ada002__msmarco__msl128__corrector"
+        )
+    elif embedder == "gtr-base":
+        inversion_model = vec2text.models.InversionModel.from_pretrained(
+            "jxm/gtr__nq__32"
+        )
+        model = vec2text.models.CorrectorEncoderModel.from_pretrained(
+            "jxm/gtr__nq__32__correct"
+        )
+    else:
+        raise NotImplementedError(f"embedder `{embedder}` not implemented")
 
+    
     inversion_trainer = vec2text.trainers.InversionTrainer(
         model=inversion_model,
         train_dataset=None,
