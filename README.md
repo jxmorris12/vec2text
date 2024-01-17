@@ -118,7 +118,7 @@ vec2text.invert_embeddings(
 
 This function also takes the same optional hyperparameters, `num_steps` and `sequence_beam_width`.
 
-### Similarly, you can invert gtr-base embeddings with the following example: 
+### Similarly, you can invert gtr-base embeddings with the following example:
 
 ```python
 import vec2text
@@ -129,18 +129,18 @@ from transformers import AutoModel, AutoTokenizer, PreTrainedTokenizer, PreTrain
 def get_gtr_embeddings(text_list,
                        encoder: PreTrainedModel,
                        tokenizer: PreTrainedTokenizer) -> torch.Tensor:
-    
+
     inputs = tokenizer(text_list,
                        return_tensors="pt",
                        max_length=128,
                        truncation=True,
                        padding="max_length",).to("cuda")
-    
+
     with torch.no_grad():
         model_output = encoder(input_ids=inputs['input_ids'], attention_mask=inputs['attention_mask'])
         hidden_state = model_output.last_hidden_state
         embeddings = vec2text.models.model_utils.mean_pool(hidden_state, inputs['attention_mask'])
-        
+
     return embeddings
 
 

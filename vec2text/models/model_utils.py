@@ -133,9 +133,7 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
         )
         tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
     elif name == "bert__random_init":
-        config = transformers.AutoConfig.from_pretrained(
-            "bert-base-uncased"
-        )
+        config = transformers.AutoConfig.from_pretrained("bert-base-uncased")
         model = transformers.AutoModel.from_config(config)
         tokenizer = transformers.AutoTokenizer.from_pretrained("bert-base-uncased")
     elif name == "gtr_base":

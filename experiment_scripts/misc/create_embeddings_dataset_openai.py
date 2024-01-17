@@ -1,44 +1,42 @@
-from typing import Dict
-
 import argparse
 import functools
 import math
+from typing import Dict
 
 import datasets
 import openai
-from tenacity import retry, stop_after_attempt, wait_fixed
 import tiktoken
+from tenacity import retry, stop_after_attempt, wait_fixed
 
-from vec2text.data_helpers import load_beir_datasets, load_standard_val_datasets, retain_dataset_columns
+from vec2text.data_helpers import (
+    load_beir_datasets,
+    load_standard_val_datasets,
+    retain_dataset_columns,
+)
 from vec2text.models import load_embedder_and_tokenizer
 from vec2text.models.model_utils import mean_pool
 from vec2text.utils import dataset_map_multi_worker
 
-
 MAX_LENGTH = 128
 OPENAI_ADA2_MODEL = "text-embedding-ada-002"
 
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Process dataset and embedders")
-    parser.add_argument(
-        "dataset",
-        type=str,
-        help="Path or name of the dataset"
-    )
+    parser.add_argument("dataset", type=str, help="Path or name of the dataset")
     return parser.parse_args()
+
 
 encoding = tiktoken.encoding_for_model("text-embedding-ada-002")
 
+
 @retry(wait=wait_fixed(1), stop=stop_after_attempt(10))
-def embed_openai_ada2(
-    example: Dict
-) -> Dict:
-    from openai import OpenAI
+def embed_openai_ada2(example: Dict) -> Dict:
     from concurrent.futures import ThreadPoolExecutor
 
-    text_tokens = encoding.encode_batch(
-        example["text"]
-    )
+    from openai import OpenAI
+
+    text_tokens = encoding.encode_batch(example["text"])
     text_tokens = [tok[:MAX_LENGTH] for tok in text_tokens]
     text_list = encoding.decode_batch(text_tokens)
 
@@ -68,28 +66,32 @@ def embed_openai_ada2(
 
         for result in results:
             outputs.extend(result)
-    
+
     example["text"] = text_list
     example["embeddings_A"] = outputs
 
     return example
-    
+
 
 def main():
     datasets.disable_caching()
     args = parse_args()
 
-    full_name = "__".join((
-        args.dataset,
-        "openai_ada2",
-    ))
+    full_name = "__".join(
+        (
+            args.dataset,
+            "openai_ada2",
+        )
+    )
 
     all_datasets = {
         **load_standard_val_datasets(),
         **load_beir_datasets(),
     }
     print("Available datasets:", all_datasets.keys())
-    assert args.dataset in all_datasets, f"unknown dataset {args.dataset}; choices {all_datasets.keys()}"
+    assert (
+        args.dataset in all_datasets
+    ), f"unknown dataset {args.dataset}; choices {all_datasets.keys()}"
     dataset = all_datasets[args.dataset]
 
     print(f"[*] embedding {args.dataset}")
@@ -106,4 +108,6 @@ def main():
     dataset.push_to_hub(full_name)
     print("done")
 
-if __name__ == "__main__": main()
+
+if __name__ == "__main__":
+    main()

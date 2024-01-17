@@ -7,10 +7,7 @@ import transformers
 import vec2text
 from vec2text.models.model_utils import device
 
-SUPPORTED_MODELS = [
-    "text-embedding-ada-002",
-    "gtr-base"
-]
+SUPPORTED_MODELS = ["text-embedding-ada-002", "gtr-base"]
 
 
 def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
@@ -40,7 +37,6 @@ def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
     else:
         raise NotImplementedError(f"embedder `{embedder}` not implemented")
 
-    
     inversion_trainer = vec2text.trainers.InversionTrainer(
         model=inversion_model,
         train_dataset=None,

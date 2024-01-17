@@ -14,7 +14,13 @@ from vec2text import experiments
 from vec2text.models.config import InversionConfig
 from vec2text.run_args import DataArguments, ModelArguments, TrainingArguments
 
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+device = torch.device(
+    "cuda"
+    if torch.cuda.is_available()
+    else "mps"
+    if torch.backends.mps.is_available()
+    else "cpu"
+)
 transformers.logging.set_verbosity_error()
 
 #############################################################################
@@ -31,7 +37,7 @@ def load_experiment_and_trainer(
 ):  # (can't import due to circluar import) -> trainers.InversionTrainer:
     # import previous aliases so that .bin that were saved prior to the
     # existence of the vec2text module will still work.
-    
+
     if checkpoint is None:
         checkpoint = get_last_checkpoint(checkpoint_folder)  # a checkpoint
     if checkpoint is None:
