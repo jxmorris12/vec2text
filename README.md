@@ -92,7 +92,8 @@ If you only have embeddings, you can invert them directly:
 import torch
 
 def get_embeddings_openai(text_list, model="text-embedding-ada-002") -> torch.Tensor:
-    response = openai.Embedding.create(
+    client = openai.OpenAI()
+    response = client.embeddings.create(
         input=text_list,
         model=model,
         encoding_format="float",  # override default base64 encoding...
