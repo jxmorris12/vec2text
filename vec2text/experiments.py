@@ -3,7 +3,6 @@ import functools
 import hashlib
 import json
 import logging
-import multiprocessing
 import os
 import resource
 import sys
@@ -33,7 +32,7 @@ from vec2text.tokenize_data import (
     tokenize_function,
     tokenize_function_llama_chat,
 )
-from vec2text.utils import MockEmbedder, dataset_map_multi_worker
+from vec2text.utils import MockEmbedder, dataset_map_multi_worker, get_num_proc
 
 # Allow W&B to start slowly.
 os.environ["WANDB__SERVICE_WAIT"] = "300"
@@ -75,14 +74,6 @@ def md5_hash_kwargs(**kwargs) -> str:
     safe_kwargs = {k: str(v) for k, v in kwargs.items() if not k.startswith("_")}
     s = json.dumps(safe_kwargs, sort_keys=True)
     return hashlib.md5(s.encode()).hexdigest()
-
-
-def _get_num_proc(world_size) -> int:
-    try:
-        # NOTE: only available on some Unix platforms
-        return len(os.sched_getaffinity(0)) // world_size  # type: ignore[attr-defined]
-    except AttributeError:
-        return multiprocessing.cpu_count() // world_size
 
 
 class Experiment(abc.ABC):
@@ -403,7 +394,7 @@ class Experiment(abc.ABC):
                     padding=False,
                 ),
                 batched=True,
-                num_proc=_get_num_proc(self._world_size),
+                num_proc=get_num_proc(),
                 remove_columns=column_names,
                 desc="Running tokenizer on dataset",
             )
@@ -483,7 +474,7 @@ class Experiment(abc.ABC):
                 remove_columns=["text"],
                 batched=True,
                 batch_size=1024,
-                num_proc=(len(os.sched_getaffinity(0)) // self._world_size),
+                num_proc=get_num_proc(),
                 desc="Running tokenizer on dataset",
             )
 

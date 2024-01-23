@@ -1,4 +1,5 @@
 import math
+import multiprocessing
 import os
 import shutil
 from concurrent.futures import ThreadPoolExecutor
@@ -22,6 +23,23 @@ def emb(
             input_ids=input_ids, attention_mask=attention_mask
         )
     return emb
+
+
+def get_world_size() -> int:
+    try:
+        return torch.distributed.get_world_size()
+    except (RuntimeError, ValueError):
+        return 1
+
+
+def get_num_proc() -> int:
+    world_size: int = get_world_size()
+    try:
+        # os.sched_getaffinity respects schedulers, unlike cpu_count(), but it's only available
+        # on some Unix platforms, so we support both!
+        return len(os.sched_getaffinity(0)) // world_size  # type: ignore[attr-defined]
+    except AttributeError:
+        return multiprocessing.cpu_count() // world_size
 
 
 def embed_all_tokens(model: torch.nn.Module, tokenizer: transformers.AutoTokenizer):
@@ -110,12 +128,10 @@ def dataset_map_multi_worker(
     try:
         rank = torch.distributed.get_rank()
         world_size = torch.distributed.get_world_size()
-        # If not specified, use all of the CPUs we have available.
-        kwargs["num_proc"] = kwargs.get(
-            "num_proc", len(os.sched_getaffinity(0)) // world_size
-        )
+        kwargs["num_proc"] = kwargs.get("num_proc", get_num_proc())
     except (RuntimeError, ValueError):
-        kwargs["num_proc"] = kwargs.get("num_proc", len(os.sched_getaffinity(0)))
+        # In non-distributed mode, just run regular map()
+        kwargs["num_proc"] = kwargs.get("num_proc", get_num_proc())
         return dataset.map(map_fn, *args, **kwargs)
     datasets.disable_caching()
 

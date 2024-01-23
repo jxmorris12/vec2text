@@ -7,7 +7,7 @@ import datasets
 import torch
 
 from vec2text.run_args import DataArguments
-from vec2text.utils import dataset_map_multi_worker
+from vec2text.utils import dataset_map_multi_worker, get_num_proc
 
 
 def retain_dataset_columns(
@@ -55,7 +55,7 @@ def load_one_million_paired_instructions() -> datasets.Dataset:
     dataset_dict = dataset_map_multi_worker(
         dataset_dict,
         map_fn=create_ompi_ex,
-        num_proc=(len(os.sched_getaffinity(0)) // get_world_size()),
+        num_proc=get_num_proc(),
     )
 
     return dataset_dict["train"]
