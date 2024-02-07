@@ -13,3 +13,4 @@ tenacity
 tokenizers
 tqdm
 transformers
+einops
