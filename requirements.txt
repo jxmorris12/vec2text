@@ -1,6 +1,7 @@
 accelerate
 bert_score
 datasets
+einops
 evaluate
 openai
 optimum
@@ -13,4 +14,3 @@ tenacity
 tokenizers
 tqdm
 transformers
-einops

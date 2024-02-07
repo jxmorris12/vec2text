@@ -233,7 +233,9 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
         model = SentenceTransformer(name)
         tokenizer = model.tokenizer
     elif name.startswith("nomic-ai/nomic-embed-text-v1"):
-        model = SentenceTransformer("nomic-ai/nomic-embed-text-v1", trust_remote_code=True)
+        model = SentenceTransformer(
+            "nomic-ai/nomic-embed-text-v1", trust_remote_code=True
+        )
         tokenizer = model.tokenizer
     else:
         print(f"WARNING: Trying to initialize from unknown embedder {name}")
