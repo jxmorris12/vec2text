@@ -109,6 +109,12 @@ class InversionModel(transformers.PreTrainedModel):
         ######################################################
         self.tokenizer = tokenizer
         self.embedder = embedder
+        if self.embedder_no_grad:
+            for param in self.embedder.parameters():
+                param.requires_grad = False
+
+            self.embedder.eval()
+
         self.embedder_tokenizer = embedder_tokenizer
         self.embedder_model_api = embedder_model_api
         # self.freeze(freeze_strategy=config.freeze_strategy)
