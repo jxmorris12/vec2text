@@ -12,10 +12,15 @@ def tokenize_function(
     text_column_name: str,
     max_seq_length: int,
     padding: bool = False,
+    prefix: str = None,
 ) -> Callable[[Dict], Dict]:
     def tokenize_function_inner(examples) -> Dict[str, torch.Tensor]:
+        if prefix:
+            texts = [f"{prefix}: {text}" for text in examples[text_column_name]]
+        else:
+            texts = examples[text_column_name]
         output = tokenizer(
-            examples[text_column_name],
+            texts,
             padding=padding,
             truncation=True,
             max_length=max_seq_length,
@@ -56,6 +61,8 @@ def tokenize_function_llama_chat(
     text_column_name,
     max_seq_length,
     padding: bool = False,
+    # no-op for compatibility with other tokenization functions
+    prefix: str = None,
 ) -> Callable[[Dict], Dict]:
     """Use special tokenization for LLAMA chat models."""
 

@@ -293,11 +293,14 @@ class Experiment(abc.ABC):
                 id=self.kwargs_hash,
                 resume=True,
             )
+            training_args = vars(self.training_args)
+            # deepspeed kwargs are not json serializable
+            training_args = {k: v for k, v in training_args.items() if "deepspeed" not in k}
             wandb.config.update(
                 {
                     **vars(self.model_args),
                     **vars(self.data_args),
-                    **vars(self.training_args),
+                    **training_args,
                 },
                 allow_val_change=True,
             )
@@ -392,6 +395,10 @@ class Experiment(abc.ABC):
                     "text",
                     self.model_args.max_seq_length,
                     padding=False,
+                    prefix="search_document"
+                    if self.model_args.embedder_model_name
+                    == "nomic-ai/nomic-embed-text-v1"
+                    else None,
                 ),
                 batched=True,
                 num_proc=get_num_proc(),

@@ -109,6 +109,12 @@ class InversionModel(transformers.PreTrainedModel):
         ######################################################
         self.tokenizer = tokenizer
         self.embedder = embedder
+        if self.embedder_no_grad:
+            for param in self.embedder.parameters():
+                param.requires_grad = False
+
+            self.embedder.eval()
+
         self.embedder_tokenizer = embedder_tokenizer
         self.embedder_model_api = embedder_model_api
         # self.freeze(freeze_strategy=config.freeze_strategy)
@@ -170,6 +176,7 @@ class InversionModel(transformers.PreTrainedModel):
         self,
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
+        token_type_ids: Optional[torch.Tensor] = None,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
         embedder = self.embedder
@@ -192,9 +199,10 @@ class InversionModel(transformers.PreTrainedModel):
             )
         elif isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying
-            model_output = embedder(
-                {"input_ids": input_ids, "attention_mask": attention_mask}
-            )
+            model_inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+            if token_type_ids is not None:
+                model_inputs["token_type_ids"] = token_type_ids
+            model_output = embedder(model_inputs)
             embeddings = model_output["sentence_embedding"]
         else:
             model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
