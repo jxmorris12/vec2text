@@ -237,6 +237,8 @@ class InversionModel(transformers.PreTrainedModel):
                 attention_mask=embedder_attention_mask,
             )
         if self.embedding_transform_strategy == "repeat":
+            if embeddings.dtype != self.dtype:
+                embeddings = embeddings.to(self.dtype)
             repeated_embeddings = self.embedding_transform(embeddings)
             # linear outputs a big embedding, reshape into a sequence of regular size embeddings.
             embeddings = repeated_embeddings.reshape(
