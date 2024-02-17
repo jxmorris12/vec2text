@@ -6,7 +6,7 @@ import vec2text
 
 @pytest.fixture
 def corrector_ada(scope="session"):
-    return vec2text.load_corrector("text-embedding-ada-002")
+    return vec2text.load_pretrained_corrector("text-embedding-ada-002")
 
 
 def test_invert_embeddings(corrector_ada):

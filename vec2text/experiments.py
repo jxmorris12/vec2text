@@ -295,7 +295,9 @@ class Experiment(abc.ABC):
             )
             training_args = vars(self.training_args)
             # deepspeed kwargs are not json serializable
-            training_args = {k: v for k, v in training_args.items() if "deepspeed" not in k}
+            training_args = {
+                k: v for k, v in training_args.items() if "deepspeed" not in k
+            }
             wandb.config.update(
                 {
                     **vars(self.model_args),

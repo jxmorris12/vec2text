@@ -5,6 +5,7 @@ slurm-*.out
 *.p
 .ipynb_checkpoints/
 *cache/
+venv/*
 
 build/
 dist/

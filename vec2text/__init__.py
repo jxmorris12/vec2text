@@ -7,5 +7,10 @@ from . import (  # noqa: F401; analyze_utils,
     trainers,
     trainers_baseline,
 )
-from .api import invert_embeddings, invert_strings, load_corrector  # noqa: F401
+from .api import (  # noqa: F401
+    invert_embeddings,
+    invert_strings,
+    load_corrector,
+    load_pretrained_corrector,
+)
 from .trainers import Corrector  # noqa: F401
