@@ -10,7 +10,7 @@ from vec2text.models.model_utils import device
 SUPPORTED_MODELS = ["text-embedding-ada-002", "gtr-base"]
 
 
-def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
+def load_pretrained_corrector(embedder: str) -> vec2text.trainers.Corrector:
     """Gets the Corrector object for the given embedder.
 
     For now, we just support inverting OpenAI Ada 002 and gtr-base embeddings; we plan to
@@ -37,6 +37,23 @@ def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
     else:
         raise NotImplementedError(f"embedder `{embedder}` not implemented")
 
+    return load_corrector(inversion_model, model)
+
+
+def load_corrector(
+    inversion_model: vec2text.models.InversionModel,
+    corrector_model: vec2text.models.CorrectorEncoderModel,
+) -> vec2text.trainers.Corrector:
+    """Load in the inversion and corrector models
+
+    Args:
+        inversion_model (vec2text.models.InversionModel): _description_
+        corrector_model (vec2text.models.CorrectorEncoderModel): _description_
+
+    Returns:
+        vec2text.trainers.Corrector: Corrector model to invert an embedding back to text
+    """
+
     inversion_trainer = vec2text.trainers.InversionTrainer(
         model=inversion_model,
         train_dataset=None,
@@ -48,9 +65,9 @@ def load_corrector(embedder: str) -> vec2text.trainers.Corrector:
     )
 
     # backwards compatibility stuff
-    model.config.dispatch_batches = None
+    corrector_model.config.dispatch_batches = None
     corrector = vec2text.trainers.Corrector(
-        model=model,
+        model=corrector_model,
         inversion_trainer=inversion_trainer,
         args=None,
         data_collator=vec2text.collator.DataCollatorForCorrection(

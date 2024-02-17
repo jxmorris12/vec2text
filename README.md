@@ -31,11 +31,24 @@ pre-commit run --all
 
 The library can be used to embed text and then invert it, or invert directly from embeddings. First you'll need to construct a `Corrector` object which wraps the necessary models, embedders, and tokenizers:
 
-### Load a model via `load_corrector`
+### Load a model via `load_pretrained_corrector`
 
 ```python
-corrector = vec2text.load_corrector("text-embedding-ada-002")
+corrector = vec2text.load_pretrained_corrector("text-embedding-ada-002")
 ```
+
+### Load a model via `load_corrector`
+
+If you have trained you own custom models using vec2text, you can load them in using the `load_corrector` function.
+
+```python
+inversion_model = vec2text.models.InversionModel.from_pretrained("jxm/gtr__nq__32")
+corrector_model = vec2text.models.CorrectorEncoderModel.from_pretrained("jxm/gtr__nq__32__correct")
+
+corrector = vec2text.load_corrector(inversion_model, corrector_model)
+```
+
+Both `vec2text.models.InversionModel` and `vec2text.models.CorrectorEncoderModel` classes inherit `transformers.PreTrainedModel` therefore you can pass in a huggingface model name or path to a local directory.
 
 ### Invert text with `invert_strings`
 
@@ -146,7 +159,7 @@ def get_gtr_embeddings(text_list,
 
 encoder = AutoModel.from_pretrained("sentence-transformers/gtr-t5-base").encoder.to("cuda")
 tokenizer = AutoTokenizer.from_pretrained("sentence-transformers/gtr-t5-base")
-corrector = vec2text.load_corrector("gtr-base")
+corrector = vec2text.load_pretrained_corrector("gtr-base")
 
 embeddings = get_gtr_embeddings([
        "Jack Morris is a PhD student at Cornell Tech in New York City",
