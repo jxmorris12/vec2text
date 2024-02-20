@@ -260,23 +260,6 @@ Our models come in one of two forms: a zero-step 'hypothesizer' model that makes
 
 ```pre-commit run --all```
 
-
-
-### Cite our paper
-
-please cite our paper!
-
-```
-@misc{morris2023text,
-      title={Text Embeddings Reveal (Almost) As Much As Text},
-      author={John X. Morris and Volodymyr Kuleshov and Vitaly Shmatikov and Alexander M. Rush},
-      year={2023},
-      eprint={2310.06816},
-      archivePrefix={arXiv},
-      primaryClass={cs.CL}
-}
-```
-
 #### Evaluate the model from the paper
 
 Here's how to load and evaluate the sequence-length 32 GTR inversion model in the paper:
@@ -305,3 +288,35 @@ trainer.evaluate(
     eval_dataset=train_datasets["validation"]
 )
 ```
+
+
+
+### Citations
+
+if you benefit from the code or the research, please cite our papers! 
+
+This repository includes code for two papers
+
+**Text Embeddings Reveal (Almost) As Much As Text (EMNLP 2023)**
+
+```
+@misc{morris2023text,
+      title={Text Embeddings Reveal (Almost) As Much As Text},
+      author={John X. Morris and Volodymyr Kuleshov and Vitaly Shmatikov and Alexander M. Rush},
+      year={2023},
+      eprint={2310.06816},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
+```
+
+**Language Model Inversion (ICLR 2024)**
+
+@misc{morris2023language,
+      title={Language Model Inversion}, 
+      author={John X. Morris and Wenting Zhao and Justin T. Chiu and Vitaly Shmatikov and Alexander M. Rush},
+      year={2023},
+      eprint={2311.13647},
+      archivePrefix={arXiv},
+      primaryClass={cs.CL}
+}
