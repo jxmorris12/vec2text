@@ -290,12 +290,24 @@ trainer.evaluate(
 ```
 
 
+### Sample model-training command for Language Model Inversion
+
+This repository was also used to train language model inverters for our paper *Language Model Inversion*.
+
+This is the dataset of prompts used for training (referred two as "Two Million Instructions" in the manuscript but One Million Instructions on HuggingFace): https://huggingface.co/datasets/wentingzhao/one-million-instructions
+
+Here is a sample command for training a language model inverter:
+```bash
+python vec2text/run.py --per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_seq_length 128 --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name one_million_instructions --model_name_or_path t5-base --use_wandb=0 --embedder_model_name gpt2 --experiment inversion_from_logits_emb --bf16=1 --embedder_torch_dtype float16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0
+```
+
+
 
 ### Citations
 
 if you benefit from the code or the research, please cite our papers! 
 
-This repository includes code for two papers
+This repository includes code for two papers:
 
 **Text Embeddings Reveal (Almost) As Much As Text (EMNLP 2023)**
 
