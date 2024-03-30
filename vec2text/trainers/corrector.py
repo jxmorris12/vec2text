@@ -322,7 +322,7 @@ class Corrector(BaseTrainer):
             sequence_beam_width (int): beam width for sequence-level beam search
         Returns:
             generated_ids (List[torch.Tensor]): ids of generated text, for each hypothesis sequence
-            hypothesis_embeddings (List[torch.Tensor]): embeddings of each hypothesis sequence 
+            hypothesis_embeddings (List[torch.Tensor]): embeddings of each hypothesis sequence
         """
         try:
             frozen_embeddings = inputs["frozen_embeddings"]
@@ -337,7 +337,9 @@ class Corrector(BaseTrainer):
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
 
-        assert sequence_beam_width == 1, "Can only generate hypotheses with sequence_beam_width=1"
+        assert (
+            sequence_beam_width == 1
+        ), "Can only generate hypotheses with sequence_beam_width=1"
 
         # Add beam dimension:
         #       (batch, ...) -> (batch, beam, ...)
