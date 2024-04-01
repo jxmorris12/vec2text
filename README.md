@@ -260,7 +260,7 @@ Our models come in one of two forms: a zero-step 'hypothesizer' model that makes
 
 ```pre-commit run --all```
 
-#### Evaluate the model from the paper
+#### Evaluate the models from the papers
 
 Here's how to load and evaluate the sequence-length 32 GTR inversion model in the paper:
 
@@ -301,6 +301,11 @@ Here is a sample command for training a language model inverter:
 python vec2text/run.py --per_device_train_batch_size 16 --per_device_eval_batch_size 16 --max_seq_length 128 --num_train_epochs 100 --max_eval_samples 1000 --eval_steps 25000 --warmup_steps 100000 --learning_rate 0.0002 --dataset_name one_million_instructions --model_name_or_path t5-base --use_wandb=0 --embedder_model_name gpt2 --experiment inversion_from_logits_emb --bf16=1 --embedder_torch_dtype float16 --lr_scheduler_type constant_with_warmup --use_frozen_embeddings_as_input 1 --mock_embedder 0
 ```
 
+#### Pre-trained models
+
+The models used for our Language Model Inversion paper are available for download from HuggingFace. Here is the [LLAMA-2 base inverter](https://huggingface.co/jxm/t5-base__llama-7b__one-million-instructions__emb) and the [LLAMA-2 chat inverter](https://huggingface.co/jxm/t5-base__llama-7b-chat__one-million-instructions__emb). Those models can also be pre-trained from scratch using this repository (everything you need should be downloaded automatically from HuggingFace). 
+
+The training dataset of 2.33M prompts is available here: https://huggingface.co/datasets/wentingzhao/one-million-instructions
 
 
 ### Citations
@@ -324,6 +329,7 @@ This repository includes code for two papers:
 
 **Language Model Inversion (ICLR 2024)**
 
+```
 @misc{morris2023language,
       title={Language Model Inversion}, 
       author={John X. Morris and Wenting Zhao and Justin T. Chiu and Vitaly Shmatikov and Alexander M. Rush},
@@ -332,3 +338,4 @@ This repository includes code for two papers:
       archivePrefix={arXiv},
       primaryClass={cs.CL}
 }
+```
