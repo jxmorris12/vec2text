@@ -337,10 +337,6 @@ class Corrector(BaseTrainer):
                 hypothesis_embedding,
             ) = self._get_hypothesis_uncached(inputs=inputs)
 
-        assert (
-            sequence_beam_width == 1
-        ), "Can only generate hypotheses with sequence_beam_width=1"
-
         # Add beam dimension:
         #       (batch, ...) -> (batch, beam, ...)
         inputs["frozen_embeddings"] = frozen_embeddings
@@ -354,9 +350,8 @@ class Corrector(BaseTrainer):
 
         total_best_scores_seen = None  # Track best scores for early stopping
 
-        hypothesis_embeddings = [
-            inputs["hypothesis_embedding"]
-        ]  # Track hypothesis embeddings
+        ground_truth_embedding = inputs["hypothesis_embedding"]
+        hypothesis_embeddings = [ground_truth_embedding]  # Track hypothesis embeddings
 
         hypothesis_ids = [inputs["hypothesis_input_ids"]]  # Track hypothesis ids
 
@@ -377,7 +372,9 @@ class Corrector(BaseTrainer):
             num_recursive_steps -= 1
             num_recursive_steps_so_far += 1
             # early stopping
+
             if best_scores is not None:
+                closest_idx = torch.argmax(best_scores)
                 if (total_best_scores_seen is not None) and torch.isclose(
                     best_scores, total_best_scores_seen, atol=1e-3
                 ):
@@ -388,9 +385,14 @@ class Corrector(BaseTrainer):
                     )
                     break
                 best_scores = total_best_scores_seen
+            else:
+                closest_idx = 0
 
-            hypothesis_embeddings.append(hypothesis_embedding)
-            hypothesis_ids.append(gen_text_ids)
+            # this doesn't seem to work very well?
+            # closest_idx = torch.argmax(torch.nn.functional.cosine_similarity(ground_truth_embedding, hypothesis_embedding, dim=1))
+
+            hypothesis_embeddings.append(hypothesis_embedding[closest_idx].unsqueeze(0))
+            hypothesis_ids.append(gen_text_ids[closest_idx].unsqueeze(0))
 
         return hypothesis_ids, hypothesis_embeddings
 
