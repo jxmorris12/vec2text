@@ -313,7 +313,6 @@ class Corrector(BaseTrainer):
         sequence_beam_width: int = None,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         """Generates text using self-correction. Works exactly like generate(), but returns all the intermediate hypotheses steps.
-           This will currently only work with sequence_beam_width=1, to avoid having to deal with multiple hypothesis beams.
 
         Args:
             inputs (Dict[str, torch.Tensor]): inputs for generation, like the input embedding, hypothesis,
