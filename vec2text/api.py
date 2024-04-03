@@ -118,6 +118,39 @@ def invert_embeddings(
     return output_strings
 
 
+def invert_embeddings_and_return_hypotheses(
+    embeddings: torch.Tensor,
+    corrector: vec2text.trainers.Corrector,
+    num_steps: int = None,
+    sequence_beam_width: int = 0,
+) -> List[str]:
+    corrector.inversion_trainer.model.eval()
+    corrector.model.eval()
+
+    gen_kwargs = copy.copy(corrector.gen_kwargs)
+    gen_kwargs["min_length"] = 1
+    gen_kwargs["max_length"] = 128
+
+    corrector.return_best_hypothesis = sequence_beam_width > 0
+
+    regenerated, hypotheses = corrector.generate_with_hypotheses(
+        inputs={
+            "frozen_embeddings": embeddings,
+        },
+        generation_kwargs=gen_kwargs,
+        num_recursive_steps=num_steps,
+        sequence_beam_width=sequence_beam_width,
+    )
+
+    output_strings = []
+    for hypothesis in regenerated:
+        output_strings.append(
+            corrector.tokenizer.batch_decode(hypothesis, skip_special_tokens=True)
+        )
+
+    return output_strings, hypotheses
+
+
 def invert_strings(
     strings: List[str],
     corrector: vec2text.trainers.Corrector,

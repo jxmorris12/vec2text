@@ -305,6 +305,93 @@ class Corrector(BaseTrainer):
 
         return gen_text_ids
 
+    def generate_with_hypotheses(
+        self,
+        inputs: Dict,
+        generation_kwargs: Dict,
+        num_recursive_steps: int = None,
+        sequence_beam_width: int = None,
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        """Generates text using self-correction. Works exactly like generate(), but returns all the intermediate hypotheses steps.
+
+        Args:
+            inputs (Dict[str, torch.Tensor]): inputs for generation, like the input embedding, hypothesis,
+                and hypothesis embedding
+            generation_kwargs (Dict): dictionary of parameters for generation, will be passed on to the model
+            sequence_beam_width (int): beam width for sequence-level beam search
+        Returns:
+            generated_ids (List[torch.Tensor]): ids of generated text, for each hypothesis sequence
+            hypothesis_embeddings (List[torch.Tensor]): embeddings of each hypothesis sequence
+        """
+        try:
+            frozen_embeddings = inputs["frozen_embeddings"]
+            hypothesis_input_ids = inputs["hypothesis_input_ids"]
+            hypothesis_attention_mask = inputs["hypothesis_attention_mask"]
+            hypothesis_embedding = inputs["hypothesis_embedding"]
+        except KeyError:
+            (
+                frozen_embeddings,
+                hypothesis_input_ids,
+                hypothesis_attention_mask,
+                hypothesis_embedding,
+            ) = self._get_hypothesis_uncached(inputs=inputs)
+
+        # Add beam dimension:
+        #       (batch, ...) -> (batch, beam, ...)
+        inputs["frozen_embeddings"] = frozen_embeddings
+        inputs["hypothesis_input_ids"] = hypothesis_input_ids
+        inputs["hypothesis_attention_mask"] = hypothesis_attention_mask
+        inputs["hypothesis_embedding"] = hypothesis_embedding
+
+        num_recursive_steps = num_recursive_steps or self.num_gen_recursive_steps
+        sequence_beam_width = sequence_beam_width or self.sequence_beam_width
+        num_recursive_steps_so_far = 0
+
+        total_best_scores_seen = None  # Track best scores for early stopping
+
+        ground_truth_embedding = inputs["hypothesis_embedding"]
+        hypothesis_embeddings = [ground_truth_embedding]  # Track hypothesis embeddings
+
+        hypothesis_ids = [inputs["hypothesis_input_ids"]]  # Track hypothesis ids
+
+        while num_recursive_steps >= 1:
+            gen_text_ids, hypothesis_embedding, best_scores = self._generate_with_beam(
+                inputs=inputs,
+                generation_kwargs=generation_kwargs,
+                num_recursive_steps=num_recursive_steps,
+                num_recursive_steps_so_far=num_recursive_steps_so_far,
+                sequence_beam_width=sequence_beam_width,
+            )
+            inputs["hypothesis_input_ids"] = gen_text_ids
+            inputs["hypothesis_attention_mask"] = (
+                gen_text_ids != self.model.encoder_decoder.config.pad_token_id
+            ).int()
+            inputs["hypothesis_embedding"] = hypothesis_embedding
+            # step counters
+            num_recursive_steps -= 1
+            num_recursive_steps_so_far += 1
+            # early stopping
+
+            if best_scores is not None:
+                closest_idx = torch.argmax(best_scores)
+                if (total_best_scores_seen is not None) and torch.isclose(
+                    best_scores, total_best_scores_seen, atol=1e-3
+                ):
+                    print(
+                        "scores stopped increasing! stopping early after",
+                        num_recursive_steps_so_far,
+                        "steps",
+                    )
+                    break
+                best_scores = total_best_scores_seen
+            else:
+                closest_idx = 0
+
+            hypothesis_embeddings.append(hypothesis_embedding[closest_idx].unsqueeze(0))
+            hypothesis_ids.append(gen_text_ids[closest_idx].unsqueeze(0))
+
+        return hypothesis_ids, hypothesis_embeddings
+
     def _generate_with_beam(
         self,
         inputs: Dict,
