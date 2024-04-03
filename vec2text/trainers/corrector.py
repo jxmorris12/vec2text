@@ -387,9 +387,6 @@ class Corrector(BaseTrainer):
             else:
                 closest_idx = 0
 
-            # this doesn't seem to work very well?
-            # closest_idx = torch.argmax(torch.nn.functional.cosine_similarity(ground_truth_embedding, hypothesis_embedding, dim=1))
-
             hypothesis_embeddings.append(hypothesis_embedding[closest_idx].unsqueeze(0))
             hypothesis_ids.append(gen_text_ids[closest_idx].unsqueeze(0))
 
