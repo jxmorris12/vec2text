@@ -306,6 +306,23 @@ python vec2text/run.py --per_device_train_batch_size 16 --per_device_eval_batch_
 The models used for our Language Model Inversion paper are available for download from HuggingFace. Here is the [LLAMA-2 base inverter](https://huggingface.co/jxm/t5-base__llama-7b__one-million-instructions__emb) and the [LLAMA-2 chat inverter](https://huggingface.co/jxm/t5-base__llama-7b-chat__one-million-instructions__emb). Those models can also be pre-trained from scratch using this repository (everything you need should be downloaded automatically from HuggingFace). 
 
 The training dataset of 2.33M prompts is available here: https://huggingface.co/datasets/wentingzhao/one-million-instructions
+As well as our Private Prompts synthetic evaluation data: https://huggingface.co/datasets/jxm/private_prompts
+
+#### Example
+
+Here's an example of how to evaluate on the Python-Alpaca dataset:
+
+```python
+from vec2text import analyze_utils
+experiment, trainer = analyze_utils.load_experiment_and_trainer_from_pretrained(
+    "jxm/t5-base__llama-7b__one-million-instructions__emb"
+)
+trainer.model.use_frozen_embeddings_as_input = False
+trainer.args.per_device_eval_batch_size = 16
+trainer.evaluate(
+    eval_dataset=trainer.eval_dataset["python_code_alpaca"].remove_columns("frozen_embeddings").select(range(200))
+)
+```
 
 
 ### Citations
