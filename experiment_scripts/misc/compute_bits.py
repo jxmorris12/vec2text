@@ -20,7 +20,7 @@ from typing import Dict, List
 import openai
 from tenacity import retry, stop_after_attempt, wait_fixed
 
-os.environ["OPENAI_API_KEY"] = "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"
+os.environ["OPENAI_API_KEY"] = "😎"
 
 
 class LLM_Chat:
