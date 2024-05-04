@@ -125,16 +125,16 @@ def embed_dataset_batch(model: InversionModel, batch: Dict) -> Dict:
 
     input_ids = batch["input_ids"]
     inputs_str = model.tokenizer.batch_decode(input_ids, skip_special_tokens=True)
-    emb_input_ids = model.embedder_tokenizer(
-        inputs_str,
-        max_length=model.config.max_seq_length,
-        truncation=True,
-        padding="max_length",
-        return_tensors="pt",
-    ).to(next(model.parameters()).device)
+    # emb_input_ids = model.embedder_tokenizer(
+    #     inputs_str,
+    #     max_length=model.config.max_seq_length,
+    #     truncation=True,
+    #     padding="max_length",
+    #     return_tensors="pt",
+    # ).to(next(model.parameters()).device)
 
     with torch.no_grad():
-        batch["frozen_embeddings"] = model.call_embedding_model(**emb_input_ids)
+        batch["frozen_embeddings"] = model.call_embedding_model(inputs_str)
     return batch
 
 

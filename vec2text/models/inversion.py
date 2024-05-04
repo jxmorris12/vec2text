@@ -174,8 +174,7 @@ class InversionModel(transformers.PreTrainedModel):
 
     def call_embedding_model(
         self,
-        input_ids: torch.Tensor,
-        attention_mask: torch.Tensor,
+        inputs_str,
         token_type_ids: Optional[torch.Tensor] = None,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
@@ -184,27 +183,36 @@ class InversionModel(transformers.PreTrainedModel):
         if self.embedder_no_grad:
             embedder.eval()
 
-        if self.embedder_fake_with_zeros:
-            batch_size = input_ids.shape[0]
-            return torch.zeros(
-                (batch_size, self.embedder_dim),
-                dtype=torch.float32,
-                device=self.embedder_device,
-            )
-        elif self.embedder_model_api:
-            embeddings = embed_api(
-                input_ids=input_ids,
-                embedder_tokenizer=self.embedder_tokenizer,
-                api_name=self.embedder_model_api,
-            )
-        elif isinstance(self.embedder, SentenceTransformer):
+        # if self.embedder_fake_with_zeros:
+        #     batch_size = input_ids.shape[0]
+        #     return torch.zeros(
+        #         (batch_size, self.embedder_dim),
+        #         dtype=torch.float32,
+        #         device=self.embedder_device,
+        #     )
+        # elif self.embedder_model_api:
+        #     embeddings = embed_api(
+        #         input_ids=input_ids,
+        #         embedder_tokenizer=self.embedder_tokenizer,
+        #         api_name=self.embedder_model_api,
+        #     )
+        if isinstance(self.embedder, SentenceTransformer):
             # sentence-transformers is kind of really annoying
-            model_inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
-            if token_type_ids is not None:
-                model_inputs["token_type_ids"] = token_type_ids
-            model_output = embedder(model_inputs)
-            embeddings = model_output["sentence_embedding"]
+            # model_inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
+            # if token_type_ids is not None:
+            #     model_inputs["token_type_ids"] = token_type_ids
+            # sentences = self.embedder_tokenizer.decode(input_ids)
+            embeddings = self.embedder.encode(inputs_str)
+            # embeddings = model_output["sentence_embedding"]
         else:
+            emb_input_ids = self.embedder_tokenizer(
+                inputs_str,
+                max_length=self.config.max_seq_length,
+                truncation=True,
+                padding="max_length",
+                return_tensors="pt",
+            ).to(next(self.parameters()).device)
+            input_ids, attention_mask = emb_input_ids["input_ids"], emb_input_ids["attention_mask"]
             model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
             embeddings = self._process_embedder_output(model_output, attention_mask)
 
