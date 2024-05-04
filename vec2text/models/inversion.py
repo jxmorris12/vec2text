@@ -174,7 +174,8 @@ class InversionModel(transformers.PreTrainedModel):
 
     def call_embedding_model(
         self,
-        inputs_str,
+        input_ids: torch.Tensor,
+        attention_mask: torch.Tensor,
         token_type_ids: Optional[torch.Tensor] = None,
         # token_type_ids: Optional[torch.Tensor] = None, # not used
     ) -> torch.Tensor:
@@ -201,19 +202,11 @@ class InversionModel(transformers.PreTrainedModel):
             # model_inputs = {"input_ids": input_ids, "attention_mask": attention_mask}
             # if token_type_ids is not None:
             #     model_inputs["token_type_ids"] = token_type_ids
-            # sentences = self.embedder_tokenizer.decode(input_ids)
+            sentences = [self.embedder_tokenizer.decode(ids) for ids in input_ids]
             print(f"{self.embedder.__class__.__name__} Encoding...")
-            embeddings = self.embedder.encode(inputs_str)
+            embeddings = self.embedder.encode(sentences)
             # embeddings = model_output["sentence_embedding"]
         else:
-            emb_input_ids = self.embedder_tokenizer(
-                inputs_str,
-                max_length=self.config.max_seq_length,
-                truncation=True,
-                padding="max_length",
-                return_tensors="pt",
-            ).to(next(self.parameters()).device)
-            input_ids, attention_mask = emb_input_ids["input_ids"], emb_input_ids["attention_mask"]
             model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
             embeddings = self._process_embedder_output(model_output, attention_mask)
 
