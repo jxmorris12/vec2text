@@ -14,7 +14,7 @@ import transformers
 
 import vec2text
 from vec2text.collator import DataCollatorForCorrection
-from vec2text.data_helpers import dataset_from_args, load_standard_val_datasets
+from vec2text.data_helpers import custom_dataset_from_args, load_standard_val_datasets, dataset_from_args
 from vec2text.models import (
     CorrectorEncoderFromLogitsModel,
     CorrectorEncoderModel,
@@ -368,7 +368,7 @@ class Experiment(abc.ABC):
         ###########################################################################
         # Load datasets
         logger.info("Loading dataset '%s'...", self.data_args.dataset_name)
-        raw_datasets = dataset_from_args(self.data_args)
+        raw_datasets = custom_dataset_from_args(self.data_args)
 
         # Remove extra features except for 'frozen_embeddings' which could be embeddings
         # saved to disk.
@@ -388,6 +388,11 @@ class Experiment(abc.ABC):
         tokenize_fn = (
             tokenize_function_llama_chat if self.is_llama_chat else tokenize_function
         )
+        # print(raw_datasets.keys(), raw_datasets["train"].column_names, len(raw_datasets["train"]))
+        # print(raw_datasets["train"][0], "=====")
+        # print(raw_datasets["test"][0], "=====")
+        # print(raw_datasets["validation"][0], "=====")
+
         for key in raw_datasets:
             raw_datasets[key] = dataset_map_multi_worker(
                 dataset=raw_datasets[key],

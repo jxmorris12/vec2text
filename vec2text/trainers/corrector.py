@@ -655,7 +655,8 @@ class Corrector(BaseTrainer):
                 input_ids=embedder_input_ids,
                 attention_mask=embedder_attention_mask,
             )
-
+        # np.ndarray to tensor
+        frozen_embeddings = torch.tensor(frozen_embeddings)
         return frozen_embeddings.to(self.args.device)
 
     def embed_generated_hypothesis(self, input_ids: torch.Tensor) -> torch.Tensor:

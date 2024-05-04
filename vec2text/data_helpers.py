@@ -2,7 +2,7 @@ import logging
 import os
 import random
 from typing import Dict, List
-
+import pandas as pd
 import datasets
 import torch
 
@@ -24,6 +24,7 @@ def load_nq_dpr_corpus() -> datasets.Dataset:
 def load_msmarco_corpus() -> datasets.Dataset:
     # has columns ["title", "text"]. only one split ("train")
     dataset_dict = datasets.load_dataset("Tevatron/msmarco-passage-corpus")
+    print(dataset_dict["train"].column_names, dataset_dict["train"].shape)
     return dataset_dict["train"]
 
 
@@ -83,8 +84,23 @@ def load_luar_reddit() -> datasets.Dataset:
     return d
 
 
+def custom_dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
+    if data_args.dataset_name == "msmarco":
+        # sentences = get_sensitive_sentences()
+        sentences = [chr(i+97) for i in range(100)]
+        list_len = len(sentences)
+        raw_datasets = {}
+        sentences_train, sentences_val = sentences[:list_len//100*99], sentences[list_len//100*99:]
+        train = {'text': sentences_train, 'docid': list(range(len(sentences_train))), 'title': [''] * len(sentences_train)}
+        val = {'text': sentences_val, 'docid': list(range(len(sentences_val))), 'title': [''] * len(sentences_val)}
+
+        raw_datasets['train'] = datasets.Dataset.from_dict(train)
+        raw_datasets['validation'] = datasets.Dataset.from_dict(val)
+        raw_datasets['test'] = raw_datasets['validation']
+    return raw_datasets
 def dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
     """Loads a dataset from data_args create in `run_args`."""
+    print(data_args.dataset_name)
     if data_args.dataset_name == "nq":
         raw_datasets = load_nq_dpr_corpus()
         raw_datasets["validation"] = raw_datasets["dev"]
