@@ -202,6 +202,7 @@ class InversionModel(transformers.PreTrainedModel):
             # if token_type_ids is not None:
             #     model_inputs["token_type_ids"] = token_type_ids
             # sentences = self.embedder_tokenizer.decode(input_ids)
+            print(f"{self.embedder.__class__.__name__} Encoding...")
             embeddings = self.embedder.encode(inputs_str)
             # embeddings = model_output["sentence_embedding"]
         else:
