@@ -368,7 +368,7 @@ class Experiment(abc.ABC):
         ###########################################################################
         # Load datasets
         logger.info("Loading dataset '%s'...", self.data_args.dataset_name)
-        raw_datasets = custom_dataset_from_args(self.data_args)
+        raw_datasets = custom_dataset_from_args(self)
 
         # Remove extra features except for 'frozen_embeddings' which could be embeddings
         # saved to disk.
@@ -630,7 +630,7 @@ class InversionExperiment(Experiment):
         return InversionModel(
             config=self.config,
         )
-
+    
     def load_trainer(self) -> transformers.Trainer:
         model = self.load_model()
         train_dataset, eval_dataset = self.load_train_and_val_datasets(

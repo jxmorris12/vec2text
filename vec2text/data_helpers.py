@@ -24,7 +24,6 @@ def load_nq_dpr_corpus() -> datasets.Dataset:
 def load_msmarco_corpus() -> datasets.Dataset:
     # has columns ["title", "text"]. only one split ("train")
     dataset_dict = datasets.load_dataset("Tevatron/msmarco-passage-corpus")
-    print(dataset_dict["train"].column_names, dataset_dict["train"].shape)
     return dataset_dict["train"]
 
 
@@ -84,10 +83,10 @@ def load_luar_reddit() -> datasets.Dataset:
     return d
 
 
-def custom_dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
-    if data_args.dataset_name == "msmarco":
-        # sentences = get_sensitive_sentences()
-        sentences = [chr(i+97) for i in range(100)]
+def custom_dataset_from_args(self) -> datasets.DatasetDict:
+    if self.data_args.dataset_name == "msmarco":
+        sentences = self.sensitive_sentences
+        # sentences = [chr(i+97) for i in range(100)]
         list_len = len(sentences)
         raw_datasets = {}
         sentences_train, sentences_val = sentences[:list_len//100*99], sentences[list_len//100*99:]
@@ -100,7 +99,6 @@ def custom_dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
     return raw_datasets
 def dataset_from_args(data_args: DataArguments) -> datasets.DatasetDict:
     """Loads a dataset from data_args create in `run_args`."""
-    print(data_args.dataset_name)
     if data_args.dataset_name == "nq":
         raw_datasets = load_nq_dpr_corpus()
         raw_datasets["validation"] = raw_datasets["dev"]
