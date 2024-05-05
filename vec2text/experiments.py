@@ -577,11 +577,11 @@ class Experiment(abc.ABC):
                 tokenizer=tokenizer,
                 embedder_tokenizer=embedder_tokenizer,
             )
-            print("saving train_dataset to path:", train_dataset_path)
-            train_datasets.save_to_disk(
-                train_dataset_path,
-                max_shard_size="2GB",
-            )
+            # print("saving train_dataset to path:", train_dataset_path)
+            # train_datasets.save_to_disk(
+            #     train_dataset_path,
+            #     max_shard_size="2GB",
+            # )
         ######################################################################
         val_dataset_kwargs = {
             "dataset_name": "__".join(
@@ -602,8 +602,8 @@ class Experiment(abc.ABC):
                 tokenizer=tokenizer,
                 embedder_tokenizer=embedder_tokenizer,
             )
-            print("saving val_dataset to path:", val_dataset_path)
-            val_datasets_dict.save_to_disk(val_dataset_path)
+            # print("saving val_dataset to path:", val_dataset_path)
+            # val_datasets_dict.save_to_disk(val_dataset_path)
         ######################################################################
         val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
         train_dataset = train_datasets["train"]
