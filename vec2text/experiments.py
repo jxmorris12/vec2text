@@ -597,22 +597,23 @@ class Experiment(abc.ABC):
             val_datasets_dict = datasets.load_from_disk(val_dataset_path)
             print("loaded dict of val datasets from", val_dataset_path)
         else:
-            val_datasets_dict = self._load_val_datasets_uncached(
-                model=model,
-                tokenizer=tokenizer,
-                embedder_tokenizer=embedder_tokenizer,
-            )
+            val_datasets_dict = {}
+            # val_datasets_dict = self._load_val_datasets_uncached(
+            #     model=model,
+            #     tokenizer=tokenizer,
+            #     embedder_tokenizer=embedder_tokenizer,
+            # )
             # print("saving val_dataset to path:", val_dataset_path)
             # val_datasets_dict.save_to_disk(val_dataset_path)
         ######################################################################
-        val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
+        # val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
         train_dataset = train_datasets["train"]
 
-        for key in val_datasets_dict:
-            new_length = min(
-                len(val_datasets_dict[key]), self.data_args.max_eval_samples
-            )
-            val_datasets_dict[key] = val_datasets_dict[key].select(range(new_length))
+        # for key in val_datasets_dict:
+        #     new_length = min(
+        #         len(val_datasets_dict[key]), self.data_args.max_eval_samples
+        #     )
+        #     val_datasets_dict[key] = val_datasets_dict[key].select(range(new_length))
 
         return (train_dataset, val_datasets_dict)
 
