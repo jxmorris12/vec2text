@@ -606,7 +606,7 @@ class Experiment(abc.ABC):
             # print("saving val_dataset to path:", val_dataset_path)
             # val_datasets_dict.save_to_disk(val_dataset_path)
         ######################################################################
-        # val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
+        val_datasets_dict[self.data_args.dataset_name] = train_datasets["validation"]
         train_dataset = train_datasets["train"]
 
         # for key in val_datasets_dict:
