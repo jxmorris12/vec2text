@@ -25,6 +25,7 @@ class InversionConfig(transformers.configuration_utils.PretrainedConfig):
                 # value was not JSON-serializable, skip
                 continue
         super().__init__()
+        self.custom_embedder_name = "gtr-base"
 
     def __getattribute__(self, key):
         try:

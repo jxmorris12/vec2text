@@ -13,6 +13,8 @@ from vec2text.models.model_utils import (
 
 
 class InversionModelBagOfWords(transformers.PreTrainedModel):
+
+    config_class = InversionConfig
     embedder: torch.nn.Module
     encoder: transformers.AutoModel
     tokenizer: transformers.AutoTokenizer
@@ -46,6 +48,7 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
             torch.nn.GELU(),
             torch.nn.Linear(self.d_encoder, self.d_encoder),
         )
+        self.config = config
 
     @property
     def d_encoder(self) -> int:
@@ -53,7 +56,13 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
 
     @property
     def d_embedder(self) -> int:
-        return self.embedder.config.d_model
+        if self.config.custom_embedder_name in ["gtr-base", "sbert", "st5"]:
+            return 768
+        elif self.config.custom_embedder_name=="minilm":
+            return 384
+        else :
+            raise ValueError(f"Unknown model name: {self.config.custom_embedder_name}")
+
 
     def generate(
         self,
@@ -64,8 +73,7 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
         with torch.no_grad():
             logits = self.forward(**inputs)["logits"]
         # TODO implement different generation strategies
-
-        max_length = inputs.get("input_ids", inputs["embedder_input_ids"]).shape[1]
+        max_length = generation_kwargs["max_length"]
         # Take top `seq_length` tokens
         return logits.topk(max_length, dim=1).indices
 
@@ -74,9 +82,11 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
         input_ids: torch.Tensor,
         attention_mask: torch.Tensor,
     ) -> torch.Tensor:
-        outputs = self.embedder(input_ids=input_ids, attention_mask=attention_mask)
-        hidden_state = outputs.last_hidden_state
-        return mean_pool(hidden_state, attention_mask)
+        sentences = [self.embedder_tokenizer.decode(ids) for ids in input_ids]
+        embeddings = self.embedder.encode(sentences)
+        # hidden_state = embeddings.last_hidden_state
+
+        return embeddings
 
     def bow_logits(
         self, inputs_embeds: torch.Tensor, attention_mask: torch.Tensor
@@ -109,13 +119,13 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
 
     def forward(
         self,
-        embedder_input_ids: torch.Tensor,
-        embedder_attention_mask: torch.Tensor,
+        embedder_input_ids: torch.Tensor = None,
+        embedder_attention_mask: torch.Tensor = None,
         labels: torch.Tensor = None,
         frozen_embeddings: Optional[torch.Tensor] = None,
         **kwargs,
     ) -> Dict[str, torch.Tensor]:
-        batch_size, seq_length = embedder_input_ids.shape
+        # batch_size, seq_length = embedder_input_ids.shape
         if frozen_embeddings is None:
             with torch.no_grad():
                 embedding = self.call_embedding_model(
@@ -123,12 +133,15 @@ class InversionModelBagOfWords(transformers.PreTrainedModel):
                 )
         else:
             embedding = frozen_embeddings
-        assert embedding.shape == (batch_size, self.d_embedder)
+        batch_size = embedding.shape[0]
+        # assert embedding.shape == (batch_size, self.d_embedder)
         embedding = self.in_projection(embedding)
         # TODO: check that it's ok if we make every token '<unk>'.
-        input_ids = self.tokenizer.unk_token_id * torch.ones_like(
-            embedder_input_ids, device=embedder_input_ids.device
+        import numpy as np
+        input_ids = self.tokenizer.unk_token_id * torch.ones(
+            [batch_size, self.config.max_seq_length], device=torch.device("cuda")
         )
+        input_ids = input_ids.long()
         inputs_embeds = self.encoder.embed_tokens(input_ids)
         # TODO: support & ablate concatenation methods.
         inputs_embeds = torch.cat((embedding[:, None, :], inputs_embeds), dim=1)
