@@ -8,7 +8,6 @@ import transformers
 from vec2text.models.config import InversionConfig
 from vec2text.models.inversion import InversionModel
 
-LOGIT_FILTER_VALUE = -1 * 10**7
 
 # TODO: Remove conflicting duplicate features: zero-except-top-k and
 # emb-top-k.
