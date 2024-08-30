@@ -54,6 +54,9 @@ class ModelArguments:
     embedder_model_api: Optional[str] = field(
         default=None, metadata={"help": "API to get embeddings from"}
     )
+    embedder_gaussian_noise_level: float = field(
+        default=0.0, metadata={"help": "noise level to add during training to embedder"}
+    )
     embedder_torch_dtype: str = field(
         default="float32",
         metadata={

@@ -22,9 +22,6 @@ from vec2text.utils import embed_api
 logger = logging.getLogger(__name__)
 
 
-# TODO: can we make this class a HF pretrained model so it works nicely with
-# .push_to_hub(), etc.?
-# TODO: Need config to subclass transformers.PreTrainedModel.
 class InversionModel(transformers.PreTrainedModel):
     """A class of model that conditions on embeddings from a pre-trained sentence embedding model
     to decode text autoregressively.
@@ -122,7 +119,7 @@ class InversionModel(transformers.PreTrainedModel):
 
         self.embedding_transform_strategy = "repeat"  # "none" # "repeat"
         self.embeddings_from_layer_n = embeddings_from_layer_n
-        self.noise_level = 0
+        self.noise_level = vars(config).get("embedder_gaussian_noise_level")
 
     def _freeze_encoder(self):
         freeze_params(self.encoder_decoder.encoder)
@@ -208,7 +205,7 @@ class InversionModel(transformers.PreTrainedModel):
             model_output = embedder(input_ids=input_ids, attention_mask=attention_mask)
             embeddings = self._process_embedder_output(model_output, attention_mask)
 
-        if self.noise_level > 0:
+        if self.training and self.noise_level > 0:
             embeddings += self.noise_level * torch.randn(
                 embeddings.shape, device=embeddings.device
             )

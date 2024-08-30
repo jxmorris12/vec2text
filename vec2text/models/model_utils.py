@@ -11,6 +11,7 @@ EMBEDDER_MODEL_NAMES = [
     "bert__random_init",
     "contriever",
     "dpr",
+    "gte_base",
     "gtr_base",
     "gtr_base__random_init",
     "medicalai/ClinicalBERT",
@@ -165,6 +166,13 @@ def load_embedder_and_tokenizer(name: str, torch_dtype: str, **kwargs):
     elif name == "gtr_large":
         model = SentenceTransformer("sentence-transformers/gtr-t5-large")
         tokenizer = model.tokenizer
+    elif name == "gte_base":
+        model = transformers.AutoModel.from_pretrained(
+            "thenlper/gte-base", **model_kwargs
+        )
+        tokenizer = transformers.AutoTokenizer.from_pretrained(
+            "thenlper/gte-base"
+        )
     elif name == "ance_tele":
         model = transformers.AutoModel.from_pretrained(
             "OpenMatch/ance-tele_nq_psg-encoder", **model_kwargs

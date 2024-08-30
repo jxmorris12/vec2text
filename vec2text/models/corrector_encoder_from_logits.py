@@ -26,9 +26,9 @@ class CorrectorEncoderFromLogitsModel(CorrectorEncoderModel):
         ) = 42  # TODO: Compute this properly.
 
         # TODO: Calculate this explicitly from trainer.
-        self.unigram = torch.load(
-            "/home/jxm3/research/retrieval/inversion/llama_unigram.pt"
-        )
+        # self.unigram = torch.load(
+        # "/home/jxm3/research/retrieval/inversion/llama_unigram.pt"
+        #)
 
         self.embedder_dim = config.embedder_dim
         bottleneck_dim = config.embedder_dim
