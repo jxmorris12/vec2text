@@ -6,7 +6,6 @@ evaluate
 openai
 optimum
 pre-commit
-pylcs
 rouge_score
 sacrebleu
 sentence_transformers
